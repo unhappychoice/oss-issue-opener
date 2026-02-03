@@ -2,7 +2,7 @@ name: Weekly OSS Maintenance Check
 
 on:
   schedule:
-    - cron: '0 9 * * 1' # Every Monday 9:00 UTC
+    - cron: '0 9 * * 6' # Every Saturday 9:00 UTC (18:00 JST)
   workflow_dispatch: # Manual trigger
 
 jobs:
