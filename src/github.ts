@@ -99,15 +99,13 @@ export const getCheckRuns = async (
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
   try {
-    const { data } = await getOctokit().repos.getLatestRelease({ owner, repo });
-    return data.tag_name;
+    const { data: releases } = await getOctokit().repos.listReleases({ owner, repo, per_page: 1 });
+    if (releases.length > 0) return releases[0].tag_name;
+
+    const { data: tags } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
+    return tags[0]?.name ?? null;
   } catch {
-    try {
-      const { data } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
-      return data[0]?.name ?? null;
-    } catch {
-      return null;
-    }
+    return null;
   }
 };
 
