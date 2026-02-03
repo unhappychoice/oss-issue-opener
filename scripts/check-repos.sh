@@ -315,7 +315,7 @@ main() {
     echo ""
 
     local repos
-    repos=$(gh repo list "$org" --limit 500 --json nameWithOwner -q '.[].nameWithOwner' 2>&1)
+    repos=$(gh repo list "$org" --limit 500 --no-archived --json nameWithOwner -q '.[].nameWithOwner' 2>&1)
     if [[ $? -ne 0 ]]; then
       echo "  ⚠️  Failed to list repos: $repos"
       echo ""
