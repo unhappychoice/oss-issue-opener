@@ -1,0 +1,17 @@
+name: Weekly OSS Maintenance Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Every Monday 9:00 UTC
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check repositories and create issues
+        env:
+          GH_TOKEN: ${{ secrets.OSS_GITHUB_TOKEN }}
+        run: ./scripts/check-repos.sh
