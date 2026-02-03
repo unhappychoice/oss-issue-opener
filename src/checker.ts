@@ -1,4 +1,4 @@
-import { getCommitStatus, getDefaultBranch, getLatestRelease, compareCommits } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits } from './github.js';
 import { isProductionDependency } from './dependency.js';
 import { getSourcePatterns } from './project-type.js';
 import type { CIStatus, ProjectType, ReleaseStatus } from './types.js';
@@ -7,8 +7,13 @@ export const checkCIStatus = async (owner: string, repo: string): Promise<CIStat
   const defaultBranch = await getDefaultBranch(owner, repo);
   if (!defaultBranch) return 'no-branch';
 
-  const statuses = await getCommitStatus(owner, repo, defaultBranch);
-  const filtered = statuses.filter((s) => !/codecov/i.test(s.context));
+  const [statuses, checkRuns] = await Promise.all([
+    getCommitStatus(owner, repo, defaultBranch),
+    getCheckRuns(owner, repo, defaultBranch),
+  ]);
+
+  const allStatuses = [...statuses, ...checkRuns];
+  const filtered = allStatuses.filter((s) => !/codecov/i.test(s.context));
   if (filtered.length === 0) return 'no-ci';
 
   const hasFailure = filtered.some((s) => s.state === 'failure' || s.state === 'error');

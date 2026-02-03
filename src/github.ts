@@ -66,6 +66,25 @@ export const getCommitStatus = async (
   }
 };
 
+export const getCheckRuns = async (
+  owner: string,
+  repo: string,
+  ref: string
+): Promise<{ state: string; context: string }[]> => {
+  const conclusionToState = (conclusion: string | null): string =>
+    conclusion === 'success' ? 'success' : conclusion === 'failure' || conclusion === 'timed_out' ? 'failure' : 'pending';
+
+  try {
+    const { data } = await getOctokit().checks.listForRef({ owner, repo, ref });
+    return data.check_runs.map((c) => ({
+      state: c.status === 'completed' ? conclusionToState(c.conclusion) : 'pending',
+      context: c.name,
+    }));
+  } catch {
+    return [];
+  }
+};
+
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
   try {
     const { data } = await getOctokit().repos.getLatestRelease({ owner, repo });
