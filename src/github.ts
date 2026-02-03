@@ -11,14 +11,26 @@ export const getOctokit = (): Octokit => {
   return octokit;
 };
 
-export const listOrgRepos = async (org: string): Promise<string[]> => {
+export const listOrgRepos = async (name: string): Promise<string[]> => {
+  const { data: user } = await getOctokit().users.getByUsername({ username: name });
   const repos: string[] = [];
-  for await (const response of getOctokit().paginate.iterator(getOctokit().repos.listForOrg, {
-    org,
-    per_page: 100,
-    type: 'public',
-  })) {
-    repos.push(...response.data.filter((r) => !r.archived).map((r) => r.full_name));
+
+  if (user.type === 'Organization') {
+    for await (const response of getOctokit().paginate.iterator(getOctokit().repos.listForOrg, {
+      org: name,
+      per_page: 100,
+      type: 'public',
+    })) {
+      repos.push(...(response.data as any[]).filter((r) => !r.archived).map((r) => r.full_name));
+    }
+  } else {
+    for await (const response of getOctokit().paginate.iterator(getOctokit().repos.listForUser, {
+      username: name,
+      per_page: 100,
+      type: 'owner',
+    })) {
+      repos.push(...(response.data as any[]).filter((r) => !r.archived && !r.private).map((r) => r.full_name));
+    }
   }
   return repos;
 };
