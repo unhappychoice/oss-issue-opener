@@ -6,7 +6,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 - **CI Failure Detection**: Checks all repositories for failing CI on default branch
 - **Pending Release Detection**: Identifies repositories with production dependency updates since last release
-- **Per-repository Issues**: Creates separate issues for each repository
+- **Batch Issue Creation**: Creates issues sorted by type, then by repository name
 
 ## Supported Languages
 
@@ -30,7 +30,14 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 1. Create a GitHub Personal Access Token (Classic) with `repo` scope
 2. Add it as `OSS_GITHUB_TOKEN` secret in this repository
-3. Run `./scripts/setup-labels.sh` to create required labels
+
+## Local Development
+
+```bash
+npm install
+npm run build
+GH_TOKEN=your_token npm run start
+```
 
 ## Manual Run
 
@@ -49,3 +56,10 @@ Checks the latest workflow run on the default branch. If it failed, creates an i
 3. Filters for Dependabot commits (Bump X from A to B)
 4. Detects project type and checks if the bumped package is a production dependency
 5. If yes, creates an issue for that repository
+
+### Issue Creation
+All detected issues are collected, sorted by:
+1. Issue type (`ci-failure` first, then `pending-release`)
+2. Repository name (alphabetically)
+
+Then created in batch, skipping any that already exist.

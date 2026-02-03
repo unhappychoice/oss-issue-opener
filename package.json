@@ -1,0 +1,21 @@
+{
+  "name": "oss-issue-opener",
+  "version": "1.0.0",
+  "description": "Weekly automated issue opener for OSS maintenance tasks",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "npm run build && npm run start"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
