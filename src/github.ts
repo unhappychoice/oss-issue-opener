@@ -69,10 +69,10 @@ export const getCommitStatus = async (
   owner: string,
   repo: string,
   ref: string
-): Promise<{ state: string; context: string }[]> => {
+): Promise<{ state: string; context: string; url: string }[]> => {
   try {
     const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref });
-    return data.statuses.map((s) => ({ state: s.state, context: s.context }));
+    return data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' }));
   } catch {
     return [];
   }
@@ -82,7 +82,7 @@ export const getCheckRuns = async (
   owner: string,
   repo: string,
   ref: string
-): Promise<{ state: string; context: string }[]> => {
+): Promise<{ state: string; context: string; url: string }[]> => {
   const conclusionToState = (conclusion: string | null): string =>
     conclusion === 'success' ? 'success' : conclusion === 'failure' || conclusion === 'timed_out' ? 'failure' : 'pending';
 
@@ -91,6 +91,7 @@ export const getCheckRuns = async (
     return data.check_runs.map((c) => ({
       state: c.status === 'completed' ? conclusionToState(c.conclusion) : 'pending',
       context: c.name,
+      url: c.html_url ?? '',
     }));
   } catch {
     return [];

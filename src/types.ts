@@ -1,6 +1,16 @@
 export type ProjectType = 'ruby' | 'node' | 'rust' | 'kotlin' | 'go' | 'swift' | 'unknown';
 
-export type CIStatus = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-branch';
+export type CIStatusType = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-branch';
+
+export interface FailedCheck {
+  name: string;
+  url: string;
+}
+
+export interface CIStatus {
+  status: CIStatusType;
+  failedChecks: FailedCheck[];
+}
 
 export type IssueType = 'ci-failure' | 'pending-release';
 
@@ -21,7 +31,7 @@ export interface CheckResult {
 export type ReleaseStatus =
   | { status: 'no-tag' }
   | { status: 'up-to-date' }
-  | { status: 'pending'; reasons: string };
+  | { status: 'pending'; reasons: string; compareUrl: string };
 
 export const ORGS = ['unhappychoice', 'irasutoya-tools', 'bitflyer-tools', 'circleci-tools'] as const;
 export const ISSUE_REPO = 'unhappychoice/oss-issue-opener';

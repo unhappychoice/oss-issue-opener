@@ -1,27 +1,34 @@
 import { createIssue, listOpenIssues } from './github.js';
-import type { IssueType, PendingIssue } from './types.js';
+import type { FailedCheck, IssueType, PendingIssue } from './types.js';
 import { ISSUE_REPO } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 
-export const buildCIFailureIssue = (repo: string): PendingIssue => ({
+const formatFailedChecks = (checks: FailedCheck[]): string =>
+  checks.map((c) => (c.url ? `- [${c.name}](${c.url})` : `- ${c.name}`)).join('\n');
+
+export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => ({
   type: 'ci-failure',
   repo,
   title: `[CI Failure] ${repo}`,
   body: `CI is failing on the default branch.
 
+**Failed checks:**
+${formatFailedChecks(failedChecks)}
+
 **Repository**: https://github.com/${repo}
 **Actions**: https://github.com/${repo}/actions`,
 });
 
-export const buildPendingReleaseIssue = (repo: string, reasons: string): PendingIssue => ({
+export const buildPendingReleaseIssue = (repo: string, reasons: string, compareUrl: string): PendingIssue => ({
   type: 'pending-release',
   repo,
   title: `[Pending Release] ${repo}`,
-  body: `Production dependency updates since last release:
+  body: `Changes since last release:
 
 ${reasons}
-**Repository**: https://github.com/${repo}
+
+**Diff**: ${compareUrl}
 **Releases**: https://github.com/${repo}/releases`,
 });
 

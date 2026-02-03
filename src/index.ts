@@ -15,12 +15,12 @@ const checkRepo = async (fullName: string): Promise<PendingIssue[]> => {
   const projectType = await detectProjectType(owner, repo);
   log('📋', `Type: ${projectType}`);
 
-  const ciStatus = await checkCIStatus(owner, repo);
+  const ciResult = await checkCIStatus(owner, repo);
   const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪' };
-  log(ciIcons[ciStatus], `CI: ${ciStatus}`);
+  log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
 
-  if (ciStatus === 'failure') {
-    issues.push(buildCIFailureIssue(fullName));
+  if (ciResult.status === 'failure') {
+    issues.push(buildCIFailureIssue(fullName, ciResult.failedChecks));
   }
 
   const releaseStatus = await checkPendingRelease(owner, repo, projectType);
@@ -30,7 +30,7 @@ const checkRepo = async (fullName: string): Promise<PendingIssue[]> => {
     log('✅', 'Release: up to date');
   } else {
     log('📦', 'Release: pending');
-    issues.push(buildPendingReleaseIssue(fullName, releaseStatus.reasons));
+    issues.push(buildPendingReleaseIssue(fullName, releaseStatus.reasons, releaseStatus.compareUrl));
   }
 
   return issues;
