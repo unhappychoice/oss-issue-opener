@@ -127,14 +127,19 @@ check_ci_status() {
   default_branch=$(gh repo view "$repo" --json defaultBranchRef -q '.defaultBranchRef.name' 2>/dev/null || echo "")
 
   if [[ -z "$default_branch" ]]; then
+    echo "no-branch"
     return
   fi
 
   local status
   status=$(gh run list --repo "$repo" --branch "$default_branch" --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
 
-  if [[ "$status" == "failure" ]]; then
+  if [[ -z "$status" ]]; then
+    echo "no-ci"
+  elif [[ "$status" == "failure" ]]; then
     echo "failure"
+  else
+    echo "$status"
   fi
 }
 
@@ -196,36 +201,76 @@ create_issue_if_not_exists() {
   fi
 }
 
+log_result() {
+  local icon=$1
+  local message=$2
+  echo "  $icon $message"
+}
+
 main() {
   echo "=== Checking all repositories ==="
+  echo ""
+
+  local total_repos=0
+  local ci_failures=0
+  local pending_releases=0
 
   for org in "${ORGS[@]}"; do
+    echo "━━━ Organization: $org ━━━"
     echo ""
-    echo "--- Organization: $org ---"
 
     local repos
     repos=$(gh repo list "$org" --limit 100 --json nameWithOwner -q '.[].nameWithOwner' 2>/dev/null || echo "")
 
     while IFS= read -r repo; do
       [[ -z "$repo" ]] && continue
-      echo "Checking $repo..."
+      ((total_repos++))
+
+      local repo_name="${repo#*/}"
+      echo "📦 $repo_name"
+
+      # Detect project type
+      local project_type
+      project_type=$(detect_project_type "$repo")
+      log_result "📋" "Type: $project_type"
 
       # Check CI status
       local ci_status
       ci_status=$(check_ci_status "$repo")
-      if [[ "$ci_status" == "failure" ]]; then
-        local title="[CI Failure] $repo"
-        local body="CI is failing on the default branch.
+      case "$ci_status" in
+        failure)
+          log_result "❌" "CI: failure"
+          ((ci_failures++))
+          local title="[CI Failure] $repo"
+          local body="CI is failing on the default branch.
 
 **Repository**: https://github.com/$repo
 **Actions**: https://github.com/$repo/actions"
-        create_issue_if_not_exists "$repo" "$title" "$body" "ci-failure"
-      fi
+          create_issue_if_not_exists "$repo" "$title" "$body" "ci-failure"
+          ;;
+        success)
+          log_result "✅" "CI: success"
+          ;;
+        no-ci)
+          log_result "⚪" "CI: no workflows"
+          ;;
+        no-branch)
+          log_result "⚪" "CI: no default branch"
+          ;;
+        *)
+          log_result "⚪" "CI: $ci_status"
+          ;;
+      esac
 
       # Check pending release
       local pending
       pending=$(check_pending_release "$repo")
       if [[ -n "$pending" ]]; then
+        log_result "📦" "Release: pending (prod deps updated)"
+        echo "$pending" | while IFS= read -r dep; do
+          [[ -n "$dep" ]] && log_result "  " "$dep"
+        done
+        ((pending_releases++))
         local title="[Pending Release] $repo"
         local body="Production dependency updates since last release:
 
@@ -233,13 +278,20 @@ $pending
 **Repository**: https://github.com/$repo
 **Releases**: https://github.com/$repo/releases"
         create_issue_if_not_exists "$repo" "$title" "$body" "pending-release"
+      else
+        log_result "✅" "Release: up to date"
       fi
 
+      echo ""
     done <<< "$repos"
   done
 
-  echo ""
-  echo "=== Done ==="
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "📊 Summary"
+  echo "  Total repositories: $total_repos"
+  echo "  CI failures: $ci_failures"
+  echo "  Pending releases: $pending_releases"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 main
