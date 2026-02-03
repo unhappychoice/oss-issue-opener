@@ -147,23 +147,22 @@ check_ci_status() {
     return
   fi
 
-  # Try GitHub Actions first
-  local gha_status
-  gha_status=$(gh run list --repo "$repo" --branch "$default_branch" --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
+  local result
+  result=$(gh api "repos/$repo/commits/$default_branch/status" --jq '{state: .state, count: .total_count}' 2>/dev/null || echo "")
 
-  if [[ -n "$gha_status" ]]; then
-    echo "$gha_status"
+  if [[ -z "$result" ]]; then
+    echo "no-ci"
     return
   fi
 
-  # Fall back to GitHub Status API (for CircleCI, etc.)
-  local commit_status
-  commit_status=$(gh api "repos/$repo/commits/$default_branch/status" --jq '.state' 2>/dev/null || echo "")
+  local state count
+  state=$(echo "$result" | jq -r '.state')
+  count=$(echo "$result" | jq -r '.count')
 
-  if [[ -z "$commit_status" ]] || [[ "$commit_status" == "null" ]]; then
+  if [[ "$count" == "0" ]]; then
     echo "no-ci"
   else
-    echo "$commit_status"
+    echo "$state"
   fi
 }
 
