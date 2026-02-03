@@ -178,6 +178,19 @@ get_latest_tag() {
   echo "$tag"
 }
 
+get_source_patterns() {
+  local project_type=$1
+  case "$project_type" in
+    ruby)    echo "^lib/" ;;
+    node)    echo "^(src|lib)/" ;;
+    rust)    echo "^src/" ;;
+    kotlin)  echo "^(src|app/src)/" ;;
+    go)      echo "\.go$" ;;
+    swift)   echo "^Sources/" ;;
+    *)       echo "^src/" ;;
+  esac
+}
+
 check_pending_release() {
   local repo=$1
 
@@ -192,10 +205,10 @@ check_pending_release() {
   local default_branch
   default_branch=$(gh repo view "$repo" --json defaultBranchRef -q '.defaultBranchRef.name' 2>/dev/null || echo "")
 
-  local commits
-  commits=$(gh api "repos/$repo/compare/$latest_tag...$default_branch" --jq '.commits[] | select(.commit.message | test("^Bump .+ from .+ to .+")) | .commit.message' 2>/dev/null || echo "")
+  local compare_result
+  compare_result=$(gh api "repos/$repo/compare/$latest_tag...$default_branch" 2>/dev/null || echo "")
 
-  if [[ -z "$commits" ]]; then
+  if [[ -z "$compare_result" ]]; then
     echo "up-to-date"
     return
   fi
@@ -203,18 +216,47 @@ check_pending_release() {
   local project_type
   project_type=$(detect_project_type "$repo")
 
-  local prod_deps=""
-  while IFS= read -r msg; do
-    [[ -z "$msg" ]] && continue
-    local package
-    package=$(echo "$msg" | sed -n 's/^Bump \([^ ]*\) from .*/\1/p')
-    if [[ -n "$package" ]] && is_production_dependency "$repo" "$package" "$project_type"; then
-      prod_deps+="- $msg"$'\n'
-    fi
-  done <<< "$commits"
+  local reasons=""
 
-  if [[ -n "$prod_deps" ]]; then
-    echo "pending:$prod_deps"
+  # Check for source code changes
+  local source_pattern
+  source_pattern=$(get_source_patterns "$project_type")
+  local changed_sources
+  changed_sources=$(echo "$compare_result" | jq -r '.files[].filename' 2>/dev/null | grep -E "$source_pattern" | head -5)
+  if [[ -n "$changed_sources" ]]; then
+    reasons+="**Source code changes:**"$'\n'
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && reasons+="- \`$file\`"$'\n'
+    done <<< "$changed_sources"
+    local more_count
+    more_count=$(echo "$compare_result" | jq -r '.files[].filename' 2>/dev/null | grep -E "$source_pattern" | tail -n +6 | wc -l)
+    if [[ "$more_count" -gt 0 ]]; then
+      reasons+="- ... and $more_count more files"$'\n'
+    fi
+    reasons+=$'\n'
+  fi
+
+  # Check for production dependency updates
+  local commits
+  commits=$(echo "$compare_result" | jq -r '.commits[] | select(.commit.message | test("^Bump .+ from .+ to .+")) | .commit.message' 2>/dev/null || echo "")
+  if [[ -n "$commits" ]]; then
+    local prod_deps=""
+    while IFS= read -r msg; do
+      [[ -z "$msg" ]] && continue
+      local package
+      package=$(echo "$msg" | sed -n 's/^Bump \([^ ]*\) from .*/\1/p')
+      if [[ -n "$package" ]] && is_production_dependency "$repo" "$package" "$project_type"; then
+        prod_deps+="- $msg"$'\n'
+      fi
+    done <<< "$commits"
+    if [[ -n "$prod_deps" ]]; then
+      reasons+="**Production dependency updates:**"$'\n'
+      reasons+="$prod_deps"
+    fi
+  fi
+
+  if [[ -n "$reasons" ]]; then
+    echo "pending:$reasons"
   else
     echo "up-to-date"
   fi
