@@ -148,21 +148,35 @@ check_ci_status() {
   fi
 
   local result
-  result=$(gh api "repos/$repo/commits/$default_branch/status" --jq '{state: .state, count: .total_count}' 2>/dev/null || echo "")
+  result=$(gh api "repos/$repo/commits/$default_branch/status" 2>/dev/null || echo "")
 
   if [[ -z "$result" ]]; then
     echo "no-ci"
     return
   fi
 
-  local state count
-  state=$(echo "$result" | jq -r '.state')
-  count=$(echo "$result" | jq -r '.count')
+  # Filter out codecov statuses and calculate state
+  local filtered
+  filtered=$(echo "$result" | jq '[.statuses[] | select(.context | test("codecov"; "i") | not)]')
+  local count
+  count=$(echo "$filtered" | jq 'length')
 
   if [[ "$count" == "0" ]]; then
     echo "no-ci"
+    return
+  fi
+
+  # Determine state: failure > pending > success
+  local has_failure has_pending
+  has_failure=$(echo "$filtered" | jq '[.[] | select(.state == "failure" or .state == "error")] | length')
+  has_pending=$(echo "$filtered" | jq '[.[] | select(.state == "pending")] | length')
+
+  if [[ "$has_failure" -gt 0 ]]; then
+    echo "failure"
+  elif [[ "$has_pending" -gt 0 ]]; then
+    echo "pending"
   else
-    echo "$state"
+    echo "success"
   fi
 }
 
