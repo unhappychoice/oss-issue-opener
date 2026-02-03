@@ -159,13 +159,26 @@ check_ci_status() {
   fi
 }
 
+get_latest_tag() {
+  local repo=$1
+  # Try GitHub Release first, then fall back to tags
+  local tag
+  tag=$(gh release view --repo "$repo" --json tagName -q '.tagName' 2>/dev/null || echo "")
+  if [[ -z "$tag" ]]; then
+    # Fall back to latest tag via API
+    tag=$(gh api "repos/$repo/tags" --jq '.[0].name' 2>/dev/null || echo "")
+  fi
+  echo "$tag"
+}
+
 check_pending_release() {
   local repo=$1
 
   local latest_tag
-  latest_tag=$(gh release view --repo "$repo" --json tagName -q '.tagName' 2>/dev/null || echo "")
+  latest_tag=$(get_latest_tag "$repo")
 
   if [[ -z "$latest_tag" ]]; then
+    echo "no-tag"
     return
   fi
 
@@ -176,6 +189,7 @@ check_pending_release() {
   commits=$(gh api "repos/$repo/compare/$latest_tag...$default_branch" --jq '.commits[] | select(.commit.message | test("^Bump .+ from .+ to .+")) | .commit.message' 2>/dev/null || echo "")
 
   if [[ -z "$commits" ]]; then
+    echo "up-to-date"
     return
   fi
 
@@ -193,7 +207,9 @@ check_pending_release() {
   done <<< "$commits"
 
   if [[ -n "$prod_deps" ]]; then
-    echo "$prod_deps"
+    echo "pending:$prod_deps"
+  else
+    echo "up-to-date"
   fi
 }
 
@@ -236,7 +252,7 @@ main() {
     echo ""
 
     local repos
-    repos=$(gh repo list "$org" --limit 100 --json nameWithOwner -q '.[].nameWithOwner' 2>&1)
+    repos=$(gh repo list "$org" --limit 500 --json nameWithOwner -q '.[].nameWithOwner' 2>&1)
     if [[ $? -ne 0 ]]; then
       echo "  ⚠️  Failed to list repos: $repos"
       echo ""
@@ -248,6 +264,11 @@ main() {
       echo ""
       continue
     fi
+    
+    local repo_count
+    repo_count=$(echo "$repos" | wc -l)
+    echo "  Found $repo_count repositories"
+    echo ""
 
     while IFS= read -r repo; do
       [[ -z "$repo" ]] && continue
@@ -290,9 +311,15 @@ main() {
       esac
 
       # Check pending release
-      local pending
-      pending=$(check_pending_release "$repo")
-      if [[ -n "$pending" ]]; then
+      local release_result
+      release_result=$(check_pending_release "$repo")
+      
+      if [[ "$release_result" == "no-tag" ]]; then
+        log_result "⚪" "Release: no tags found"
+      elif [[ "$release_result" == "up-to-date" ]]; then
+        log_result "✅" "Release: up to date"
+      elif [[ "$release_result" == pending:* ]]; then
+        local pending="${release_result#pending:}"
         log_result "📦" "Release: pending (prod deps updated)"
         echo "$pending" | while IFS= read -r dep; do
           [[ -n "$dep" ]] && log_result "  " "$dep"
@@ -306,7 +333,7 @@ $pending
 **Releases**: https://github.com/$repo/releases"
         create_issue_if_not_exists "$repo" "$title" "$body" "pending-release"
       else
-        log_result "✅" "Release: up to date"
+        log_result "⚪" "Release: $release_result"
       fi
 
       echo ""
