@@ -4,29 +4,146 @@ set -euo pipefail
 ORGS=("unhappychoice" "irasutoya-tools" "bitflyer-tools" "circleci-tools")
 ISSUE_REPO="unhappychoice/oss-issue-opener"
 
+get_file_content() {
+  local repo=$1
+  local path=$2
+  gh api "repos/$repo/contents/$path" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo ""
+}
+
+detect_project_type() {
+  local repo=$1
+  local files
+  files=$(gh api "repos/$repo/contents" --jq '.[].name' 2>/dev/null || echo "")
+
+  if echo "$files" | grep -q "Cargo.toml"; then
+    echo "rust"
+  elif echo "$files" | grep -q "package.json"; then
+    echo "node"
+  elif echo "$files" | grep -qE "\.gemspec$"; then
+    echo "ruby"
+  elif echo "$files" | grep -qE "build\.gradle"; then
+    echo "kotlin"
+  elif echo "$files" | grep -q "go.mod"; then
+    echo "go"
+  elif echo "$files" | grep -q "Package.swift"; then
+    echo "swift"
+  else
+    echo "unknown"
+  fi
+}
+
+is_production_dependency() {
+  local repo=$1
+  local package=$2
+  local project_type=$3
+
+  case "$project_type" in
+    ruby)
+      local gemspec
+      gemspec=$(gh api "repos/$repo/contents" --jq '.[] | select(.name | endswith(".gemspec")) | .name' 2>/dev/null | head -1)
+      if [[ -n "$gemspec" ]]; then
+        local content
+        content=$(get_file_content "$repo" "$gemspec")
+        if echo "$content" | grep -qE "add_dependency.*['\"]$package['\"]"; then
+          return 0
+        fi
+      fi
+      # Also check Gemfile for non-development groups
+      local gemfile
+      gemfile=$(get_file_content "$repo" "Gemfile")
+      if [[ -n "$gemfile" ]]; then
+        if echo "$gemfile" | grep -E "^gem ['\"]$package['\"]" | grep -qvE "group.*(:development|:test)"; then
+          return 0
+        fi
+      fi
+      return 1
+      ;;
+    node)
+      local pkg_json
+      pkg_json=$(get_file_content "$repo" "package.json")
+      if [[ -n "$pkg_json" ]]; then
+        if echo "$pkg_json" | jq -e ".dependencies[\"$package\"]" > /dev/null 2>&1; then
+          return 0
+        fi
+      fi
+      return 1
+      ;;
+    rust)
+      local cargo_toml
+      cargo_toml=$(get_file_content "$repo" "Cargo.toml")
+      if [[ -n "$cargo_toml" ]]; then
+        # Check if package is in [dependencies] section (not [dev-dependencies] or [build-dependencies])
+        if echo "$cargo_toml" | awk '/^\[dependencies\]/,/^\[/' | grep -qE "^$package\s*="; then
+          return 0
+        fi
+      fi
+      return 1
+      ;;
+    kotlin)
+      local gradle_file="build.gradle"
+      local content
+      content=$(get_file_content "$repo" "$gradle_file")
+      if [[ -z "$content" ]]; then
+        content=$(get_file_content "$repo" "build.gradle.kts")
+      fi
+      if [[ -n "$content" ]]; then
+        # implementation/api = production, testImplementation = dev
+        if echo "$content" | grep -E "(implementation|api)\s*[\(\"']" | grep -q "$package"; then
+          return 0
+        fi
+      fi
+      return 1
+      ;;
+    go)
+      local go_mod
+      go_mod=$(get_file_content "$repo" "go.mod")
+      if [[ -n "$go_mod" ]]; then
+        if echo "$go_mod" | grep -q "$package"; then
+          return 0
+        fi
+      fi
+      return 1
+      ;;
+    swift)
+      local pkg_swift
+      pkg_swift=$(get_file_content "$repo" "Package.swift")
+      if [[ -n "$pkg_swift" ]]; then
+        if echo "$pkg_swift" | grep -E "\.package\(" | grep -q "$package"; then
+          return 0
+        fi
+      fi
+      return 1
+      ;;
+    *)
+      # Unknown project type, assume production
+      return 0
+      ;;
+  esac
+}
+
 check_ci_status() {
   local repo=$1
   local default_branch
   default_branch=$(gh repo view "$repo" --json defaultBranchRef -q '.defaultBranchRef.name' 2>/dev/null || echo "")
-  
+
   if [[ -z "$default_branch" ]]; then
     return
   fi
 
   local status
   status=$(gh run list --repo "$repo" --branch "$default_branch" --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
-  
+
   if [[ "$status" == "failure" ]]; then
-    echo "$repo"
+    echo "failure"
   fi
 }
 
 check_pending_release() {
   local repo=$1
-  
+
   local latest_tag
   latest_tag=$(gh release view --repo "$repo" --json tagName -q '.tagName' 2>/dev/null || echo "")
-  
+
   if [[ -z "$latest_tag" ]]; then
     return
   fi
@@ -41,63 +158,35 @@ check_pending_release() {
     return
   fi
 
+  local project_type
+  project_type=$(detect_project_type "$repo")
+
   local prod_deps=""
   while IFS= read -r msg; do
-    if is_production_dependency "$repo" "$msg"; then
-      prod_deps+="- $msg\n"
+    [[ -z "$msg" ]] && continue
+    local package
+    package=$(echo "$msg" | sed -n 's/^Bump \([^ ]*\) from .*/\1/p')
+    if [[ -n "$package" ]] && is_production_dependency "$repo" "$package" "$project_type"; then
+      prod_deps+="- $msg"$'\n'
     fi
   done <<< "$commits"
 
   if [[ -n "$prod_deps" ]]; then
-    echo -e "$repo\n$prod_deps"
+    echo "$prod_deps"
   fi
-}
-
-is_production_dependency() {
-  local repo=$1
-  local commit_msg=$2
-  
-  # Extract package name from "Bump <package> from X to Y"
-  local package
-  package=$(echo "$commit_msg" | sed -n 's/^Bump \([^ ]*\) from .*/\1/p')
-  
-  if [[ -z "$package" ]]; then
-    return 1
-  fi
-
-  # Check package.json for Node.js projects
-  local pkg_json
-  pkg_json=$(gh api "repos/$repo/contents/package.json" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-  if [[ -n "$pkg_json" ]]; then
-    if echo "$pkg_json" | jq -e ".dependencies[\"$package\"]" > /dev/null 2>&1; then
-      return 0
-    fi
-    return 1
-  fi
-
-  # Check gemspec for Ruby projects
-  local gemspec
-  gemspec=$(gh api "repos/$repo/contents" --jq '.[] | select(.name | endswith(".gemspec")) | .name' 2>/dev/null | head -1 || echo "")
-  if [[ -n "$gemspec" ]]; then
-    local gemspec_content
-    gemspec_content=$(gh api "repos/$repo/contents/$gemspec" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-    if echo "$gemspec_content" | grep -q "add_dependency.*['\"]$package['\"]"; then
-      return 0
-    fi
-    return 1
-  fi
-
-  # Default: assume it might be production dependency
-  return 0
 }
 
 create_issue_if_not_exists() {
-  local title=$1
-  local body=$2
-  local label=$3
+  local repo=$1
+  local title=$2
+  local body=$3
+  local label=$4
+
+  local search_title="${title//\[/\\[}"
+  search_title="${search_title//\]/\\]}"
 
   local existing
-  existing=$(gh issue list --repo "$ISSUE_REPO" --label "$label" --state open --search "$title" --json number -q '.[0].number' 2>/dev/null || echo "")
+  existing=$(gh issue list --repo "$ISSUE_REPO" --label "$label" --state open --json title,number -q ".[] | select(.title == \"$title\") | .number" 2>/dev/null || echo "")
 
   if [[ -z "$existing" ]]; then
     gh issue create --repo "$ISSUE_REPO" --title "$title" --body "$body" --label "$label"
@@ -108,50 +197,46 @@ create_issue_if_not_exists() {
 }
 
 main() {
-  echo "=== Checking CI failures ==="
-  local failed_repos=()
+  echo "=== Checking all repositories ==="
+
   for org in "${ORGS[@]}"; do
+    echo ""
+    echo "--- Organization: $org ---"
+
+    local repos
     repos=$(gh repo list "$org" --limit 100 --json nameWithOwner -q '.[].nameWithOwner' 2>/dev/null || echo "")
+
     while IFS= read -r repo; do
       [[ -z "$repo" ]] && continue
-      result=$(check_ci_status "$repo")
-      if [[ -n "$result" ]]; then
-        failed_repos+=("$result")
+      echo "Checking $repo..."
+
+      # Check CI status
+      local ci_status
+      ci_status=$(check_ci_status "$repo")
+      if [[ "$ci_status" == "failure" ]]; then
+        local title="[CI Failure] $repo"
+        local body="CI is failing on the default branch.
+
+**Repository**: https://github.com/$repo
+**Actions**: https://github.com/$repo/actions"
+        create_issue_if_not_exists "$repo" "$title" "$body" "ci-failure"
       fi
+
+      # Check pending release
+      local pending
+      pending=$(check_pending_release "$repo")
+      if [[ -n "$pending" ]]; then
+        local title="[Pending Release] $repo"
+        local body="Production dependency updates since last release:
+
+$pending
+**Repository**: https://github.com/$repo
+**Releases**: https://github.com/$repo/releases"
+        create_issue_if_not_exists "$repo" "$title" "$body" "pending-release"
+      fi
+
     done <<< "$repos"
   done
-
-  if [[ ${#failed_repos[@]} -gt 0 ]]; then
-    body="The following repositories have failing CI:\n\n"
-    for repo in "${failed_repos[@]}"; do
-      body+="- [ ] [$repo](https://github.com/$repo/actions)\n"
-    done
-    create_issue_if_not_exists "[Weekly] CI Failures - $(date +%Y-%m-%d)" "$body" "ci-failure"
-  fi
-
-  echo ""
-  echo "=== Checking pending releases ==="
-  local pending_releases=()
-  for org in "${ORGS[@]}"; do
-    repos=$(gh repo list "$org" --limit 100 --json nameWithOwner -q '.[].nameWithOwner' 2>/dev/null || echo "")
-    while IFS= read -r repo; do
-      [[ -z "$repo" ]] && continue
-      result=$(check_pending_release "$repo")
-      if [[ -n "$result" ]]; then
-        pending_releases+=("$result")
-      fi
-    done <<< "$repos"
-  done
-
-  if [[ ${#pending_releases[@]} -gt 0 ]]; then
-    body="The following repositories may need a release (production dependency updates since last release):\n\n"
-    for item in "${pending_releases[@]}"; do
-      repo=$(echo "$item" | head -1)
-      deps=$(echo "$item" | tail -n +2)
-      body+="### [$repo](https://github.com/$repo)\n$deps\n"
-    done
-    create_issue_if_not_exists "[Weekly] Pending Releases - $(date +%Y-%m-%d)" "$body" "pending-release"
-  fi
 
   echo ""
   echo "=== Done ==="
