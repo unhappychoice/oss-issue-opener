@@ -1,8 +1,24 @@
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
 ORGS=("unhappychoice" "irasutoya-tools" "bitflyer-tools" "circleci-tools")
 ISSUE_REPO="unhappychoice/oss-issue-opener"
+
+# Check if GH_TOKEN is set
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "❌ Error: GH_TOKEN is not set"
+  echo "Please set the OSS_GITHUB_TOKEN secret in the repository settings."
+  exit 1
+fi
+
+# Verify token works
+if ! gh auth status &>/dev/null; then
+  echo "❌ Error: GitHub authentication failed"
+  echo "Please check your OSS_GITHUB_TOKEN has correct permissions."
+  exit 1
+fi
+echo "✅ GitHub authentication successful"
+echo ""
 
 get_file_content() {
   local repo=$1
@@ -220,7 +236,18 @@ main() {
     echo ""
 
     local repos
-    repos=$(gh repo list "$org" --limit 100 --json nameWithOwner -q '.[].nameWithOwner' 2>/dev/null || echo "")
+    repos=$(gh repo list "$org" --limit 100 --json nameWithOwner -q '.[].nameWithOwner' 2>&1)
+    if [[ $? -ne 0 ]]; then
+      echo "  ⚠️  Failed to list repos: $repos"
+      echo ""
+      continue
+    fi
+    
+    if [[ -z "$repos" ]]; then
+      echo "  No repositories found"
+      echo ""
+      continue
+    fi
 
     while IFS= read -r repo; do
       [[ -z "$repo" ]] && continue
