@@ -13,7 +13,7 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
-    "@octokit/rest": "^21.0.0"
+    "@octokit/rest": "^22.0.1"
   },
   "engines": {
     "node": ">=20"
