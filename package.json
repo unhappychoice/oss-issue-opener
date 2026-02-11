@@ -9,7 +9,7 @@
     "check": "npm run build && npm run start"
   },
   "devDependencies": {
-    "@types/node": "^25.2.2",
+    "@types/node": "^25.2.3",
     "typescript": "^5.7.0"
   },
   "dependencies": {
