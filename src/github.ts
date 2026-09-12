@@ -11,6 +11,9 @@ export const getOctokit = (): Octokit => {
   return octokit;
 };
 
+// Forks are excluded: their releases and CI belong to the upstream project.
+const isMaintained = (repo: any): boolean => !repo.archived && !repo.private && !repo.fork;
+
 export const listOrgRepos = async (name: string): Promise<string[]> => {
   const { data: user } = await getOctokit().users.getByUsername({ username: name });
   const repos: string[] = [];
@@ -21,7 +24,7 @@ export const listOrgRepos = async (name: string): Promise<string[]> => {
       per_page: 100,
       type: 'public',
     })) {
-      repos.push(...(response.data as any[]).filter((r) => !r.archived).map((r) => r.full_name));
+      repos.push(...(response.data as any[]).filter(isMaintained).map((r) => r.full_name));
     }
   } else {
     for await (const response of getOctokit().paginate.iterator(getOctokit().repos.listForUser, {
@@ -29,7 +32,7 @@ export const listOrgRepos = async (name: string): Promise<string[]> => {
       per_page: 100,
       type: 'owner',
     })) {
-      repos.push(...(response.data as any[]).filter((r) => !r.archived && !r.private).map((r) => r.full_name));
+      repos.push(...(response.data as any[]).filter(isMaintained).map((r) => r.full_name));
     }
   }
   return repos;

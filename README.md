@@ -26,6 +26,8 @@ Weekly automated issue opener for OSS maintenance tasks.
 - bitflyer-tools
 - circleci-tools
 
+Archived, private and forked repositories are skipped.
+
 ## Setup
 
 1. Create a GitHub Personal Access Token (Classic) with `repo` scope
