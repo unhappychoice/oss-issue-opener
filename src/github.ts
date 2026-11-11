@@ -136,11 +136,12 @@ export const listOpenIssues = async (
   label: string
 ): Promise<{ title: string; number: number }[]> => {
   try {
-    const { data } = await getOctokit().issues.listForRepo({
+    const data = await getOctokit().paginate(getOctokit().issues.listForRepo, {
       owner,
       repo,
       labels: label,
       state: 'open',
+      per_page: 100,
     });
     return data.map((i) => ({ title: i.title, number: i.number }));
   } catch {
