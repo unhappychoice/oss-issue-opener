@@ -1,4 +1,5 @@
 import { getFileContent, getRepoContents } from './github.js';
+import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
 
 type DependencyChecker = (owner: string, repo: string, pkg: string) => Promise<boolean>;
@@ -29,10 +30,20 @@ const checkNodeDependency: DependencyChecker = async (owner, repo, pkg) => {
   }
 };
 
+const asTable = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
 const checkRustDependency: DependencyChecker = async (owner, repo, pkg) => {
   const content = await getFileContent(owner, repo, 'Cargo.toml');
-  const depSection = content.match(/\[dependencies\]([\s\S]*?)(?=\[|$)/)?.[1] ?? '';
-  return new RegExp(`^${pkg}\\s*=`, 'm').test(depSection);
+  try {
+    const manifest = parse(content);
+    const tables = [manifest, ...Object.values(asTable(manifest.target))];
+    return tables.some((table) => Object.hasOwn(asTable(asTable(table).dependencies), pkg));
+  } catch {
+    return false;
+  }
 };
 
 const checkKotlinDependency: DependencyChecker = async (owner, repo, pkg) => {

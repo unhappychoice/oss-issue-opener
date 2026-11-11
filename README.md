@@ -14,7 +14,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 |----------|----------------|---------------------|
 | Ruby | `*.gemspec`, `Gemfile` | `add_dependency` |
 | Node/TypeScript | `package.json` | `dependencies` |
-| Rust | `Cargo.toml` | `[dependencies]` section |
+| Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
 | Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
 | Go | `go.mod` | `require` |
 | Swift | `Package.swift` | `.package()` |
@@ -56,7 +56,7 @@ Checks the latest workflow run on the default branch. If it failed, creates an i
 ### Pending Release Check
 1. Gets the latest release tag
 2. Compares commits since that tag
-3. Filters for Dependabot commits (Bump X from A to B)
+3. Filters for Dependabot commits (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`)
 4. Detects project type and checks if the bumped package is a production dependency
 5. If yes, creates an issue for that repository
 
@@ -66,3 +66,5 @@ All detected issues are collected, sorted by:
 2. Repository name (alphabetically)
 
 Then created in batch, skipping any that already exist.
+Creation failures are logged per issue, and remaining issues are still attempted.
+After the batch, any failures are reported together and the process exits with a nonzero status.
