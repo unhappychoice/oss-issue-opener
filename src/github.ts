@@ -119,11 +119,13 @@ export const compareCommits = async (
   base: string,
   head: string
 ): Promise<{ files: string[]; commitMessages: string[] }> => {
-  const { data } = await getOctokit().repos.compareCommits({ owner, repo, base, head });
-  return {
-    files: data.files?.map((f) => f.filename) ?? [],
-    commitMessages: data.commits.map((c) => c.commit.message),
-  };
+  const result = { files: [] as string[], commitMessages: [] as string[] };
+  for (let page = 1; ; page++) {
+    const { data } = await getOctokit().repos.compareCommits({ owner, repo, base, head, per_page: 100, page });
+    if (page === 1) result.files = data.files?.map((f) => f.filename) ?? [];
+    result.commitMessages.push(...data.commits.map((c) => c.commit.message));
+    if (data.commits.length < 100) return result;
+  }
 };
 
 export const listOpenIssues = async (
