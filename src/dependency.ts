@@ -42,7 +42,17 @@ const checkKotlinDependency: DependencyChecker = async (owner, repo, pkg) => {
 
 const checkGoDependency: DependencyChecker = async (owner, repo, pkg) => {
   const content = await getFileContent(owner, repo, 'go.mod');
-  return content.includes(pkg);
+  let block = '';
+  return content.split(/\r?\n/).some((line) => {
+    const declaration = line.replace(/\/\/.*$/, '').trim();
+    if (declaration === ')') { block = ''; return false; }
+    const opening = declaration.match(/^(\w+)\s*\($/);
+    if (opening) { block = opening[1]; return false; }
+    const requirement = block === 'require' ? declaration :
+      block === '' ? declaration.match(/^require\s+(.+)$/)?.[1] ?? '' : '';
+    const module = requirement.match(/^(?:"([^"]+)"|([^\s"]+))\s+\S+$/);
+    return (module?.[1] ?? module?.[2]) === pkg;
+  });
 };
 
 const checkSwiftDependency: DependencyChecker = async (owner, repo, pkg) => {

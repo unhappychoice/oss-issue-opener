@@ -38,6 +38,7 @@ Archived, private and forked repositories are skipped.
 ```bash
 npm install
 npm run build
+npm test
 GH_TOKEN=your_token npm run start
 ```
 
