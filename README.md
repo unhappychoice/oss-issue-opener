@@ -38,6 +38,7 @@ Archived, private and forked repositories are skipped.
 ```bash
 npm install
 npm run build
+npm test
 GH_TOKEN=your_token npm run start
 ```
 
@@ -65,3 +66,5 @@ All detected issues are collected, sorted by:
 2. Repository name (alphabetically)
 
 Then created in batch, skipping any that already exist.
+Creation failures are logged per issue, and remaining issues are still attempted.
+After the batch, any failures are reported together and the process exits with a nonzero status.
