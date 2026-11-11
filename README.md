@@ -60,6 +60,11 @@ Checks the latest workflow run on the default branch. If it failed, creates an i
 4. Detects project type and checks if the bumped package is a production dependency
 5. If yes, creates an issue for that repository
 
+CI and release investigations run independently for each repository. Investigation failures are
+logged with their target and cause, and scanning continues with the remaining repositories.
+Detected notifications are still submitted for batch creation before failures are reported together
+and the process exits with a nonzero status.
+
 ### Issue Creation
 All detected issues are collected, sorted by:
 1. Issue type (`ci-failure` first, then `pending-release`)
