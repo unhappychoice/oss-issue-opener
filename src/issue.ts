@@ -45,6 +45,7 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
   }
 
   console.log('\n=== Creating Issues (sorted by type, then repo) ===\n');
+  const failures: Error[] = [];
 
   for (const issue of sorted) {
     const existing = existingByLabel.get(issue.type);
@@ -53,7 +54,17 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
       continue;
     }
 
-    const num = await createIssue(issueOwner, issueRepo, issue.title, issue.body, [issue.type]);
-    console.log(`  [created] ${issue.title} (#${num})`);
+    try {
+      const num = await createIssue(issueOwner, issueRepo, issue.title, issue.body, [issue.type]);
+      console.log(`  [created] ${issue.title} (#${num})`);
+    } catch (cause) {
+      const failure = new Error(`Failed to create issue: ${issue.title}`, { cause });
+      failures.push(failure);
+      console.error(`  [failed] ${issue.title}`, cause);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Failed to create ${failures.length} of ${sorted.length} issues`);
   }
 };
