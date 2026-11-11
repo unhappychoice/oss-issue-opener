@@ -14,7 +14,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 |----------|----------------|---------------------|
 | Ruby | `*.gemspec`, `Gemfile` | `add_dependency` |
 | Node/TypeScript | `package.json` | `dependencies` |
-| Rust | `Cargo.toml` | `[dependencies]` section |
+| Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
 | Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
 | Go | `go.mod` | `require` |
 | Swift | `Package.swift` | `.package()` |

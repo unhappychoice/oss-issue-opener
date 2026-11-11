@@ -14,7 +14,8 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@octokit/rest": "^22.0.1"
+    "@octokit/rest": "^22.0.1",
+    "smol-toml": "^1.9.1"
   },
   "engines": {
     "node": ">=20"
