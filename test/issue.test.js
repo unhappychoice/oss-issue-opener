@@ -5,7 +5,7 @@ import { buildCIFailureIssue, createIssuesInBatch } from '../dist/issue.js';
 
 const setup = (t, create, existing = []) => {
   initOctokit('test-token');
-  t.mock.method(getOctokit().issues, 'listForRepo', async () => ({ data: existing }));
+  t.mock.method(getOctokit(), 'paginate', async () => existing);
   const attempts = t.mock.method(getOctokit().issues, 'create', create);
   const logs = t.mock.method(console, 'log', () => {});
   const errors = t.mock.method(console, 'error', () => {});
