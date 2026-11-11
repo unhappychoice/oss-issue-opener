@@ -4,16 +4,17 @@ import type { ProjectType } from './types.js';
 type DependencyChecker = (owner: string, repo: string, pkg: string) => Promise<boolean>;
 
 const checkRubyDependency: DependencyChecker = async (owner, repo, pkg) => {
+  const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const files = await getRepoContents(owner, repo);
   const gemspecName = files.find((f) => f.endsWith('.gemspec'));
 
   if (gemspecName) {
     const gemspec = await getFileContent(owner, repo, gemspecName);
-    if (new RegExp(`add_dependency.*['"]${pkg}['"]`).test(gemspec)) return true;
+    if (new RegExp(`add_dependency.*['"]${escapedPkg}['"]`).test(gemspec)) return true;
   }
 
   const gemfile = await getFileContent(owner, repo, 'Gemfile');
-  return new RegExp(`^gem ['"]${pkg}['"]`, 'm').test(gemfile) &&
+  return new RegExp(`^gem ['"]${escapedPkg}['"]`, 'm').test(gemfile) &&
     !/:development|:test/.test(gemfile.split(pkg)[0]?.split('\n').pop() ?? '');
 };
 
