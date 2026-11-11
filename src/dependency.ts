@@ -1,6 +1,7 @@
 import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
+import { isProductionGem } from './gemfile.js';
 
 type DependencyChecker = (owner: string, repo: string, pkg: string) => Promise<boolean>;
 
@@ -14,8 +15,7 @@ const checkRubyDependency: DependencyChecker = async (owner, repo, pkg) => {
   }
 
   const gemfile = await getFileContent(owner, repo, 'Gemfile');
-  return new RegExp(`^gem ['"]${pkg}['"]`, 'm').test(gemfile) &&
-    !/:development|:test/.test(gemfile.split(pkg)[0]?.split('\n').pop() ?? '');
+  return isProductionGem(gemfile, pkg);
 };
 
 const checkNodeDependency: DependencyChecker = async (owner, repo, pkg) => {
