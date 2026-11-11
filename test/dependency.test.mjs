@@ -33,6 +33,18 @@ test('Gemfile fallback matches package names literally', async () => {
   assert.equal(await check('['), false);
 });
 
+test('Gemfile fallback preserves group exclusions for literal package names', async () => {
+  mockRubyRepository('', `group :test do
+    gem '(a+)+$'
+  end
+  gem 'rack.test', group: :development
+  gem('runtime.test')`);
+  assert.equal(await check('(a+)+$'), false);
+  assert.equal(await check('rack.test'), false);
+  assert.equal(await check('runtime.test'), true);
+  assert.equal(await check('runtimeXtest'), false);
+});
+
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';

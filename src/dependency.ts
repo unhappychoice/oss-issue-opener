@@ -1,6 +1,7 @@
 import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
+import { isProductionGem } from './gemfile.js';
 
 type DependencyChecker = (owner: string, repo: string, pkg: string) => Promise<boolean>;
 
@@ -15,8 +16,7 @@ const checkRubyDependency: DependencyChecker = async (owner, repo, pkg) => {
   }
 
   const gemfile = await getFileContent(owner, repo, 'Gemfile');
-  return new RegExp(`^gem ['"]${escapedPkg}['"]`, 'm').test(gemfile) &&
-    !/:development|:test/.test(gemfile.split(pkg)[0]?.split('\n').pop() ?? '');
+  return isProductionGem(gemfile, pkg);
 };
 
 const checkNodeDependency: DependencyChecker = async (owner, repo, pkg) => {
@@ -49,12 +49,25 @@ const checkRustDependency: DependencyChecker = async (owner, repo, pkg) => {
 const checkKotlinDependency: DependencyChecker = async (owner, repo, pkg) => {
   let content = await getFileContent(owner, repo, 'build.gradle');
   if (!content) content = await getFileContent(owner, repo, 'build.gradle.kts');
-  return /(implementation|api)\s*[("']/.test(content) && content.includes(pkg);
+  const declarations = content.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
+  return Array.from(declarations).some(([, , coordinate]) =>
+    coordinate === pkg || coordinate.startsWith(`${pkg}:`)
+  );
 };
 
 const checkGoDependency: DependencyChecker = async (owner, repo, pkg) => {
   const content = await getFileContent(owner, repo, 'go.mod');
-  return content.includes(pkg);
+  let block = '';
+  return content.split(/\r?\n/).some((line) => {
+    const declaration = line.replace(/\/\/.*$/, '').trim();
+    if (declaration === ')') { block = ''; return false; }
+    const opening = declaration.match(/^(\w+)\s*\($/);
+    if (opening) { block = opening[1]; return false; }
+    const requirement = block === 'require' ? declaration :
+      block === '' ? declaration.match(/^require\s+(.+)$/)?.[1] ?? '' : '';
+    const module = requirement.match(/^(?:"([^"]+)"|([^\s"]+))\s+\S+$/);
+    return (module?.[1] ?? module?.[2]) === pkg;
+  });
 };
 
 const checkSwiftDependency: DependencyChecker = async (owner, repo, pkg) => {

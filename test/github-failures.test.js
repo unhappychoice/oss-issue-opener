@@ -20,9 +20,9 @@ const mockRelease = () => {
 ['ci-failure', 'pending-release'].forEach((failedLabel) => {
   test(`does not create issues when ${failedLabel} lookup fails`, async () => {
     const failure = new Error('Issue lookup failed');
-    mock.method(getOctokit().issues, 'listForRepo', async ({ labels }) => {
+    mock.method(getOctokit(), 'paginate', async (_route, { labels }) => {
       if (labels === failedLabel) throw failure;
-      return { data: [] };
+      return [];
     });
     const create = mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 1 } }));
 
@@ -32,7 +32,7 @@ const mockRelease = () => {
 });
 
 test('creates an issue when existing issue lists are successfully empty', async () => {
-  mock.method(getOctokit().issues, 'listForRepo', async () => ({ data: [] }));
+  mock.method(getOctokit(), 'paginate', async () => []);
   const create = mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 1 } }));
 
   await createIssuesInBatch([pendingIssue()]);
@@ -42,9 +42,9 @@ test('creates an issue when existing issue lists are successfully empty', async 
 });
 
 test('skips an existing issue with the same title', async () => {
-  mock.method(getOctokit().issues, 'listForRepo', async () => ({
-    data: [{ title: pendingIssue().title, number: 1 }],
-  }));
+  mock.method(getOctokit(), 'paginate', async () => [
+    { title: pendingIssue().title, number: 1 },
+  ]);
   const create = mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 2 } }));
 
   await createIssuesInBatch([pendingIssue()]);
@@ -53,7 +53,7 @@ test('skips an existing issue with the same title', async () => {
 });
 
 test('returns a successful empty issue list', async () => {
-  mock.method(getOctokit().issues, 'listForRepo', async () => ({ data: [] }));
+  mock.method(getOctokit(), 'paginate', async () => []);
 
   assert.deepEqual(await listOpenIssues('owner', 'repo', 'ci-failure'), []);
 });

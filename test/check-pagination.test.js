@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { checkCIStatus } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
-['failure', 'success'].forEach((conclusion) => {
+['failure', 'success', 'action_required'].forEach((conclusion) => {
   test(`reads all check pages when the last check is ${conclusion}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
@@ -32,8 +32,8 @@ import { getOctokit, initOctokit } from '../dist/github.js';
     });
 
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
-      status: conclusion,
-      failedChecks: conclusion === 'failure'
+      status: conclusion === 'success' ? 'success' : 'failure',
+      failedChecks: conclusion !== 'success'
         ? [{ name: 'check-31', url: 'https://github.com/owner/repo/actions/runs/31' }]
         : [],
     });

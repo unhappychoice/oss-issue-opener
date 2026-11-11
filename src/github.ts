@@ -86,13 +86,22 @@ export const getCheckRuns = async (
   repo: string,
   ref: string
 ): Promise<{ state: string; context: string; url: string }[]> => {
-  const conclusionToState = (conclusion: string | null): string =>
-    conclusion === 'success' ? 'success' : conclusion === 'failure' || conclusion === 'timed_out' ? 'failure' : 'pending';
+  const conclusionStates: Record<string, string> = {
+    success: 'success',
+    neutral: 'success',
+    skipped: 'success',
+    failure: 'failure',
+    timed_out: 'failure',
+    action_required: 'failure',
+    cancelled: 'failure',
+    stale: 'failure',
+    startup_failure: 'failure',
+  };
 
   try {
     const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
     return checkRuns.map((c) => ({
-      state: c.status === 'completed' ? conclusionToState(c.conclusion) : 'pending',
+      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
       context: c.name,
       url: c.html_url ?? '',
     }));
@@ -133,11 +142,12 @@ export const listOpenIssues = async (
   repo: string,
   label: string
 ): Promise<{ title: string; number: number }[]> => {
-  const { data } = await getOctokit().issues.listForRepo({
+  const data = await getOctokit().paginate(getOctokit().issues.listForRepo, {
     owner,
     repo,
     labels: label,
     state: 'open',
+    per_page: 100,
   });
   return data.map((i) => ({ title: i.title, number: i.number }));
 };
