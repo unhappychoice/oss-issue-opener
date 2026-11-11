@@ -6,56 +6,45 @@ import { getOctokit, initOctokit } from '../dist/github.js';
 initOctokit('test-token');
 
 const cases = [
-  ['ungrouped dependency', "gem 'rake'", true],
-  ['double-quoted dependency', '  gem "rake", "~> 13.0"', true],
-  ['inline development', "gem 'rake', group: :development", false],
-  ['inline test', "gem 'rake', group: :test", false],
-  ['inline production', "gem 'rake', group: :production", true],
-  ['inline group array', "gem 'rake', groups: [:development, :test]", false],
-  ['multiline group array', "gem 'rake', groups: [\n  :development,\n  :test\n]", false],
-  ['production group array', "gem 'rake', groups: [:production, :default]", true],
-  ['inline string group', "gem 'rake', group: 'test'", false],
-  ['legacy hash group', "gem 'rake', :group => :test", false],
-  ['multiline options', "gem 'rake',\n  group: :development", false],
-  ['parenthesized declaration', 'gem("rake", group: :test)', false],
-  ['development block', "group :development do\n  gem 'rake'\nend", false],
-  ['test block', "group :test do\n  gem 'rake'\nend", false],
-  ['combined block', "group :development, :test do\n  gem 'rake'\nend", false],
-  ['production block', "group :production do\n  gem 'rake'\nend", true],
-  ['single-line test block', "group :test do gem 'rake' end", false],
-  ['single-line production block', "group :production do gem 'rake' end", true],
-  ['similar group name', "group :development_tools do\n  gem 'rake'\nend", true],
-  ['production inline in test block', "group :test do\n  gem 'rake', group: :production\nend", false],
-  ['test inline in production block', "group :production do\n  gem 'rake', group: :test\nend", false],
-  ['nested groups', "group :test do\n  group :production do\n    gem 'rake'\n  end\nend", false],
-  ['nested source', "group :test do\n  source 'https://example.com' do\n    gem 'other'\n  end\n  gem 'rake'\nend", false],
-  ['nested conditional', "group :test do\n  if RUBY_ENGINE == 'ruby'\n    gem 'other'\n  end\n  gem 'rake'\nend", false],
-  ['after excluded block', "group :test do\n  gem 'other'\nend\ngem 'rake'", true],
-  ['multiple declarations', "gem 'rake', group: :test\ngem 'rake', group: :production", true],
-  ['unrelated group', "gem 'other', group: :test\ngem 'rake'", true],
-  ['commented declaration', "# gem 'rake'", false],
-  ['commented group', "gem 'rake' # group: :test", true],
-  ['group name in string option', "gem 'rake', require: ':test'", true],
-  ['exact package name', "gem 'rake-extra'", false],
-  ['missing dependency', '', false],
+  ['ordinary dependencies', '[dependencies]\nserde = "1"', 'serde', true],
+  ['individual tables', '[dependencies.serde]\nversion = "1"', 'serde', true],
+  ['target dependencies', '[target.\'cfg(unix)\'.dependencies]\nlibc = "0.2"', 'libc', true],
+  ['target individual tables', '[target.\'cfg(unix)\'.dependencies.libc]\nversion = "0.2"', 'libc', true],
+  ['target triples', '[target.x86_64-unknown-linux-gnu.dependencies]\nlibc = "0.2"', 'libc', true],
+  ['quoted keys and whitespace', '[ dependencies . "serde" ] # comment\nversion = "1"', 'serde', true],
+  ['inline dependency tables', '[dependencies]\nserde = { version = "1", features = ["derive"] }', 'serde', true],
+  ['multiple dependencies', '[dependencies]\nserde = { version = "1", features = ["derive"] }\nlibc = "0.2"', 'libc', true],
+  ['later targets', '[target.\'cfg(windows)\'.dependencies]\nwinapi = "0.3"\n[target.\'cfg(unix)\'.dependencies]\nlibc = "0.2"', 'libc', true],
+  ['missing dependencies', '[dependencies]\nserde = "1"', 'libc', false],
+  ['exact package names', '[dependencies]\nserde_json = "1"', 'serde', false],
+  ['commented declarations', '[dependencies]\n# serde = "1"', 'serde', false],
+  ['workspace declarations', '[workspace.dependencies]\nserde = "1"', 'serde', false],
+  ['workspace references', '[dependencies.serde]\nworkspace = true', 'serde', true],
+  ['metadata', '[package.metadata.dependencies]\nserde = "1"', 'serde', false],
+  ['strings containing declarations', '[package]\ndescription = """\n[dependencies]\nserde = "1"\n"""', 'serde', false],
+  ['inherited property names', '[dependencies]\nserde = "1"', 'constructor', false],
+  ['empty files', '', 'serde', false],
+  ['invalid TOML', '[dependencies\nserde = "1"', 'serde', false],
 ];
 
-cases.forEach(([name, gemfile, expected]) => {
-  test(name, async (t) => {
-    t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
-    }));
-    assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), expected);
+['dev-dependencies', 'build-dependencies'].forEach((kind) => {
+  ['', "target.'cfg(unix)'."].forEach((prefix) => {
+    cases.push(
+      [`${prefix}${kind}`, `[${prefix}${kind}]\nserde = "1"`, 'serde', false],
+      [`${prefix}${kind} individual tables`, `[${prefix}${kind}.serde]\nversion = "1"`, 'serde', false],
+    );
   });
 });
 
-test('gemspec runtime dependencies take precedence over Gemfile groups', async (t) => {
-  t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-    data: path === '' ? [{ name: 'example.gemspec' }] : {
-      content: Buffer.from(path.endsWith('.gemspec')
-        ? "spec.add_dependency 'rake'"
-        : "gem 'rake', group: :test").toString('base64'),
-    },
-  }));
-  assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), true);
+cases.forEach(([name, content, pkg, expected]) => {
+  test(`Rust production dependency detection: ${name}`, async (t) => {
+    const getContent = t.mock.method(getOctokit().repos, 'getContent', async () => ({
+      data: { content: Buffer.from(content).toString('base64') },
+    }));
+
+    assert.equal(await isProductionDependency('owner', 'repo', pkg, 'rust'), expected);
+    assert.deepEqual(getContent.mock.calls[0].arguments, [{
+      owner: 'owner', repo: 'repo', path: 'Cargo.toml',
+    }]);
+  });
 });
