@@ -66,3 +66,5 @@ All detected issues are collected, sorted by:
 2. Repository name (alphabetically)
 
 Then created in batch, skipping any that already exist.
+Creation failures are logged per issue, and remaining issues are still attempted.
+After the batch, any failures are reported together and the process exits with a nonzero status.
