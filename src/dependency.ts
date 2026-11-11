@@ -3,29 +3,53 @@ import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
 import { isProductionGem } from './gemfile.js';
 
-type DependencyChecker = (owner: string, repo: string, pkg: string) => Promise<boolean>;
+type DependencyChecker = (pkg: string) => Promise<boolean>;
+type DependencyLoader = (
+  file: (path: string) => Promise<string>,
+  contents: () => Promise<string[]>
+) => Promise<DependencyChecker>;
 
-const checkRubyDependency: DependencyChecker = async (owner, repo, pkg) => {
-  const files = await getRepoContents(owner, repo);
-  const gemspecName = files.find((f) => f.endsWith('.gemspec'));
-
-  if (gemspecName) {
-    const gemspec = await getFileContent(owner, repo, gemspecName);
-    if (new RegExp(`add_dependency.*['"]${pkg}['"]`).test(gemspec)) return true;
-  }
-
-  const gemfile = await getFileContent(owner, repo, 'Gemfile');
-  return isProductionGem(gemfile, pkg);
+export const createDependencyChecker = (
+  owner: string,
+  repo: string,
+  type: ProjectType
+): DependencyChecker => {
+  const files = new Map<string, Promise<string>>();
+  const file = (path: string): Promise<string> => {
+    if (!files.has(path)) files.set(path, getFileContent(owner, repo, path));
+    return files.get(path)!;
+  };
+  let checker: Promise<DependencyChecker> | undefined;
+  return async (pkg) => {
+    checker ??= loaders[type](file, () => getRepoContents(owner, repo));
+    return (await checker)(pkg);
+  };
 };
 
-const checkNodeDependency: DependencyChecker = async (owner, repo, pkg) => {
-  const content = await getFileContent(owner, repo, 'package.json');
-  if (!content) return false;
+export const isProductionDependency = (
+  owner: string,
+  repo: string,
+  pkg: string,
+  type: ProjectType
+): Promise<boolean> => createDependencyChecker(owner, repo, type)(pkg);
+
+const loadRuby: DependencyLoader = async (file, contents) => {
+  const gemspecName = (await contents()).find((name) => name.endsWith('.gemspec'));
+  const gemspec = gemspecName ? await file(gemspecName) : '';
+  return async (pkg) => {
+    if (new RegExp(`add_dependency.*['"]${pkg}['"]`).test(gemspec)) return true;
+    const gemfile = await file('Gemfile');
+    return isProductionGem(gemfile, pkg);
+  };
+};
+
+const loadNode: DependencyLoader = async (file) => {
   try {
-    const json = JSON.parse(content);
-    return pkg in (json.dependencies ?? {});
+    const json = JSON.parse(await file('package.json'));
+    const dependencies = json.dependencies ?? {};
+    return async (pkg) => typeof dependencies === 'object' && pkg in dependencies;
   } catch {
-    return false;
+    return async () => false;
   }
 };
 
@@ -34,59 +58,55 @@ const asTable = (value: unknown): Record<string, unknown> =>
     ? value as Record<string, unknown>
     : {};
 
-const checkRustDependency: DependencyChecker = async (owner, repo, pkg) => {
-  const content = await getFileContent(owner, repo, 'Cargo.toml');
+const loadRust: DependencyLoader = async (file) => {
+  const content = await file('Cargo.toml');
   try {
     const manifest = parse(content);
     const tables = [manifest, ...Object.values(asTable(manifest.target))];
-    return tables.some((table) => Object.hasOwn(asTable(asTable(table).dependencies), pkg));
+    const dependencies = tables.map((table) => asTable(asTable(table).dependencies));
+    return async (pkg) => dependencies.some((table) => Object.hasOwn(table, pkg));
   } catch {
-    return false;
+    return async () => false;
   }
 };
 
-const checkKotlinDependency: DependencyChecker = async (owner, repo, pkg) => {
-  let content = await getFileContent(owner, repo, 'build.gradle');
-  if (!content) content = await getFileContent(owner, repo, 'build.gradle.kts');
+const loadKotlin: DependencyLoader = async (file) => {
+  const content = await file('build.gradle') || await file('build.gradle.kts');
   const declarations = content.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
-  return Array.from(declarations).some(([, , coordinate]) =>
+  const coordinates = Array.from(declarations, ([, , coordinate]) => coordinate);
+  return async (pkg) => coordinates.some((coordinate) =>
     coordinate === pkg || coordinate.startsWith(`${pkg}:`)
   );
 };
 
-const checkGoDependency: DependencyChecker = async (owner, repo, pkg) => {
-  const content = await getFileContent(owner, repo, 'go.mod');
+const loadGo: DependencyLoader = async (file) => {
+  const content = await file('go.mod');
   let block = '';
-  return content.split(/\r?\n/).some((line) => {
+  const modules = content.split(/\r?\n/).flatMap((line) => {
     const declaration = line.replace(/\/\/.*$/, '').trim();
-    if (declaration === ')') { block = ''; return false; }
+    if (declaration === ')') { block = ''; return []; }
     const opening = declaration.match(/^(\w+)\s*\($/);
-    if (opening) { block = opening[1]; return false; }
+    if (opening) { block = opening[1]; return []; }
     const requirement = block === 'require' ? declaration :
       block === '' ? declaration.match(/^require\s+(.+)$/)?.[1] ?? '' : '';
     const module = requirement.match(/^(?:"([^"]+)"|([^\s"]+))\s+\S+$/);
-    return (module?.[1] ?? module?.[2]) === pkg;
+    return module ? [module[1] ?? module[2]] : [];
   });
+  return async (pkg) => modules.includes(pkg);
 };
 
-const checkSwiftDependency: DependencyChecker = async (owner, repo, pkg) => {
-  const content = await getFileContent(owner, repo, 'Package.swift');
-  return /\.package\(/.test(content) && content.includes(pkg);
+const loadSwift: DependencyLoader = async (file) => {
+  const content = await file('Package.swift');
+  const hasPackages = /\.package\(/.test(content);
+  return async (pkg) => hasPackages && content.includes(pkg);
 };
 
-const checkers: Record<ProjectType, DependencyChecker> = {
-  ruby: checkRubyDependency,
-  node: checkNodeDependency,
-  rust: checkRustDependency,
-  kotlin: checkKotlinDependency,
-  go: checkGoDependency,
-  swift: checkSwiftDependency,
-  unknown: async () => true,
+const loaders: Record<ProjectType, DependencyLoader> = {
+  ruby: loadRuby,
+  node: loadNode,
+  rust: loadRust,
+  kotlin: loadKotlin,
+  go: loadGo,
+  swift: loadSwift,
+  unknown: async () => async () => true,
 };
-
-export const isProductionDependency = (
-  owner: string,
-  repo: string,
-  pkg: string,
-  type: ProjectType
-): Promise<boolean> => checkers[type](owner, repo, pkg);
