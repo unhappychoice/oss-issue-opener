@@ -72,8 +72,11 @@ const loadRust: DependencyLoader = async (file) => {
 
 const loadKotlin: DependencyLoader = async (file) => {
   const content = await file('build.gradle') || await file('build.gradle.kts');
-  const hasProductionDependencies = /(implementation|api)\s*[("']/.test(content);
-  return async (pkg) => hasProductionDependencies && content.includes(pkg);
+  const declarations = content.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
+  const coordinates = Array.from(declarations, ([, , coordinate]) => coordinate);
+  return async (pkg) => coordinates.some((coordinate) =>
+    coordinate === pkg || coordinate.startsWith(`${pkg}:`)
+  );
 };
 
 const loadGo: DependencyLoader = async (file) => {
