@@ -48,7 +48,10 @@ const checkRustDependency: DependencyChecker = async (owner, repo, pkg) => {
 const checkKotlinDependency: DependencyChecker = async (owner, repo, pkg) => {
   let content = await getFileContent(owner, repo, 'build.gradle');
   if (!content) content = await getFileContent(owner, repo, 'build.gradle.kts');
-  return /(implementation|api)\s*[("']/.test(content) && content.includes(pkg);
+  const declarations = content.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
+  return Array.from(declarations).some(([, , coordinate]) =>
+    coordinate === pkg || coordinate.startsWith(`${pkg}:`)
+  );
 };
 
 const checkGoDependency: DependencyChecker = async (owner, repo, pkg) => {
