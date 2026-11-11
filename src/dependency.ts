@@ -37,7 +37,8 @@ const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecName = (await contents()).find((name) => name.endsWith('.gemspec'));
   const gemspec = gemspecName ? await file(gemspecName) : '';
   return async (pkg) => {
-    if (new RegExp(`add_dependency.*['"]${pkg}['"]`).test(gemspec)) return true;
+    const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`add_dependency.*['"]${escapedPkg}['"]`).test(gemspec)) return true;
     const gemfile = await file('Gemfile');
     return isProductionGem(gemfile, pkg);
   };
