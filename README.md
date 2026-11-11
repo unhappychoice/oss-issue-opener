@@ -38,6 +38,7 @@ Archived, private and forked repositories are skipped.
 ```bash
 npm install
 npm run build
+npm test
 GH_TOKEN=your_token npm run start
 ```
 
@@ -55,7 +56,7 @@ Checks the latest workflow run on the default branch. If it failed, creates an i
 ### Pending Release Check
 1. Gets the latest release tag
 2. Compares commits since that tag
-3. Filters for Dependabot commits (Bump X from A to B)
+3. Filters for Dependabot commits (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`)
 4. Detects project type and checks if the bumped package is a production dependency
 5. If yes, creates an issue for that repository
 
