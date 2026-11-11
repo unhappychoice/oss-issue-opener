@@ -26,7 +26,7 @@ export const checkCIStatus = async (owner: string, repo: string): Promise<CIStat
 };
 
 const parseBumpCommit = (msg: string): { pkg: string; from: string; to: string } | null => {
-  const match = msg.match(/^Bump ([^ ]+) from ([^ ]+) to ([^ ]+)/);
+  const match = msg.match(/^(?:[a-z]+(?:\([^\r\n)]+\))?!?: )?bump (\S+) from (\S+) to (\S+)/i);
   return match ? { pkg: match[1], from: match[2], to: match[3] } : null;
 };
 

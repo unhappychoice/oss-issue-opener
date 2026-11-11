@@ -17,9 +17,10 @@ const stubRepository = (manifests, commitMessages = []) => {
     },
     listReleases: async () => ({ data: [{ tag_name: 'v1' }] }),
     get: async () => ({ data: { default_branch: 'main' } }),
-    compareCommits: async () => ({ data: {
+    compareCommits: async ({ page, per_page }) => ({ data: {
       files: [{ filename: 'src/main.ts' }],
-      commits: commitMessages.map((message) => ({ commit: { message } })),
+      commits: commitMessages.slice((page - 1) * per_page, page * per_page)
+        .map((message) => ({ commit: { message } })),
     } }),
   });
   return calls;
@@ -79,6 +80,12 @@ const cases = [
   ['kotlin', { 'build.gradle.kts': 'implementation("first")\napi("second")' }, ['build.gradle', 'build.gradle.kts']],
   ['kotlin', {}, ['build.gradle', 'build.gradle.kts']],
   ['rust', { 'Cargo.toml': '[dependencies]\nfirst = "1"\nsecond = "2"\n[dev-dependencies]\ndev = "3"' }, ['Cargo.toml']],
+  ['rust', { 'Cargo.toml': `[dependencies.first]
+version = "1"
+[target.'cfg(unix)'.dependencies.second]
+version = "2"
+[dev-dependencies]
+dev = "3"` }, ['Cargo.toml']],
   ['go', { 'go.mod': 'require (\nfirst v1\nsecond v2\n)' }, ['go.mod']],
   ['swift', { 'Package.swift': '.package(url: "first"), .package(url: "second")' }, ['Package.swift']],
   ['node', { 'package.json': '{invalid' }, ['package.json']],

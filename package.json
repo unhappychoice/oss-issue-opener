@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test",
     "start": "node dist/index.js",
-    "check": "npm run build && npm run start",
-    "test": "npm run build && node --test"
+    "check": "npm run build && npm run start"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@octokit/rest": "^22.0.1"
+    "@octokit/rest": "^22.0.1",
+    "smol-toml": "^1.9.1"
   },
   "engines": {
     "node": ">=20"

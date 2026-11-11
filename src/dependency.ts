@@ -1,4 +1,5 @@
 import { getFileContent, getRepoContents } from './github.js';
+import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
@@ -24,6 +25,13 @@ export const createDependencyChecker = (
   };
 };
 
+export const isProductionDependency = (
+  owner: string,
+  repo: string,
+  pkg: string,
+  type: ProjectType
+): Promise<boolean> => createDependencyChecker(owner, repo, type)(pkg);
+
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecName = (await contents()).find((name) => name.endsWith('.gemspec'));
   const gemspec = gemspecName ? await file(gemspecName) : '';
@@ -45,10 +53,21 @@ const loadNode: DependencyLoader = async (file) => {
   }
 };
 
+const asTable = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
 const loadRust: DependencyLoader = async (file) => {
   const content = await file('Cargo.toml');
-  const depSection = content.match(/\[dependencies\]([\s\S]*?)(?=\[|$)/)?.[1] ?? '';
-  return async (pkg) => new RegExp(`^${pkg}\\s*=`, 'm').test(depSection);
+  try {
+    const manifest = parse(content);
+    const tables = [manifest, ...Object.values(asTable(manifest.target))];
+    const dependencies = tables.map((table) => asTable(asTable(table).dependencies));
+    return async (pkg) => dependencies.some((table) => Object.hasOwn(table, pkg));
+  } catch {
+    return async () => false;
+  }
 };
 
 const loadKotlin: DependencyLoader = async (file) => {
