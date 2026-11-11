@@ -86,13 +86,22 @@ export const getCheckRuns = async (
   repo: string,
   ref: string
 ): Promise<{ state: string; context: string; url: string }[]> => {
-  const conclusionToState = (conclusion: string | null): string =>
-    conclusion === 'success' ? 'success' : conclusion === 'failure' || conclusion === 'timed_out' ? 'failure' : 'pending';
+  const conclusionStates: Record<string, string> = {
+    success: 'success',
+    neutral: 'success',
+    skipped: 'success',
+    failure: 'failure',
+    timed_out: 'failure',
+    action_required: 'failure',
+    cancelled: 'failure',
+    stale: 'failure',
+    startup_failure: 'failure',
+  };
 
   try {
     const { data } = await getOctokit().checks.listForRef({ owner, repo, ref });
     return data.check_runs.map((c) => ({
-      state: c.status === 'completed' ? conclusionToState(c.conclusion) : 'pending',
+      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
       context: c.name,
       url: c.html_url ?? '',
     }));
