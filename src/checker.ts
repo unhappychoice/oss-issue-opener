@@ -1,5 +1,5 @@
 import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits } from './github.js';
-import { isProductionDependency } from './dependency.js';
+import { createDependencyChecker } from './dependency.js';
 import { getSourcePatterns } from './project-type.js';
 import type { CIStatus, ProjectType, ReleaseStatus } from './types.js';
 
@@ -57,11 +57,12 @@ export const checkPendingRelease = async (
     reasons.push('');
   }
 
+  const isProductionDependency = createDependencyChecker(owner, repo, projectType);
   const prodDeps: string[] = [];
   for (const msg of commitMessages) {
     const bump = parseBumpCommit(msg);
     if (!bump) continue;
-    if (await isProductionDependency(owner, repo, bump.pkg, projectType)) {
+    if (await isProductionDependency(bump.pkg)) {
       prodDeps.push(`- ${bump.pkg} ${bump.from} -> ${bump.to}`);
     }
   }

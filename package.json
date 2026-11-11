@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "check": "npm run build && npm run start"
+    "check": "npm run build && npm run start",
+    "test": "npm run build && node --test"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
