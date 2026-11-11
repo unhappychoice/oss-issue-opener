@@ -90,8 +90,8 @@ export const getCheckRuns = async (
     conclusion === 'success' ? 'success' : conclusion === 'failure' || conclusion === 'timed_out' ? 'failure' : 'pending';
 
   try {
-    const { data } = await getOctokit().checks.listForRef({ owner, repo, ref });
-    return data.check_runs.map((c) => ({
+    const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
+    return checkRuns.map((c) => ({
       state: c.status === 'completed' ? conclusionToState(c.conclusion) : 'pending',
       context: c.name,
       url: c.html_url ?? '',
