@@ -156,3 +156,24 @@ test('release checks without dependency updates do not fetch manifests', async (
   await checkPendingRelease('owner', 'repo', 'node');
   assert.deepEqual(calls, []);
 });
+
+test('cached Ruby checks preserve Gemfile group exclusions across packages', async () => {
+  const calls = stubRepository({
+    '': ['Gemfile'],
+    Gemfile: 'group :development, :test do\n  gem "dev"\nend\ngem "first"\ngem "second"',
+  });
+  const check = createDependencyChecker('owner', 'repo', 'ruby');
+  for (const { pkg } of bumps) assert.equal(await check(pkg), pkg !== 'dev');
+  assert.deepEqual(calls.map(({ path }) => path), ['', 'Gemfile']);
+});
+
+test('cached Go checks preserve exact requirements and ignore other directives', async () => {
+  const calls = stubRepository({
+    'go.mod': 'module dev\n// require dev v1\nrequire (\nfirst v1\nsecond v2 // indirect\n)\nexclude dev v1',
+  });
+  const check = createDependencyChecker('owner', 'repo', 'go');
+  const results = await Promise.all(bumps.map(({ pkg }) => check(pkg)));
+  assert.deepEqual(results, bumps.map(({ pkg }) => pkg !== 'dev'));
+  assert.equal(await check('fir'), false);
+  assert.deepEqual(calls.map(({ path }) => path), ['go.mod']);
+});

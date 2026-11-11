@@ -1,6 +1,7 @@
 import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
+import { isProductionGem } from './gemfile.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
 type DependencyLoader = (
@@ -38,8 +39,7 @@ const loadRuby: DependencyLoader = async (file, contents) => {
   return async (pkg) => {
     if (new RegExp(`add_dependency.*['"]${pkg}['"]`).test(gemspec)) return true;
     const gemfile = await file('Gemfile');
-    return new RegExp(`^gem ['"]${pkg}['"]`, 'm').test(gemfile) &&
-      !/:development|:test/.test(gemfile.split(pkg)[0]?.split('\n').pop() ?? '');
+    return isProductionGem(gemfile, pkg);
   };
 };
 
@@ -81,7 +81,18 @@ const loadKotlin: DependencyLoader = async (file) => {
 
 const loadGo: DependencyLoader = async (file) => {
   const content = await file('go.mod');
-  return async (pkg) => content.includes(pkg);
+  let block = '';
+  const modules = content.split(/\r?\n/).flatMap((line) => {
+    const declaration = line.replace(/\/\/.*$/, '').trim();
+    if (declaration === ')') { block = ''; return []; }
+    const opening = declaration.match(/^(\w+)\s*\($/);
+    if (opening) { block = opening[1]; return []; }
+    const requirement = block === 'require' ? declaration :
+      block === '' ? declaration.match(/^require\s+(.+)$/)?.[1] ?? '' : '';
+    const module = requirement.match(/^(?:"([^"]+)"|([^\s"]+))\s+\S+$/);
+    return module ? [module[1] ?? module[2]] : [];
+  });
+  return async (pkg) => modules.includes(pkg);
 };
 
 const loadSwift: DependencyLoader = async (file) => {
