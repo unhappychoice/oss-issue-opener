@@ -5,6 +5,7 @@ const PROJECT_PATTERNS: { pattern: RegExp; type: ProjectType }[] = [
   { pattern: /^Cargo\.toml$/, type: 'rust' },
   { pattern: /^package\.json$/, type: 'node' },
   { pattern: /\.gemspec$/, type: 'ruby' },
+  { pattern: /^Gemfile$/, type: 'ruby' },
   { pattern: /^build\.gradle(\.kts)?$/, type: 'kotlin' },
   { pattern: /^go\.mod$/, type: 'go' },
   { pattern: /^Package\.swift$/, type: 'swift' },

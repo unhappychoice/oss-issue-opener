@@ -11,9 +11,10 @@ const checkStatus = async (status, conclusion) => {
   const client = getOctokit();
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
-  mock.method(client.checks, 'listForRef', async (params) => {
+  mock.method(client, 'paginate', async (method, params) => {
+    assert.equal(method, client.checks.listForRef);
     assert.deepEqual(params, { owner: 'owner', repo: 'repo', ref: 'main' });
-    return { data: { check_runs: [{ status, conclusion, name: 'build', html_url: checkUrl }] } };
+    return [{ status, conclusion, name: 'build', html_url: checkUrl }];
   });
   return checkCIStatus('owner', 'repo');
 };
