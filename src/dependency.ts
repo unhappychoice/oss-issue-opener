@@ -2,6 +2,7 @@ import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
 import { isProductionGem } from './gemfile.js';
+import { swiftDependencies } from './swift.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
 type DependencyLoader = (
@@ -97,9 +98,8 @@ const loadGo: DependencyLoader = async (file) => {
 };
 
 const loadSwift: DependencyLoader = async (file) => {
-  const content = await file('Package.swift');
-  const hasPackages = /\.package\(/.test(content);
-  return async (pkg) => hasPackages && content.includes(pkg);
+  const dependencies = swiftDependencies(await file('Package.swift'));
+  return async (pkg) => dependencies.has(pkg.toLowerCase());
 };
 
 const loaders: Record<ProjectType, DependencyLoader> = {
