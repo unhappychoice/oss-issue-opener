@@ -48,3 +48,19 @@ test('ignores bump text outside a dependency update subject', async (t) => {
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
 });
+
+test('detects source changes without dependency updates', async (t) => {
+  stubRepository(t, 'fix: handle empty input');
+  t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+    data: {
+      files: [{ filename: 'src/index.ts' }],
+      commits: [{ commit: { message: 'fix: handle empty input' } }],
+    },
+  }));
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'pending',
+    reasons: '**Source code changes:**\n- `src/index.ts`\n',
+    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+  });
+});

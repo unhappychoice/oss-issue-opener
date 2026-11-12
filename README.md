@@ -4,8 +4,8 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 ## Features
 
-- **CI Failure Detection**: Checks all repositories for failing CI on default branch
-- **Pending Release Detection**: Identifies repositories with production dependency updates since last release
+- **CI Failure Detection**: Aggregates commit statuses and checks on the default branch, excluding Codecov results
+- **Pending Release Detection**: Identifies repositories with source code changes or production dependency updates since the last release
 - **Batch Issue Creation**: Creates issues sorted by type, then by repository name
 
 ## Supported Languages
@@ -51,14 +51,21 @@ gh workflow run weekly.yml
 ## How it works
 
 ### CI Failure Check
-Checks the latest workflow run on the default branch. If it failed, creates an issue for that repository.
+Combines commit statuses and check runs for the default branch, excluding results whose names
+contain `codecov` (case-insensitive). If any remaining result has a failure or error state,
+creates an issue, even when other results succeeded or are pending. Otherwise, the CI status
+is pending if any result is pending, successful if all results succeeded, or `no-ci` if no
+results remain. The decision does not depend on workflow execution order.
 
 ### Pending Release Check
-1. Gets the latest release tag
-2. Compares commits since that tag
-3. Filters for Dependabot commits (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`)
-4. Detects project type and checks if the bumped package is a production dependency
-5. If yes, creates an issue for that repository
+1. Gets the latest release tag (falling back to the latest repository tag); skips repositories without a tag
+2. Compares that tag with the default branch
+3. Detects source file changes using the project type's source paths (`src/` or `lib/` for Node/TypeScript)
+4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`) and checks whether each bumped package is a production dependency
+5. Creates an issue if source files changed or production dependencies were updated, including both reasons when applicable
+
+Source changes alone qualify: for example, a change to `src/index.ts` with the commit
+`fix: handle empty input` triggers a pending release notification without any dependency updates.
 
 CI and release investigations run independently for each repository. Investigation failures are
 logged with their target and cause, and scanning continues with the remaining repositories.
