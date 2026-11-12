@@ -62,3 +62,24 @@ test('action_required includes the failed check name and URL in the notification
   assert.equal(issue.type, 'ci-failure');
   assert.ok(issue.body.includes(`- [build](${checkUrl})`));
 });
+
+['failure', 'error', 'success'].forEach((state) => {
+  test(`aggregates ${state} commit status with successful and Codecov checks`, async () => {
+    const client = getOctokit();
+    mock.method(client.repos, 'getCombinedStatusForRef', async () => ({
+      data: { statuses: [
+        { state, context: 'lint', target_url: checkUrl },
+        { state: 'error', context: 'Codecov/patch', target_url: checkUrl },
+      ] },
+    }));
+    mock.method(client, 'paginate', async () => [
+      { status: 'completed', conclusion: 'success', name: 'build', html_url: checkUrl },
+      { status: 'completed', conclusion: 'failure', name: 'codeCOV/project', html_url: checkUrl },
+    ]);
+
+    assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+      status: state === 'success' ? 'success' : 'failure',
+      failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl }],
+    });
+  });
+});
