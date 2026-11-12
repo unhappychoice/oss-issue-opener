@@ -2,7 +2,7 @@ export const swiftDependencies = (content: string): Set<string> => {
   const tokens = swiftTokens(content);
   return new Set(tokens.flatMap((token, index) =>
     token === '.' && tokens[index + 1] === 'package' && tokens[index + 2] === '('
-      ? packageIdentifiers(tokens.slice(index + 3)) : []
+      ? packageIdentifiers(tokens, index + 3) : []
   ));
 };
 
@@ -24,10 +24,11 @@ const swiftTokens = (content: string): string[] => {
   return tokens;
 };
 
-const packageIdentifiers = (tokens: string[]): string[] => {
+const packageIdentifiers = (tokens: string[], start: number): string[] => {
   const identifiers: string[] = [];
   let depth = 1;
-  for (const [index, token] of tokens.entries()) {
+  for (let index = start; index < tokens.length; index++) {
+    const token = tokens[index];
     if (token === '(') depth++;
     if (token === ')') depth--;
     if (depth === 0) break;
