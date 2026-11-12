@@ -12,7 +12,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 | Language | Dependency File | Production Detection |
 |----------|----------------|---------------------|
-| Ruby | `*.gemspec`, `Gemfile` | `add_dependency` |
+| Ruby | `*.gemspec`, `Gemfile` | `add_dependency`, `add_runtime_dependency` |
 | Node/TypeScript | `package.json` | `dependencies` |
 | Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
 | Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
