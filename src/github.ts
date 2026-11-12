@@ -74,8 +74,12 @@ export const getCommitStatus = async (
   ref: string
 ): Promise<{ state: string; context: string; url: string }[]> => {
   try {
-    const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref });
-    return data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' }));
+    const statuses: { state: string; context: string; url: string }[] = [];
+    for (let page = 1; ; page++) {
+      const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
+      statuses.push(...data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' })));
+      if (data.statuses.length < 100) return statuses;
+    }
   } catch {
     return [];
   }
