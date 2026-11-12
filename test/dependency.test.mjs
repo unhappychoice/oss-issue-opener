@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { afterEach, mock, test } from 'node:test';
 import { isProductionDependency } from '../dist/dependency.js';
+import { checkPendingRelease } from '../dist/checker.js';
+import { getOctokit } from '../dist/github.js';
 import { mockRubyRepository } from './helpers/github.mjs';
 
 afterEach(() => mock.restoreAll());
@@ -19,10 +21,31 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
   ["spec.add_dependency 'rake'", 'rake|rack', false],
   ...['(a+)+$', 'a.b', 'a*b', 'a?b', '^a', 'a{2}', '[a]', 'a|b', 'a\\b']
     .map((pkg) => [`spec.add_dependency '${pkg}'`, pkg, true]),
-].forEach(([gemspec, pkg, expected]) => {
+].flatMap(([gemspec, pkg, expected]) =>
+  [...new Set([gemspec, gemspec.replace('add_dependency', 'add_runtime_dependency')])]
+    .map((declaration) => [declaration, pkg, expected])
+).forEach(([gemspec, pkg, expected]) => {
   test(`gemspec matches ${JSON.stringify(pkg)} literally in ${JSON.stringify(gemspec)}`, async () => {
-    mockRubyRepository(gemspec);
+    mockRubyRepository(gemspec, 'source "https://rubygems.org"\ngemspec');
     assert.equal(await check(pkg), expected);
+  });
+});
+
+['add_dependency', 'add_runtime_dependency', 'add_development_dependency'].forEach((method) => {
+  test(`release checks classify ${method} updates without source changes`, async () => {
+    mockRubyRepository(`spec.${method} "rack", "~> 3.0"`, 'source "https://rubygems.org"\ngemspec');
+    mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: 'example.gemspec' }, { filename: 'Gemfile.lock' }],
+      commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+    } }));
+
+    assert.equal(await check('rack'), method !== 'add_development_dependency');
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'),
+      method === 'add_development_dependency' ? { status: 'up-to-date' } : {
+        status: 'pending',
+        reasons: '**Dependency updates:**\n- rack 3.0.0 -> 3.1.0',
+        compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+      });
   });
 });
 
