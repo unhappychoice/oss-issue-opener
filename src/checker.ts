@@ -3,8 +3,12 @@ import { createDependencyChecker } from './dependency.js';
 import { getSourcePatterns } from './project-type.js';
 import type { CIStatus, ProjectType, ReleaseStatus } from './types.js';
 
-export const checkCIStatus = async (owner: string, repo: string): Promise<CIStatus> => {
-  const defaultBranch = await getDefaultBranch(owner, repo);
+export const checkCIStatus = async (
+  owner: string,
+  repo: string,
+  getBranch = () => getDefaultBranch(owner, repo)
+): Promise<CIStatus> => {
+  const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
 
   const [statuses, checkRuns] = await Promise.all([
@@ -33,12 +37,13 @@ const parseBumpCommit = (msg: string): { pkg: string; from: string; to: string }
 export const checkPendingRelease = async (
   owner: string,
   repo: string,
-  projectType: ProjectType
+  projectType: ProjectType,
+  getBranch = () => getDefaultBranch(owner, repo)
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const defaultBranch = await getDefaultBranch(owner, repo);
+  const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
   const { files, commitMessages } = await compareCommits(owner, repo, latestTag, defaultBranch);

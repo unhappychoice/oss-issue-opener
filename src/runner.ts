@@ -1,4 +1,4 @@
-import { listOrgRepos } from './github.js';
+import { getDefaultBranch, listOrgRepos } from './github.js';
 import { detectProjectType } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from './issue.js';
@@ -61,11 +61,13 @@ const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 const checkRepo = async (fullName: string, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
   const [owner, repo] = fullName.split('/') as [string, string];
   const issues: PendingIssue[] = [];
+  let defaultBranch: Promise<string | null> | undefined;
+  const getBranch = () => defaultBranch ??= getDefaultBranch(owner, repo);
 
   console.log(`\n📦 ${repo}`);
 
   await attempt(`${fullName}: CI investigation`, failures, async () => {
-    const ciResult = await deps.checkCIStatus(owner, repo);
+    const ciResult = await deps.checkCIStatus(owner, repo, getBranch);
     const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪' };
     log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
 
@@ -78,7 +80,7 @@ const checkRepo = async (fullName: string, deps: Dependencies, failures: Error[]
     const projectType = await deps.detectProjectType(owner, repo);
     log('📋', `Type: ${projectType}`);
 
-    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectType);
+    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectType, getBranch);
     if (releaseStatus.status === 'no-tag') {
       log('⚪', 'Release: no tags found');
     } else if (releaseStatus.status === 'up-to-date') {

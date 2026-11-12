@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { runChecks } from '../dist/runner.js';
-import { checkPendingRelease } from '../dist/checker.js';
+import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
 beforeEach(() => {
@@ -133,4 +133,70 @@ test('reports failures even when there are no notifications to create', async ()
     `Failed owner/${repo}: release investigation`, cause,
   ]));
   assert.equal(create.mock.callCount(), 0);
+});
+
+const stubInvestigations = () => {
+  initOctokit('test-token');
+  const client = getOctokit();
+  mock.method(client.repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+  mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
+    { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
+  ] } }));
+  mock.method(client, 'paginate', async () => []);
+  return client.repos;
+};
+
+test('shares default branches per repository and refreshes them on each scan', async () => {
+  const repos = stubInvestigations();
+  let branch = 'main';
+  const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: branch } }));
+  const compared = mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'src/example.ts' }], commits: [],
+  } }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+
+  await runChecks(deps);
+  branch = 'next';
+  await runChecks(deps);
+
+  assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params),
+    [...Array(2)].flatMap(() => ['first', 'broken', 'last'].map((repo) => ({ owner: 'owner', repo }))));
+  assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
+    ['main', 'main', 'main', 'next', 'next', 'next']);
+  batches.forEach((issues, scan) => {
+    assert.equal(issues.length, 6);
+    issues.filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
+      assert.ok(body.includes('[build](https://example.com/build)'));
+    });
+    issues.filter(({ type }) => type === 'pending-release').forEach(({ body }) => {
+      assert.ok(body.includes('src/example.ts'));
+      assert.ok(body.includes(`v1...${scan === 0 ? 'main' : 'next'}`));
+    });
+  });
+});
+
+test('shares the default branch when release comparison is empty', async () => {
+  const repos = stubInvestigations();
+  const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(repos, 'compareCommits', async () => ({ data: { files: [], commits: [] } }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+
+  await runChecks(deps);
+
+  assert.equal(lookup.mock.callCount(), 3);
+  assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
+});
+
+test('shares failed branch lookups without retrying or creating notifications', async () => {
+  const repos = stubInvestigations();
+  const lookup = mock.method(repos, 'get', async () => { throw new Error('Repository unavailable'); });
+  const compared = mock.method(repos, 'compareCommits', async () => assert.fail('No branch to compare'));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+
+  await runChecks(deps);
+  await runChecks(deps);
+
+  assert.equal(lookup.mock.callCount(), 6);
+  assert.equal(compared.mock.callCount(), 0);
+  assert.deepEqual(batches, []);
 });
