@@ -55,3 +55,23 @@ test('resolves when creation succeeds and skips existing issues', async (t) => {
   assert.ok(logs.mock.calls.some(({ arguments: [message] }) => message.includes('[skip]')));
   assert.equal(errors.mock.callCount(), 0);
 });
+
+test('a subsequent batch skips notifications created by the preceding batch', async (t) => {
+  const existing = [];
+  const { attempts, logs } = setup(t, async ({ title, labels }) => {
+    existing.push({ title, labels, number: existing.length + 1 });
+    return { data: { number: existing.length } };
+  });
+  const lookup = t.mock.method(getOctokit(), 'paginate', async (_method, { labels }) =>
+    existing.filter((entry) => entry.labels.includes(labels)));
+  const notifications = [issue('owner/repo'), {
+    type: 'pending-release', repo: 'owner/repo', title: '[Pending Release] owner/repo', body: 'Release pending',
+  }];
+
+  await createIssuesInBatch(notifications);
+  await createIssuesInBatch(notifications);
+
+  assert.equal(lookup.mock.callCount(), 4);
+  assert.equal(attempts.mock.callCount(), 2);
+  assert.equal(logs.mock.calls.filter(({ arguments: [message] }) => message.includes('[skip]')).length, 2);
+});
