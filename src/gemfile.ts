@@ -17,8 +17,11 @@ export const isProductionGem = (content: string, pkg: string): boolean => {
 
 const unquote = (token: string): string => token.replace(/^['"]|['"]$/g, '');
 
-const hasExcludedGroup = (tokens: string[]): boolean =>
-  tokens.some((token) => /^(?::development|:test|['"]development['"]|['"]test['"])$/.test(token));
+const hasExcludedGroup = (tokens: string[]): boolean => {
+  const groups = tokens.filter((token) => /^:\w+$|^['"]/.test(token));
+  return groups.length > 0 && groups.every((token) =>
+    /^(?::development|:test|['"]development['"]|['"]test['"])$/.test(token));
+};
 
 const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token, index) => {
   const label = /^(groups?|['"]groups?['"])$/.test(token) && tokens[index + 1] === ':';
