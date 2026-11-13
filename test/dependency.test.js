@@ -239,3 +239,40 @@ test('cached Go checks preserve exact requirements and ignore other directives',
   assert.equal(await check('fir'), false);
   assert.deepEqual(calls.map(({ path }) => path), ['go.mod']);
 });
+
+[
+  ['build.gradle', "group: 'org.example', name: 'runtime', version: '1.0'"],
+  ['build.gradle', '(name: "runtime",\n group: "org.example", version: "1.0")'],
+  ['build.gradle.kts', '(group = "org.example", name = "runtime", version = "1.0")'],
+].forEach(([file, argumentsText]) => {
+  ['implementation', 'api'].forEach((configuration) => {
+    test(`${file}: ${configuration} named coordinates produce dependency-only releases: ${argumentsText}`, async (t) => {
+      stubRepository({ [file]: `dependencies {\n${configuration} ${argumentsText}\n}` });
+      t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+        files: [{ filename: file }],
+        commits: [{ commit: { message: 'Bump org.example:runtime from 1.0 to 1.1' } }],
+      } }));
+      assert.equal(await isProductionDependency('owner', 'repo', 'org.example:runtime', 'kotlin'), true);
+      assert.equal(await isProductionDependency('owner', 'repo', 'org.example:run', 'kotlin'), false);
+      assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), {
+        status: 'pending',
+        reasons: '**Dependency updates:**\n- org.example:runtime 1.0 -> 1.1',
+        compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+      });
+    });
+  });
+});
+
+[
+  "testImplementation group: 'org.example', name: 'runtime'",
+  "testApi(group: 'org.example', name: 'runtime')",
+  "// implementation group: 'org.example', name: 'runtime'",
+  "/* api(group: 'org.example', name: 'runtime') */",
+  "implementation group: 'org.example'\ntestImplementation name: 'runtime'",
+  "api name: 'runtime'\nimplementation group: 'org.example'",
+].forEach((declaration) => {
+  test(`Gradle named coordinates exclude non-production declarations: ${declaration}`, async () => {
+    stubRepository({ 'build.gradle': declaration });
+    assert.equal(await isProductionDependency('owner', 'repo', 'org.example:runtime', 'kotlin'), false);
+  });
+});
