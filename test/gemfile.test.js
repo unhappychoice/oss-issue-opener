@@ -40,6 +40,18 @@ const cases = [
   ['missing dependency', '', false],
 ];
 
+[':production', ':default', ':development_tools', "'production'", '"production"'].forEach((group) => {
+  [':test', ':development', ':development, :test'].forEach((excluded) => {
+    [`${group}, ${excluded}`, `${excluded}, ${group}`].forEach((groups) => {
+      cases.push(
+        [`shared block ${groups}`, `group ${groups} do\n  gem 'rake'\nend`, true],
+        [`shared inline groups ${groups}`, `gem 'rake', groups: [${groups}]`, true],
+        [`shared legacy groups ${groups}`, `gem 'rake', :groups => [${groups}]`, true],
+      );
+    });
+  });
+});
+
 cases.forEach(([name, gemfile, expected]) => {
   test(name, async (t) => {
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
