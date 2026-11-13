@@ -2,6 +2,7 @@ import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
 import { isProductionGem } from './gemfile.js';
+import { stripRubyComments } from './ruby.js';
 import { swiftDependencies } from './swift.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
@@ -40,7 +41,7 @@ export const isProductionDependency = (
 
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecName = (await contents()).find((name) => name.endsWith('.gemspec'));
-  const gemspec = gemspecName ? await file(gemspecName) : '';
+  const gemspec = stripRubyComments(gemspecName ? await file(gemspecName) : '');
   return async (pkg) => {
     const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (new RegExp(`\\badd_(?:runtime_)?dependency\\s*(?:\\(\\s*)?(['"])${escapedPkg}\\1`).test(gemspec)) return true;
