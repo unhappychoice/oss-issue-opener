@@ -76,6 +76,44 @@ test('Ruby loads the fallback only when needed and caches missing files and list
   assert.deepEqual(missingCalls.map(({ path }) => path), ['', 'Gemfile']);
 });
 
+[['a.gemspec', 'b.gemspec', 'Gemfile'], ['Gemfile', 'b.gemspec', 'a.gemspec']].forEach((names) => {
+  test(`Ruby checks every gemspec with root listing ${names.join(', ')}`, async () => {
+    const calls = stubRepository({
+      '': names,
+      'a.gemspec': 'spec.add_dependency "json"',
+      'b.gemspec': `spec.add_runtime_dependency "rack"
+        spec.add_development_dependency "rake"
+        # spec.add_dependency "commented"
+        spec.add_dependency "rack.test"`,
+      Gemfile: 'gemspec name: "a"\ngemspec name: "b"\ngem "fallback"',
+    });
+    const check = createDependencyChecker('owner', 'repo', 'ruby');
+    for (const pkg of ['json', 'rack', 'rack.test', 'rack']) assert.equal(await check(pkg), true);
+    assert.deepEqual(calls.map(({ path }) => path), ['', ...names.filter((name) => name.endsWith('.gemspec'))]);
+    for (const pkg of ['rake', 'commented', 'rackXtest', 'rac']) assert.equal(await check(pkg), false);
+    assert.equal(await check('fallback'), true);
+    assert.equal(calls.length, 4);
+  });
+
+  test(`Ruby detects pending releases from all gemspecs with root listing ${names.join(', ')}`, async (t) => {
+    stubRepository({
+      '': names,
+      'a.gemspec': 'spec.add_dependency "json"',
+      'b.gemspec': 'spec.add_runtime_dependency "rack"',
+      Gemfile: 'gemspec name: "a"\ngemspec name: "b"',
+    });
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: 'b.gemspec' }, { filename: 'Gemfile.lock' }],
+      commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+    } }));
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), {
+      status: 'pending',
+      reasons: '**Dependency updates:**\n- rack 3.0.0 -> 3.1.0',
+      compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+    });
+  });
+});
+
 const dialects = [
   { file: 'build.gradle', declaration: (configuration, coordinate) => `${configuration} '${coordinate}'` },
   { file: 'build.gradle.kts', declaration: (configuration, coordinate) => `${configuration}("${coordinate}")` },
