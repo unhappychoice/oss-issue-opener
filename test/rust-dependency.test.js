@@ -27,11 +27,27 @@ const cases = [
   ['invalid TOML', '[dependencies\nserde = "1"', 'serde', false],
 ];
 
+['', "target.'cfg(unix)'.", 'target.x86_64-unknown-linux-gnu.'].forEach((prefix) => {
+  const declarations = [
+    `[${prefix}dependencies]\nserde_alias = { package = "serde", version = "1.0.219" }`,
+    `[${prefix}dependencies.serde_alias]\npackage = "serde"\nversion = "1.0.219"`,
+  ];
+  declarations.forEach((content, index) => {
+    cases.push(
+      [`${prefix}aliased dependency ${index}`, content, 'serde', true],
+      [`${prefix}alias is not a package name ${index}`, content, 'serde_alias', false],
+      [`${prefix}aliased package names match exactly ${index}`, content, 'ser', false],
+    );
+  });
+});
+
 ['dev-dependencies', 'build-dependencies'].forEach((kind) => {
   ['', "target.'cfg(unix)'."].forEach((prefix) => {
     cases.push(
       [`${prefix}${kind}`, `[${prefix}${kind}]\nserde = "1"`, 'serde', false],
       [`${prefix}${kind} individual tables`, `[${prefix}${kind}.serde]\nversion = "1"`, 'serde', false],
+      [`${prefix}${kind} aliases`, `[${prefix}${kind}]\nserde_alias = { package = "serde", version = "1" }`, 'serde', false],
+      [`${prefix}${kind} individual table aliases`, `[${prefix}${kind}.serde_alias]\npackage = "serde"\nversion = "1"`, 'serde', false],
     );
   });
 });

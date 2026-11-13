@@ -72,7 +72,10 @@ const loadRust: DependencyLoader = async (file) => {
     const manifest = parse(content);
     const tables = [manifest, ...Object.values(asTable(manifest.target))];
     const dependencies = tables.map((table) => asTable(asTable(table).dependencies));
-    return async (pkg) => dependencies.some((table) => Object.hasOwn(table, pkg));
+    const packages = new Set(dependencies.flatMap((table) =>
+      Object.entries(table).map(([name, declaration]) => asTable(declaration).package ?? name)
+    ));
+    return async (pkg) => packages.has(pkg);
   } catch {
     return async () => false;
   }

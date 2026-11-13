@@ -49,6 +49,31 @@ test('ignores bump text outside a dependency update subject', async (t) => {
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
 });
 
+['dependencies', 'dev-dependencies', 'build-dependencies'].forEach((kind) => {
+  test(`checks Rust aliased ${kind} updates without source changes`, async (t) => {
+    const message = 'Bump serde from 1.0.218 to 1.0.219';
+    stubRepository(t, message);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+      data: {
+        files: ['Cargo.toml', 'Cargo.lock'].map((filename) => ({ filename })),
+        commits: [{ commit: { message } }],
+      },
+    }));
+    t.mock.method(getOctokit().repos, 'getContent', async () => ({
+      data: { content: Buffer.from(
+        `[${kind}]\nserde_alias = { package = "serde", version = "1.0.219" }`
+      ).toString('base64') },
+    }));
+
+    const expected = kind === 'dependencies' ? {
+      status: 'pending',
+      reasons: '**Dependency updates:**\n- serde 1.0.218 -> 1.0.219',
+      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    } : { status: 'up-to-date' };
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'rust'), expected);
+  });
+});
+
 test('detects source changes without dependency updates', async (t) => {
   stubRepository(t, 'fix: handle empty input');
   t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
