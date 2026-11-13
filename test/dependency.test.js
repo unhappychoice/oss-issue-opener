@@ -83,6 +83,30 @@ const dialects = [
 
 dialects.forEach(({ file, declaration }) => {
   ['implementation', 'api'].forEach((configuration) => {
+    test(`${file}: ignores block-commented ${configuration} dependencies and test-only releases`, async (t) => {
+      const content = `dependencies {
+        /*
+        ${declaration(configuration, 'junit:junit:4.12')}
+        */
+        ${declaration('testImplementation', 'junit:junit:4.13.2')}
+        ${declaration('implementation', 'org.example:runtime:1.0/*literal*/')}
+        ${declaration('api', 'org.example:public:1.0//literal')}
+      }`;
+      stubRepository({ [file]: content }, ['Bump junit:junit from 4.13.1 to 4.13.2']);
+      t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+        files: [{ filename: file }],
+        commits: [{ commit: { message: 'Bump junit:junit from 4.13.1 to 4.13.2' } }],
+      } }));
+      const check = createDependencyChecker('owner', 'repo', 'kotlin');
+
+      assert.equal(await check('junit:junit'), false);
+      assert.equal(await check('org.example:runtime'), true);
+      assert.equal(await check('org.example:public'), true);
+      assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
+    });
+  });
+
+  ['implementation', 'api'].forEach((configuration) => {
     test(`${file}: matches the target production declaration in ${configuration}`, async (t) => {
       const content = `dependencies {
         ${declaration(configuration, 'org.example:runtime:1.0')}

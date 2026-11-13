@@ -4,6 +4,7 @@ import type { ProjectType } from './types.js';
 import { isProductionGem } from './gemfile.js';
 import { stripRubyComments } from './ruby.js';
 import { swiftDependencies } from './swift.js';
+import { stripGradleComments } from './gradle.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
 type DependencyLoader = (
@@ -79,7 +80,7 @@ const loadRust: DependencyLoader = async (file) => {
 
 const loadKotlin: DependencyLoader = async (file) => {
   const content = await file('build.gradle') || await file('build.gradle.kts');
-  const declarations = content.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
+  const declarations = stripGradleComments(content).matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
   const coordinates = Array.from(declarations, ([, , coordinate]) => coordinate);
   return async (pkg) => coordinates.some((coordinate) =>
     coordinate === pkg || coordinate.startsWith(`${pkg}:`)
