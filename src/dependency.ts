@@ -41,11 +41,12 @@ export const isProductionDependency = (
 ): Promise<boolean> => createDependencyChecker(owner, repo, type)(pkg);
 
 const loadRuby: DependencyLoader = async (file, contents) => {
-  const gemspecName = (await contents()).find((name) => name.endsWith('.gemspec'));
-  const gemspec = stripRubyComments(gemspecName ? await file(gemspecName) : '');
+  const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
+  const gemspecs = (await Promise.all(gemspecNames.map(file))).map(stripRubyComments);
   return async (pkg) => {
     const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\badd_(?:runtime_)?dependency\\s*(?:\\(\\s*)?(['"])${escapedPkg}\\1`).test(gemspec)) return true;
+    const declaration = new RegExp(`\\badd_(?:runtime_)?dependency\\s*(?:\\(\\s*)?(['"])${escapedPkg}\\1`);
+    if (gemspecs.some((gemspec) => declaration.test(gemspec))) return true;
     const gemfile = await file('Gemfile');
     return isProductionGem(gemfile, pkg);
   };
