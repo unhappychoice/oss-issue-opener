@@ -139,7 +139,9 @@ export const compareCommits = async (
   const result = { files: [] as string[], commitMessages: [] as string[] };
   for (let page = 1; ; page++) {
     const { data } = await getOctokit().repos.compareCommits({ owner, repo, base, head, per_page: 100, page });
-    if (page === 1) result.files = data.files?.map((f) => f.filename) ?? [];
+    if (page === 1) result.files = [...new Set(data.files?.flatMap((f) =>
+      f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
+    ) ?? [])];
     result.commitMessages.push(...data.commits.map((c) => c.commit.message));
     if (data.commits.length < 100) return result;
   }

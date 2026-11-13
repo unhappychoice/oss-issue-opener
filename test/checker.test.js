@@ -89,3 +89,29 @@ test('detects source changes without dependency updates', async (t) => {
     compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
   });
 });
+
+[
+  ['src/client.ts', 'examples/client.ts', ['src/client.ts']],
+  ['lib/client.ts', 'examples/client.ts', ['lib/client.ts']],
+  ['examples/client.ts', 'src/client.ts', ['src/client.ts']],
+  ['examples/client.ts', 'lib/client.ts', ['lib/client.ts']],
+  ['examples/client.ts', 'docs/client.ts', []],
+  ['src/client.ts', 'lib/client.ts', ['lib/client.ts', 'src/client.ts']],
+].forEach(([previousFilename, filename, sources]) => {
+  test(`checks source changes when renaming ${previousFilename} to ${filename}`, async (t) => {
+    const message = 'refactor: move client example';
+    stubRepository(t, message);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+      data: {
+        files: [{ status: 'renamed', filename, previous_filename: previousFilename }],
+        commits: [{ commit: { message } }],
+      },
+    }));
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), sources.length > 0 ? {
+      status: 'pending',
+      reasons: `**Source code changes:**\n${sources.map((path) => `- \`${path}\`\n`).join('')}`,
+      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    } : { status: 'up-to-date' });
+  });
+});
