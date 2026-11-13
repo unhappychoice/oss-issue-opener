@@ -37,7 +37,7 @@ const parseBumpCommit = (msg: string): { pkg: string; from: string; to: string }
 export const checkPendingRelease = async (
   owner: string,
   repo: string,
-  projectType: ProjectType,
+  projectTypes: ProjectType | ProjectType[],
   getBranch = () => getDefaultBranch(owner, repo)
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
@@ -51,8 +51,9 @@ export const checkPendingRelease = async (
 
   const reasons: string[] = [];
 
-  const sourcePattern = getSourcePatterns(projectType);
-  const changedSources = files.filter((f) => sourcePattern.test(f));
+  const types = Array.isArray(projectTypes) ? projectTypes : [projectTypes];
+  const sourcePatterns = types.map(getSourcePatterns);
+  const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
   if (changedSources.length > 0) {
     reasons.push('**Source code changes:**');
     changedSources.slice(0, 5).forEach((f) => reasons.push(`- \`${f}\``));
@@ -62,7 +63,7 @@ export const checkPendingRelease = async (
     reasons.push('');
   }
 
-  const isProductionDependency = createDependencyChecker(owner, repo, projectType);
+  const isProductionDependency = createDependencyChecker(owner, repo, types);
   const prodDeps: string[] = [];
   for (const msg of commitMessages) {
     const bump = parseBumpCommit(msg);

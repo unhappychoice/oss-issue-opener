@@ -16,7 +16,7 @@ const setup = (overrides = {}) => {
   const deps = {
     listOrgRepos: async (org) => org === 'unhappychoice'
       ? ['owner/first', 'owner/broken', 'owner/last'] : [],
-    detectProjectType: async () => 'node',
+    detectProjectTypes: async () => ['node'],
     checkCIStatus: async (_owner, repo) => {
       checked.push(repo);
       return { status: 'failure', failedChecks: [] };
@@ -76,7 +76,7 @@ test('preserves CI notifications when project detection fails', async () => {
   const cause = new Error('Project detection unavailable');
   const release = mock.fn(async () => { throw new Error('Should not run'); });
   const { deps, batches, checked } = setup({
-    detectProjectType: async () => { throw cause; },
+    detectProjectTypes: async () => { throw cause; },
     checkPendingRelease: release,
   });
 
@@ -199,4 +199,17 @@ test('shares failed branch lookups without retrying or creating notifications', 
   assert.equal(lookup.mock.callCount(), 6);
   assert.equal(compared.mock.callCount(), 0);
   assert.deepEqual(batches, []);
+});
+
+test('passes every detected ecosystem to the release check', async () => {
+  const release = mock.fn(async () => ({ status: 'up-to-date' }));
+  const { deps } = setup({
+    detectProjectTypes: async () => ['node', 'ruby'],
+    checkPendingRelease: release,
+  });
+  await runChecks(deps);
+  assert.equal(release.mock.callCount(), 3);
+  release.mock.calls.forEach(({ arguments: args }) => {
+    assert.deepEqual(args[2], ['node', 'ruby']);
+  });
 });
