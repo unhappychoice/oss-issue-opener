@@ -2,7 +2,7 @@ import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
 import { isProductionGem } from './gemfile.js';
-import { stripRubyComments } from './ruby.js';
+import { rubyRuntimeDependencies } from './ruby.js';
 import { swiftDependencies } from './swift.js';
 import { gradleDependencies } from './gradle.js';
 
@@ -42,11 +42,9 @@ export const isProductionDependency = (
 
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
-  const gemspecs = (await Promise.all(gemspecNames.map(file))).map(stripRubyComments);
+  const dependencies = new Set((await Promise.all(gemspecNames.map(file))).flatMap(rubyRuntimeDependencies));
   return async (pkg) => {
-    const escapedPkg = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const declaration = new RegExp(`\\badd_(?:runtime_)?dependency\\s*(?:\\(\\s*)?(['"])${escapedPkg}\\1`);
-    if (gemspecs.some((gemspec) => declaration.test(gemspec))) return true;
+    if (dependencies.has(pkg)) return true;
     const gemfile = await file('Gemfile');
     return isProductionGem(gemfile, pkg);
   };
