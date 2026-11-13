@@ -122,6 +122,11 @@ test('detects source changes without dependency updates', async (t) => {
   ["gem 'rack', groups: [:production, :test]", true],
   ["gem 'rack', groups: [:development, :production]", true],
   ["group :development, :test do\n  gem 'rack'\nend", false],
+  ["group(:production) { gem 'rack' }", true],
+  ["source('https://rubygems.org') { gem 'rack' }", true],
+  ["group(:development, :production) { gem 'rack' }", true],
+  ["group(:development, :test) { gem 'rack' }", false],
+  ["group(:test) { source('https://rubygems.org') { gem 'rack' } }", false],
   ["gem 'rack', groups: [:development, :test]", false],
 ].forEach(([gemfile, production]) => {
   test(`checks Ruby dependency-only updates for ${gemfile}`, async (t) => {

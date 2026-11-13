@@ -44,6 +44,17 @@ const statements = (content: string): string[][] => {
       return;
     }
     if (token === '\n') return;
+    if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
+      result.push([...current, 'do']);
+      current = [];
+      return;
+    }
+    if (depth === 0 && token === '}') {
+      if (current.length) result.push(current);
+      result.push(['end']);
+      current = [];
+      return;
+    }
     if (token === 'end' && depth === 0 && current.length) {
       result.push(current);
       current = [];
