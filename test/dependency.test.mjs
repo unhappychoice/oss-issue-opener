@@ -13,6 +13,16 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
 [
   ["spec.add_dependency 'rake', '~> 13'", 'rake', true],
   ['spec.add_dependency("rake", ">= 13")', 'rake', true],
+  ["spec.add_dependency(\n  'rack', '~> 3.0'\n)", 'rack', true],
+  ['spec.add_dependency(\n  "rack", "~> 3.0"\n)', 'rack', true],
+  ["spec.add_dependency \n  'rack', '~> 3.0'", 'rack', true],
+  ["spec.add_dependency(\n  'rackXtest'\n)", 'rack.test', false],
+  ["spec.add_dependency(\n  'rack.test'\n)", 'rack.test', true],
+  ["spec.add_dependency(\n  'rake-extra'\n)", 'rake', false],
+  ["spec.add_development_dependency(\n  'rack'\n)", 'rack', false],
+  ["spec.add_dependency 'other'; spec.add_development_dependency 'rack'", 'rack', false],
+  ["spec.add_dependency(\n  'other'\n)\nspec.add_development_dependency(\n  'rack'\n)", 'rack', false],
+  ["spec.add_dependency 'other', 'rack'", 'rack', false],
   ["spec.add_dependency 'rake-extra'", 'rake', false],
   ["spec.add_development_dependency 'rake'", 'rake', false],
   ["spec.add_dependency 'rake'", 'rack', false],
@@ -31,9 +41,12 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
   });
 });
 
-['add_dependency', 'add_runtime_dependency', 'add_development_dependency'].forEach((method) => {
-  test(`release checks classify ${method} updates without source changes`, async () => {
-    mockRubyRepository(`spec.${method} "rack", "~> 3.0"`, 'source "https://rubygems.org"\ngemspec');
+['add_dependency', 'add_runtime_dependency', 'add_development_dependency'].flatMap((method) =>
+  [`spec.${method} "rack", "~> 3.0"`, `spec.${method}(\n  'rack', '~> 3.0'\n)`]
+    .map((declaration) => ({ method, declaration }))
+).forEach(({ method, declaration }) => {
+  test(`release checks classify ${JSON.stringify(declaration)} updates without source changes`, async () => {
+    mockRubyRepository(declaration, 'source "https://rubygems.org"\ngemspec');
     mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
       files: [{ filename: 'example.gemspec' }, { filename: 'Gemfile.lock' }],
       commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
