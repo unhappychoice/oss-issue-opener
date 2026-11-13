@@ -58,7 +58,7 @@ is pending if any result is pending, successful if all results succeeded, or `no
 results remain. The decision does not depend on workflow execution order.
 
 ### Pending Release Check
-1. Gets the latest release tag (falling back to the latest repository tag); skips repositories without a tag
+1. Gets the latest non-draft release tag (falling back to the latest repository tag when no published release exists); skips repositories without a tag
 2. Compares that tag with the default branch
 3. Detects all ecosystems with root manifests and checks source file changes using each ecosystem's source paths (`src/` or `lib/` for Node/TypeScript)
 4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`) and checks whether each bumped package is a production dependency in any detected ecosystem
