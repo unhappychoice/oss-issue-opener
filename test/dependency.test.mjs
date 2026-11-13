@@ -12,6 +12,16 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
 
 [
   ["spec.add_dependency 'rake', '~> 13'", 'rake', true],
+  ["# spec.add_dependency 'rack', '~> 3.0'", 'rack', false],
+  ['  # spec.add_dependency("rack", "~> 3.0")', 'rack', false],
+  ["# spec.add_dependency(\n#   'rack', '~> 3.0'\n# )", 'rack', false],
+  ["spec.add_development_dependency 'rack' # spec.add_dependency 'rack'", 'rack', false],
+  ["spec.add_dependency( # runtime dependency\n  'rack', '~> 3.0'\n)", 'rack', true],
+  ["spec.add_dependency # runtime dependency\n  'rack', '~> 3.0'", 'rack', true],
+  ["spec.add_dependency 'rack#test' # trailing comment", 'rack#test', true],
+  ['spec.add_dependency "rack#test" # trailing comment', 'rack#test', true],
+  ["spec.summary = 'A # character'\nspec.add_dependency 'rack'", 'rack', true],
+  ['spec.summary = "A \\"quoted\\" # character"\nspec.add_dependency "rack"', 'rack', true],
   ['spec.add_dependency("rake", ">= 13")', 'rake', true],
   ["spec.add_dependency(\n  'rack', '~> 3.0'\n)", 'rack', true],
   ['spec.add_dependency(\n  "rack", "~> 3.0"\n)', 'rack', true],
@@ -59,6 +69,20 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
         reasons: '**Dependency updates:**\n- rack 3.0.0 -> 3.1.0',
         compareUrl: 'https://github.com/owner/repo/compare/v1...main',
       });
+  });
+});
+
+['add_dependency', 'add_runtime_dependency'].forEach((method) => {
+  test(`release checks ignore commented ${method} beside development dependencies`, async () => {
+    mockRubyRepository(`spec.add_development_dependency 'rack', '~> 3.0'
+      # spec.${method} 'rack', '~> 3.0'`, 'gemspec');
+    mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: 'Gemfile.lock' }],
+      commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+    } }));
+
+    assert.equal(await check('rack'), false);
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), { status: 'up-to-date' });
   });
 });
 

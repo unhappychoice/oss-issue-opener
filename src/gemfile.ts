@@ -1,3 +1,5 @@
+import { stripRubyComments } from './ruby.js';
+
 export const isProductionGem = (content: string, pkg: string): boolean => {
   const blocks: boolean[] = [];
   return statements(content).some((tokens) => {
@@ -27,12 +29,12 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
 });
 
 const statements = (content: string): string[][] => {
-  const tokens = content.match(/#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|:\w+|\w+[!?]?|=>|[^\S\n]+|\n|./g) ?? [];
+  const tokens = stripRubyComments(content).match(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|:\w+|\w+[!?]?|=>|[^\S\n]+|\n|./g) ?? [];
   const result: string[][] = [];
   let current: string[] = [];
   let depth = 0;
   tokens.forEach((token) => {
-    if (token.startsWith('#') || /^[^\S\n]+$/.test(token)) return;
+    if (/^[^\S\n]+$/.test(token)) return;
     if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
       if (current.length) result.push(current);
       current = [];
