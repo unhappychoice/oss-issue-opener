@@ -11,11 +11,12 @@ const PROJECT_PATTERNS: { pattern: RegExp; type: ProjectType }[] = [
   { pattern: /^Package\.swift$/, type: 'swift' },
 ];
 
-export const detectProjectType = async (owner: string, repo: string): Promise<ProjectType> => {
+export const detectProjectTypes = async (owner: string, repo: string): Promise<ProjectType[]> => {
   const files = await getRepoContents(owner, repo);
-  return (
-    PROJECT_PATTERNS.find(({ pattern }) => files.some((f) => pattern.test(f)))?.type ?? 'unknown'
-  );
+  const types = PROJECT_PATTERNS
+    .filter(({ pattern }) => files.some((f) => pattern.test(f)))
+    .map(({ type }) => type);
+  return types.length > 0 ? [...new Set(types)] : ['unknown'];
 };
 
 export const getSourcePatterns = (type: ProjectType): RegExp => {
