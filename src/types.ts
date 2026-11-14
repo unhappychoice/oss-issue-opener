@@ -1,3 +1,8 @@
+export interface Repository {
+  fullName: string;
+  defaultBranch?: string | null;
+}
+
 export type ProjectType = 'ruby' | 'node' | 'rust' | 'kotlin' | 'go' | 'swift' | 'unknown';
 
 export type CIStatusType = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-branch';

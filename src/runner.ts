@@ -2,7 +2,7 @@ import { getDefaultBranch, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from './issue.js';
-import { ORGS, type PendingIssue } from './types.js';
+import { ORGS, type Repository, type PendingIssue } from './types.js';
 
 const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, checkPendingRelease, createIssuesInBatch };
 type Dependencies = typeof defaultDependencies;
@@ -21,7 +21,7 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
 
       for (const repo of repos) {
         totalRepos++;
-        await attempt(`${repo}: repository investigation`, failures, async () => {
+        await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
           const issues = await checkRepo(repo, deps, failures);
           allIssues.push(...issues);
         });
@@ -58,11 +58,12 @@ const attempt = async (target: string, failures: Error[], action: () => Promise<
 
 const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 
-const checkRepo = async (fullName: string, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
+const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
   const [owner, repo] = fullName.split('/') as [string, string];
   const issues: PendingIssue[] = [];
   let defaultBranch: Promise<string | null> | undefined;
-  const getBranch = () => defaultBranch ??= getDefaultBranch(owner, repo);
+  const getBranch = () => defaultBranch ??= listedBranch
+    ? Promise.resolve(listedBranch) : getDefaultBranch(owner, repo);
 
   console.log(`\n📦 ${repo}`);
 

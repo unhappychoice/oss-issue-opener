@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
+import { getOctokit, initOctokit, listOrgRepos } from '../dist/github.js';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -15,7 +15,7 @@ const setup = (overrides = {}) => {
   const checked = [];
   const deps = {
     listOrgRepos: async (org) => org === 'unhappychoice'
-      ? ['owner/first', 'owner/broken', 'owner/last'] : [],
+      ? ['first', 'broken', 'last'].map((repo) => ({ fullName: `owner/${repo}` })) : [],
     detectProjectTypes: async () => ['node'],
     checkCIStatus: async (_owner, repo) => {
       checked.push(repo);
@@ -98,7 +98,7 @@ test('continues other organizations and reports investigation and batch failures
     listOrgRepos: async (org) => {
       organizations.push(org);
       if (org === 'unhappychoice') throw lookup;
-      return org === 'irasutoya-tools' ? ['owner/repo'] : [];
+      return org === 'irasutoya-tools' ? [{ fullName: 'owner/repo' }] : [];
     },
     checkPendingRelease: async () => { throw comparison; },
     createIssuesInBatch: async (issues) => {
@@ -211,5 +211,51 @@ test('passes every detected ecosystem to the release check', async () => {
   assert.equal(release.mock.callCount(), 3);
   release.mock.calls.forEach(({ arguments: args }) => {
     assert.deepEqual(args[2], ['node', 'ruby']);
+  });
+});
+
+['User', 'Organization'].forEach((accountType) => {
+  test(`reuses branches from paginated ${accountType} listings and falls back only for missing metadata`, async () => {
+    const repos = stubInvestigations();
+    const client = getOctokit();
+    mock.method(client.users, 'getByUsername', async () => ({ data: { type: accountType } }));
+    const listed = Array.from({ length: 100 }, (_, index) => ({
+      full_name: `owner/repo-${index}`, default_branch: `listed-${index}`,
+    }));
+    const missing = [undefined, null, ''].map((default_branch, index) => ({
+      full_name: `owner/fallback-${index}`, default_branch,
+    }));
+    const iterator = mock.method(client.paginate, 'iterator', async function* (route, params) {
+      assert.equal(route, accountType === 'User' ? repos.listForUser : repos.listForOrg);
+      assert.equal(params.per_page, 100);
+      if ((params.username ?? params.org) !== 'unhappychoice') return;
+      yield { data: listed };
+      yield { data: [...missing, ...['archived', 'private', 'fork'].map((flag) => ({
+        full_name: `owner/${flag}`, default_branch: 'ignored', [flag]: true,
+      }))] };
+    });
+    const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: 'fallback' } }));
+    const compared = mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: 'src/example.ts' }], commits: [],
+    } }));
+    const { deps, batches } = setup({ listOrgRepos, checkCIStatus, checkPendingRelease });
+
+    await runChecks(deps);
+
+    assert.equal(iterator.mock.callCount(), 4);
+    assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params.repo),
+      ['fallback-0', 'fallback-1', 'fallback-2']);
+    const branches = [...listed.map(({ default_branch }) => default_branch), ...Array(3).fill('fallback')];
+    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), branches);
+    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), branches);
+    assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head), branches);
+    assert.equal(batches[0].length, 206);
+    batches[0].filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
+      assert.ok(body.includes('[build](https://example.com/build)'));
+    });
+    batches[0].filter(({ type }) => type === 'pending-release').forEach(({ body }, index) => {
+      assert.ok(body.includes('src/example.ts'));
+      assert.ok(body.includes(`v1...${branches[index]}`));
+    });
   });
 });
