@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { isProductionGem } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
@@ -16,6 +17,11 @@ const cases = [
   ['production group array', "gem 'rake', groups: [:production, :default]", true],
   ['inline string group', "gem 'rake', group: 'test'", false],
   ['legacy hash group', "gem 'rake', :group => :test", false],
+  ['literal backslash in option', "gem 'rake', require: 'path\\\\rake'", true],
+  ['continued package name', "gem \\\n  'rake', '~> 13.0'", true],
+  ['continued development option', "gem 'rake', \\\n  group: :development", false],
+  ['continued test option with CRLF', "gem 'rake', \\\r\n  group: :test", false],
+  ['multiple explicit continuations', "gem \\\n  'rake', \\\n  group: :development", false],
   ['multiline options', "gem 'rake',\n  group: :development", false],
   ['parenthesized declaration', 'gem("rake", group: :test)', false],
   ['development block', "group :development do\n  gem 'rake'\nend", false],
@@ -87,4 +93,12 @@ test('gemspec runtime dependencies take precedence over Gemfile groups', async (
     },
   }));
   assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), true);
+});
+
+["'", '"'].forEach((quote) => {
+  test(`preserves backslash-newline inside ${quote} strings`, () => {
+    const name = "ra\\\n#ke";
+    assert.equal(isProductionGem(`gem ${quote}${name}${quote}`, name), true);
+    assert.equal(isProductionGem(`gem ${quote}${name}${quote}`, 'rake'), false);
+  });
 });

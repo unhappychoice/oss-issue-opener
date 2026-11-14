@@ -32,12 +32,12 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
 });
 
 const statements = (content: string): string[][] => {
-  const tokens = stripRubyComments(content).match(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|:\w+|\w+[!?]?|=>|[^\S\n]+|\n|./g) ?? [];
+  const tokens = stripRubyComments(content).match(/"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\\\r?\n|:\w+|\w+[!?]?|=>|[^\S\n]+|\n|./g) ?? [];
   const result: string[][] = [];
   let current: string[] = [];
   let depth = 0;
   tokens.forEach((token) => {
-    if (/^[^\S\n]+$/.test(token)) return;
+    if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
     if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
       if (current.length) result.push(current);
       current = [];
