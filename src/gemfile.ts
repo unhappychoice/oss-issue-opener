@@ -1,4 +1,4 @@
-import { stripRubyComments } from './ruby.js';
+import { gemfileTokens } from './gemfile-tokens.js';
 
 export const isProductionGem = (content: string, pkg: string): boolean => {
   const blocks: boolean[] = [];
@@ -32,7 +32,7 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
 });
 
 const statements = (content: string): string[][] => {
-  const tokens = stripRubyComments(content).match(/"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\\\r?\n|:\w+|\w+[!?]?|=>|[^\S\n]+|\n|./g) ?? [];
+  const tokens = gemfileTokens(content);
   const result: string[][] = [];
   let current: string[] = [];
   let depth = 0;

@@ -102,3 +102,43 @@ test('gemspec runtime dependencies take precedence over Gemfile groups', async (
     assert.equal(isProductionGem(`gem ${quote}${name}${quote}`, 'rake'), false);
   });
 });
+
+['<<TEXT', '<<-TEXT', '<<~TEXT', "<<'TEXT'", '<<-"TEXT"', '<<~`TEXT`'].forEach((opener) => {
+  const terminator = /^<<[-~]/.test(opener) ? '  TEXT' : 'TEXT';
+  const heredoc = `message = ${opener}\ngem 'rake'\nend\n} do\n# "unmatched quote\ngroup :test do\n${terminator}`;
+
+  test(`ignores declarations and block tokens inside ${opener}`, () => {
+    assert.equal(isProductionGem(`${heredoc}\ngroup :development do\n  gem 'rake'\nend`, 'rake'), false);
+    assert.equal(isProductionGem(`group :test do\n${heredoc}\ngem 'rake'\nend`, 'rake'), false);
+    assert.equal(isProductionGem(`${heredoc}\ngem 'rake'`, 'rake'), true);
+    assert.equal(isProductionGem(`group :test do\n${heredoc}\nend\ngem 'rake'`, 'rake'), true);
+  });
+});
+
+test('ignores multiple heredocs in opening order while preserving header declarations', () => {
+  const gemfile = `messages = [<<FIRST, <<~'SECOND']; gem 'rake', group: :test
+end
+FIRST
+gem 'rake'
+  SECOND
+`;
+  assert.equal(isProductionGem(gemfile, 'rake'), false);
+  assert.equal(isProductionGem(gemfile.replace('group: :test', 'group: :production'), 'rake'), true);
+});
+
+test('requires an exact unindented terminator for plain heredocs', () => {
+  const gemfile = "message = <<TEXT\n  TEXT\ngem 'rake'\nTEXT extra\ngem 'rake'\nTEXT\n";
+  assert.equal(isProductionGem(gemfile, 'rake'), false);
+  assert.equal(isProductionGem(`${gemfile}gem 'rake'`, 'rake'), true);
+});
+
+test('preserves heredoc boundaries with CRLF and comment characters in quoted delimiters', () => {
+  const gemfile = "message = <<~'TEXT#END' # comment\r\ngem 'rake'\r\n  TEXT#END\r\n";
+  assert.equal(isProductionGem(gemfile, 'rake'), false);
+  assert.equal(isProductionGem(`${gemfile}gem 'rake'`, 'rake'), true);
+});
+
+test('ignores heredoc openers in strings and comments', () => {
+  const gemfile = "message = '<<TEXT' # <<OTHER\ngem 'rake'";
+  assert.equal(isProductionGem(gemfile, 'rake'), true);
+});
