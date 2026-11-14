@@ -54,7 +54,7 @@ const loadNode: DependencyLoader = async (file) => {
   try {
     const json = JSON.parse(await file('package.json'));
     const dependencies = json.dependencies ?? {};
-    return async (pkg) => typeof dependencies === 'object' && pkg in dependencies;
+    return async (pkg) => typeof dependencies === 'object' && Object.hasOwn(dependencies, pkg);
   } catch {
     return async () => false;
   }
