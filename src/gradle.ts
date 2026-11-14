@@ -1,7 +1,7 @@
 export const gradleDependencies = (content: string): string[] => {
-  const code = stripGradleComments(content);
-  const strings = code.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/gm);
-  const named = code.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?((?:\w+\s*[:=]\s*(['"])[^'"\r\n]*\2\s*,\s*)*\w+\s*[:=]\s*(['"])[^'"\r\n]*\3)/gm);
+  const code = gradleDeclarations(stripGradleComments(content));
+  const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/g)));
+  const named = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?((?:\w+\s*[:=]\s*(['"])[^'"\r\n]*\2\s*,\s*)*\w+\s*[:=]\s*(['"])[^'"\r\n]*\3)/g)));
   return [
     ...Array.from(strings, ([, , coordinate]) => coordinate),
     ...Array.from(named, ([, declaration]) => {
@@ -31,4 +31,11 @@ export const stripGradleComments = (content: string): string => {
     result += hidden ? token.replace(/[^\r\n]/g, ' ') : token;
   }
   return result;
+};
+
+const gradleDeclarations = (content: string): string[] => {
+  const tokens = /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|(?:^|[;{])\s*((?:implementation|api)\b)/gm;
+  return Array.from(content.matchAll(tokens)).flatMap((match) =>
+    match[1] ? [content.slice(match.index + match[0].length - match[1].length)] : []
+  );
 };

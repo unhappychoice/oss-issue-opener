@@ -276,3 +276,23 @@ test('cached Go checks preserve exact requirements and ignore other directives',
     assert.equal(await isProductionDependency('owner', 'repo', 'org.example:runtime', 'kotlin'), false);
   });
 });
+
+[
+  ['build.gradle', "implementation 'org.example:runtime:1.1'"],
+  ['build.gradle.kts', 'implementation("org.example:runtime:1.1")'],
+].forEach(([file, declaration]) => {
+  ['dependencies { ', 'dependencies {\n testImplementation("org.example:test:1.0"); '].forEach((prefix) => {
+    test(`${file}: dependency-only updates after ${JSON.stringify(prefix)} produce pending releases`, async (t) => {
+      stubRepository({ [file]: `${prefix}${declaration} }` });
+      t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+        files: [{ filename: file }],
+        commits: [{ commit: { message: 'Bump org.example:runtime from 1.0 to 1.1' } }],
+      } }));
+      assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), {
+        status: 'pending',
+        reasons: '**Dependency updates:**\n- org.example:runtime 1.0 -> 1.1',
+        compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+      });
+    });
+  });
+});
