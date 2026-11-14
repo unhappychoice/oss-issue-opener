@@ -131,6 +131,22 @@ export const getLatestRelease = async (owner: string, repo: string): Promise<str
   }
 };
 
+const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {
+  if (!base || !head) throw new Error('Cannot establish complete comparison: missing tree SHA');
+  const trees = await Promise.all([base, head].map(async (tree_sha) => {
+    const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha, recursive: '1' });
+    if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
+    return new Map(data.tree.filter((entry) => entry.type !== 'tree').map((entry) => {
+      if (!entry.path || !entry.sha || !entry.mode || !entry.type) {
+        throw new Error('Cannot establish complete comparison: incomplete tree entry');
+      }
+      return [entry.path, `${entry.sha}:${entry.mode}:${entry.type}`];
+    }));
+  }));
+  return [...new Set([...trees[0].keys(), ...trees[1].keys()])]
+    .filter((path) => trees[0].get(path) !== trees[1].get(path));
+};
+
 export const compareCommits = async (
   owner: string,
   repo: string,
@@ -138,13 +154,25 @@ export const compareCommits = async (
   head: string
 ): Promise<{ files: string[]; commitMessages: string[] }> => {
   const result = { files: [] as string[], commitMessages: [] as string[] };
+  let needsTreeComparison = false;
+  let baseTree: string | undefined;
+  let headTree: string | undefined;
   for (let page = 1; ; page++) {
     const { data } = await getOctokit().repos.compareCommits({ owner, repo, base, head, per_page: 100, page });
+    if (page === 1) {
+      needsTreeComparison = (data.files?.length ?? 0) >= 300;
+      baseTree = data.merge_base_commit?.commit.tree.sha;
+      headTree = baseTree;
+    }
+    if (data.commits.length > 0) headTree = data.commits.at(-1)?.commit.tree?.sha;
     if (page === 1) result.files = [...new Set(data.files?.flatMap((f) =>
       f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
     ) ?? [])];
     result.commitMessages.push(...data.commits.map((c) => c.commit.message));
-    if (data.commits.length < 100) return result;
+    if (data.commits.length < 100) {
+      if (needsTreeComparison) result.files = await compareTrees(owner, repo, baseTree, headTree);
+      return result;
+    }
   }
 };
 

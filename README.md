@@ -67,6 +67,10 @@ results remain. The decision does not depend on workflow execution order.
 Source changes alone qualify: for example, a change to `src/index.ts` with the commit
 `fix: handle empty input` triggers a pending release notification without any dependency updates.
 
+Comparisons returning 300 files may omit additional changes. In that case, complete recursive
+Git trees at the merge base and comparison head are compared instead. Tree retrieval failures
+or truncated trees fail the release investigation rather than reporting the repository up to date.
+
 CI and release investigations run independently for each repository. Investigation failures are
 logged with their target and cause, and scanning continues with the remaining repositories.
 Detected notifications are still submitted for batch creation before failures are reported together
