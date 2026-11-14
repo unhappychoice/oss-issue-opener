@@ -117,6 +117,8 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
+  ["gem \\\n  'rack', '~> 3.0'", true],
+  ["gem 'rubocop', \\\n  group: :development", false, 'rubocop'],
   ["group :production, :test do\n  gem 'rack'\nend", true],
   ["group :development, :production do\n  gem 'rack'\nend", true],
   ["gem 'rack', groups: [:production, :test]", true],
@@ -128,9 +130,9 @@ test('detects source changes without dependency updates', async (t) => {
   ["group(:development, :test) { gem 'rack' }", false],
   ["group(:test) { source('https://rubygems.org') { gem 'rack' } }", false],
   ["gem 'rack', groups: [:development, :test]", false],
-].forEach(([gemfile, production]) => {
+].forEach(([gemfile, production, pkg = 'rack']) => {
   test(`checks Ruby dependency-only updates for ${gemfile}`, async (t) => {
-    const message = 'Bump rack from 3.1.0 to 3.1.1';
+    const message = `Bump ${pkg} from 3.1.0 to 3.1.1`;
     stubRepository(t, message);
     t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
       data: {
@@ -144,7 +146,7 @@ test('detects source changes without dependency updates', async (t) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), production ? {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- rack 3.1.0 -> 3.1.1',
+      reasons: `**Dependency updates:**\n- ${pkg} 3.1.0 -> 3.1.1`,
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
   });

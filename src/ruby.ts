@@ -1,5 +1,5 @@
 export const stripRubyComments = (content: string): string =>
-  content.replace(/#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,
+  content.replace(/#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/g,
     (token) => token.startsWith('#') ? '' : token);
 
 export const rubyRuntimeDependencies = (content: string): string[] => {
