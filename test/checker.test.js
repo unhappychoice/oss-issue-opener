@@ -119,6 +119,7 @@ test('detects source changes without dependency updates', async (t) => {
 [
   ["gem \\\n  'rack', '~> 3.0'", true],
   ["gem 'rubocop', \\\n  group: :development", false, 'rubocop'],
+  ["message = <<~TEXT\ngem 'rack'\nTEXT\ngroup :development do\n  gem 'rack'\nend", false],
   ["group :production, :test do\n  gem 'rack'\nend", true],
   ["group :development, :production do\n  gem 'rack'\nend", true],
   ["gem 'rack', groups: [:production, :test]", true],
