@@ -33,6 +33,23 @@ Archived, private and forked repositories are skipped.
 1. Create a GitHub Personal Access Token (Classic) with `repo` scope
 2. Add it as `OSS_GITHUB_TOKEN` secret in this repository
 
+## Configuration
+
+| Setting | Where to configure it | Behavior |
+|---------|-----------------------|----------|
+| `GH_TOKEN` | Environment variable | Required GitHub token used to read repositories and create issues. The process exits with status 1 when it is missing. |
+| `OSS_GITHUB_TOKEN` | GitHub Actions repository secret | The weekly workflow passes this secret to the process as `GH_TOKEN`. |
+| `ORGS` | `src/types.ts` | Accounts to scan; defaults to the accounts listed under Target Organizations. |
+| `ISSUE_REPO` | `src/types.ts` | Destination for all created issues; defaults to `unhappychoice/oss-issue-opener`. Issues are created here, not in each scanned repository. |
+
+There are no CLI options or configuration files, and `.env` files are not loaded.
+To change the scanned accounts or issue destination, edit `src/types.ts` and rebuild
+with `npm run build`.
+
+Both `npm run start` and `npm run check` run the scan and create issues;
+`npm run check` builds first. There is no dry-run mode. Existing open issues with
+the same title and matching `ci-failure` or `pending-release` label are skipped.
+
 ## Local Development
 
 ```bash
