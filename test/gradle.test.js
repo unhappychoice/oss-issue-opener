@@ -50,3 +50,36 @@ test('Gradle statement boundaries exclude comments, strings, and test configurat
   }`;
   assert.deepEqual(gradleDependencies(content), []);
 });
+
+['implementation', 'api'].forEach((configuration) => {
+  ['platform', 'enforcedPlatform'].forEach((wrapper) => {
+    [
+      [`(${wrapper}("org.example:bom:1.0"))`, 'org.example:bom:1.0'],
+      [` ${wrapper}('org.example:bom:1.0')`, 'org.example:bom:1.0'],
+      [`(\n${wrapper} /* BOM */ (\n"org.example:bom:1.0"\n))`, 'org.example:bom:1.0'],
+      [` ${wrapper}(group: 'org.example', name: 'bom', version: '1.0')`, 'org.example:bom'],
+      [`(${wrapper}(group = "org.example", name = "bom", version = "1.0"))`, 'org.example:bom'],
+    ].forEach(([call, coordinate]) => {
+      test(`Gradle detects wrapped production dependencies: ${configuration}${call}`, () => {
+        assert.deepEqual(gradleDependencies(`dependencies { ${configuration}${call} }`), [coordinate]);
+      });
+    });
+
+    test(`Gradle excludes ${wrapper} outside production declarations`, () => {
+      const content = `dependencies {
+        testImplementation(${wrapper}("org.example:test:1.0"))
+        testApi ${wrapper}('org.example:test:1.0')
+        ${wrapper}("org.example:standalone:1.0")
+        customimplementation(${wrapper}("org.example:custom:1.0"))
+        obj.api(${wrapper}("org.example:member:1.0"))
+        // ${configuration}(${wrapper}("org.example:comment:1.0"))
+        /* { ${configuration} ${wrapper}('org.example:block:1.0') } */
+        val text = "{ ${configuration} ${wrapper}('org.example:string:1.0') }"
+        val raw = """{ ${configuration}(${wrapper}("org.example:raw:1.0")) }"""
+        val groovy = '''{ ${configuration} ${wrapper}('org.example:groovy:1.0') }'''
+        ${configuration}(otherPlatform("org.example:other:1.0"))
+      }`;
+      assert.deepEqual(gradleDependencies(content), []);
+    });
+  });
+});
