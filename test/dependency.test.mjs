@@ -86,6 +86,35 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
   });
 });
 
+const metadataStrings = [
+  `"Example: spec.add_dependency 'rack'"`,
+  `'Example: spec.add_dependency "rack"'`,
+  `"Example: spec.add_dependency(\n  'rack'\n)"`,
+  String.raw`"Example: \"quoted\" spec.add_dependency 'rack'"`,
+  String.raw`'Example: \'quoted\' spec.add_dependency "rack"'`,
+];
+
+['add_dependency', 'add_runtime_dependency'].forEach((method) => {
+  metadataStrings.forEach((metadata) => {
+    const description = metadata.replace('add_dependency', method);
+    test(`release checks ignore dependency text in metadata ${description}`, async () => {
+      mockRubyRepository(`Gem::Specification.new do |spec|
+        spec.description = ${description}
+        spec.add_development_dependency 'rack'
+        spec.${method}(\n  'runtime'\n)
+      end`, 'gemspec');
+      mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+        files: [{ filename: 'Gemfile.lock' }],
+        commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+      } }));
+
+      assert.equal(await check('rack'), false);
+      assert.equal(await check('runtime'), true);
+      assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), { status: 'up-to-date' });
+    });
+  });
+});
+
 test('Gemfile fallback matches package names literally', async () => {
   mockRubyRepository('', "gem 'rackXtest'\ngem '(a+)+$'");
   assert.equal(await check('rack.test'), false);
