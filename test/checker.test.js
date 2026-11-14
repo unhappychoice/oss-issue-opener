@@ -149,3 +149,34 @@ test('detects source changes without dependency updates', async (t) => {
     } : { status: 'up-to-date' });
   });
 });
+
+[
+  ['build.gradle.kts', 'implementation(platform("org.example:bom:1.1"))'],
+  ['build.gradle.kts', 'api(enforcedPlatform("org.example:bom:1.1"))'],
+  ['build.gradle', "implementation platform('org.example:bom:1.1')"],
+  ['build.gradle', "api enforcedPlatform('org.example:bom:1.1')"],
+  ['build.gradle.kts', 'testImplementation(platform("org.example:bom:1.1"))'],
+  ['build.gradle', "testImplementation enforcedPlatform('org.example:bom:1.1')"],
+].forEach(([manifest, declaration]) => {
+  test(`checks Gradle BOM-only updates for ${manifest}: ${declaration}`, async (t) => {
+    const message = 'Bump org.example:bom from 1.0 to 1.1';
+    stubRepository(t, message);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+      data: {
+        files: [{ filename: manifest }],
+        commits: [{ commit: { message } }],
+      },
+    }));
+    t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+      data: { content: Buffer.from(path === manifest ? `dependencies { ${declaration} }` : '').toString('base64') },
+    }));
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), declaration.startsWith('test') ? {
+      status: 'up-to-date',
+    } : {
+      status: 'pending',
+      reasons: '**Dependency updates:**\n- org.example:bom 1.0 -> 1.1',
+      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    });
+  });
+});

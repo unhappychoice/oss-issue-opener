@@ -1,7 +1,7 @@
 export const gradleDependencies = (content: string): string[] => {
   const code = gradleDeclarations(stripGradleComments(content));
-  const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/g)));
-  const named = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?((?:\w+\s*[:=]\s*(['"])[^'"\r\n]*\2\s*,\s*)*\w+\s*[:=]\s*(['"])[^'"\r\n]*\3)/g)));
+  const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?(['"])([^'"\r\n]+)\1/g)));
+  const named = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?((?:\w+\s*[:=]\s*(['"])[^'"\r\n]*\2\s*,\s*)*\w+\s*[:=]\s*(['"])[^'"\r\n]*\3)/g)));
   return [
     ...Array.from(strings, ([, , coordinate]) => coordinate),
     ...Array.from(named, ([, declaration]) => {
