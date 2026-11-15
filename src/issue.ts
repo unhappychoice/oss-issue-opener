@@ -1,5 +1,5 @@
 import { createIssue, listOpenIssues } from './github.js';
-import type { FailedCheck, IssueType, PendingIssue } from './types.js';
+import type { DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
 import { ISSUE_REPO } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
@@ -24,6 +24,26 @@ const formatFailedChecks = (checks: FailedCheck[]): string =>
     })
     .join('\n');
 
+const formatPendingReleaseReasons = (changedSources: string[], dependencyUpdates: DependencyUpdate[]): string => {
+  const reasons: string[] = [];
+
+  if (changedSources.length > 0) {
+    reasons.push('**Source code changes:**');
+    changedSources.slice(0, 5).forEach((f) => reasons.push(`- \`${escapeMarkdown(f)}\``));
+    if (changedSources.length > 5) {
+      reasons.push(`- ... and ${changedSources.length - 5} more files`);
+    }
+    reasons.push('');
+  }
+
+  if (dependencyUpdates.length > 0) {
+    reasons.push('**Dependency updates:**');
+    dependencyUpdates.forEach(({ pkg, from, to }) => reasons.push(`- ${pkg} ${from} -> ${to}`));
+  }
+
+  return reasons.join('\n');
+};
+
 export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => ({
   type: 'ci-failure',
   repo,
@@ -37,13 +57,18 @@ ${formatFailedChecks(failedChecks)}
 **Actions**: https://github.com/${repo}/actions`,
 });
 
-export const buildPendingReleaseIssue = (repo: string, reasons: string, compareUrl: string): PendingIssue => ({
+export const buildPendingReleaseIssue = (
+  repo: string,
+  changedSources: string[],
+  dependencyUpdates: DependencyUpdate[],
+  compareUrl: string
+): PendingIssue => ({
   type: 'pending-release',
   repo,
   title: `[Pending Release] ${repo}`,
   body: `Changes since last release:
 
-${reasons}
+${formatPendingReleaseReasons(changedSources, dependencyUpdates)}
 
 **Diff**: ${compareUrl}
 **Releases**: https://github.com/${repo}/releases`,

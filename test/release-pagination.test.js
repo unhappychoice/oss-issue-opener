@@ -19,7 +19,8 @@ test('reports source changes against the published release when a draft points t
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
-    reasons: '**Source code changes:**\n- `src/index.ts`\n',
+    changedSources: ['src/index.ts'],
+    dependencyUpdates: [],
     compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
   });
   assert.equal(compare.mock.calls[0].arguments[0].base, published.tag_name);

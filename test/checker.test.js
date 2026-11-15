@@ -31,7 +31,8 @@ prefixes.forEach((prefix) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- @octokit/rest 21.1.1 -> 22.0.1',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: '@octokit/rest', from: '21.1.1', to: '22.0.1' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     });
   });
@@ -67,7 +68,8 @@ test('ignores bump text outside a dependency update subject', async (t) => {
 
     const expected = kind === 'dependencies' ? {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- serde 1.0.218 -> 1.0.219',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'serde', from: '1.0.218', to: '1.0.219' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' };
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'rust'), expected);
@@ -91,13 +93,14 @@ test('ignores bump text outside a dependency update subject', async (t) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'go'), expected === 'pending' ? {
       status: 'pending',
-      reasons: `**Source code changes:**\n${files.map((path) => `- \`${path}\`\n`).join('')}`,
+      changedSources: files,
+      dependencyUpdates: [],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
   });
 });
 
-test('sanitizes Markdown-significant characters in changed filenames', async (t) => {
+test('passes through Markdown-significant characters in changed filenames unescaped', async (t) => {
   stubRepository(t, 'fix: handle empty input');
   const malicious = 'src/x`](https://evil.example/malware)';
   t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
@@ -107,10 +110,12 @@ test('sanitizes Markdown-significant characters in changed filenames', async (t)
     },
   }));
 
-  const result = await checkPendingRelease('owner', 'repo', 'node');
-  assert.equal(result.status, 'pending');
-  assert.equal(result.reasons, '**Source code changes:**\n- `src/xhttps://evil.example/malware`\n');
-  assert.ok(!result.reasons.includes('`]('));
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'pending',
+    changedSources: [malicious],
+    dependencyUpdates: [],
+    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+  });
 });
 
 test('detects source changes without dependency updates', async (t) => {
@@ -124,7 +129,8 @@ test('detects source changes without dependency updates', async (t) => {
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
-    reasons: '**Source code changes:**\n- `src/index.ts`\n',
+    changedSources: ['src/index.ts'],
+    dependencyUpdates: [],
     compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
   });
 });
@@ -149,7 +155,8 @@ test('detects source changes without dependency updates', async (t) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), sources.length > 0 ? {
       status: 'pending',
-      reasons: `**Source code changes:**\n${sources.map((path) => `- \`${path}\`\n`).join('')}`,
+      changedSources: sources,
+      dependencyUpdates: [],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
   });
@@ -186,7 +193,8 @@ test('detects source changes without dependency updates', async (t) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), production ? {
       status: 'pending',
-      reasons: `**Dependency updates:**\n- ${pkg} 3.1.0 -> 3.1.1`,
+      changedSources: [],
+      dependencyUpdates: [{ pkg, from: '3.1.0', to: '3.1.1' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
   });
@@ -217,7 +225,8 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'up-to-date',
     } : {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- org.example:bom 1.0 -> 1.1',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'org.example:bom', from: '1.0', to: '1.1' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     });
   });

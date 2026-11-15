@@ -19,22 +19,13 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
   const { data: user } = await getOctokit().users.getByUsername({ username: name });
   const repos: Repository[] = [];
 
-  if (user.type === 'Organization') {
-    for await (const response of getOctokit().paginate.iterator(getOctokit().repos.listForOrg, {
-      org: name,
-      per_page: 100,
-      type: 'public',
-    })) {
-      repos.push(...(response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch })));
-    }
-  } else {
-    for await (const response of getOctokit().paginate.iterator(getOctokit().repos.listForUser, {
-      username: name,
-      per_page: 100,
-      type: 'owner',
-    })) {
-      repos.push(...(response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch })));
-    }
+  const [endpoint, params] =
+    user.type === 'Organization'
+      ? [getOctokit().repos.listForOrg, { org: name, per_page: 100, type: 'public' }]
+      : [getOctokit().repos.listForUser, { username: name, per_page: 100, type: 'owner' }];
+
+  for await (const response of getOctokit().paginate.iterator(endpoint as any, params as any)) {
+    repos.push(...(response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch })));
   }
   return repos;
 };

@@ -22,7 +22,9 @@ const setup = (overrides = {}) => {
       checked.push(repo);
       return { status: 'failure', failedChecks: [] };
     },
-    checkPendingRelease: async () => ({ status: 'pending', reasons: 'Source changes', compareUrl: 'https://example.com/compare' }),
+    checkPendingRelease: async () => ({
+      status: 'pending', changedSources: ['src/example.ts'], dependencyUpdates: [], compareUrl: 'https://example.com/compare',
+    }),
     createIssuesInBatch: async (issues) => { batches.push(issues); },
     ...overrides,
   };

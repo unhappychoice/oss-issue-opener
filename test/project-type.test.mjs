@@ -48,8 +48,7 @@ test('detects lib changes as pending releases for a Gemfile-only repository', as
   const type = await detectProjectTypes(owner, repo);
   const release = await checkPendingRelease(owner, repo, type);
   assert.equal(release.status, 'pending');
-  assert.match(release.reasons, /Source code changes:/);
-  assert.match(release.reasons, /lib\/example\.rb/);
+  assert.deepEqual(release.changedSources, ['lib/example.rb']);
 });
 
 test('ignores undeclared dependency updates for a Gemfile-only repository', async () => {
@@ -107,7 +106,7 @@ const mockManifests = (manifests) => {
       const types = await detectProjectTypes(owner, repo);
       const release = await checkPendingRelease(owner, repo, types);
       assert.equal(release.status, expected);
-      if (expected === 'pending') assert.match(release.reasons, new RegExp(pkg));
+      if (expected === 'pending') assert.ok(release.dependencyUpdates.some((update) => update.pkg === pkg));
     });
   });
 });
@@ -118,7 +117,7 @@ test('detects source paths from every ecosystem without duplicating files', asyn
   const types = await detectProjectTypes(owner, repo);
   const release = await checkPendingRelease(owner, repo, types);
   assert.equal(release.status, 'pending');
-  assert.equal(release.reasons, '**Source code changes:**\n- `lib/example.js`\n- `src/example.rs`\n');
+  assert.deepEqual(release.changedSources, ['lib/example.js', 'src/example.rs']);
 });
 
 test('shares the root listing between project detection and the Ruby dependency checker', async () => {
@@ -152,6 +151,6 @@ test('shares the root listing between project detection and the Ruby dependency 
     const types = await detectProjectTypes(owner, repo);
     const release = await checkPendingRelease(owner, repo, types);
     assert.equal(release.status, pkg === 'rack' ? 'pending' : 'up-to-date');
-    if (pkg === 'rack') assert.equal(release.reasons, '**Dependency updates:**\n- rack 3.0.0 -> 3.1.0');
+    if (pkg === 'rack') assert.deepEqual(release.dependencyUpdates, [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }]);
   });
 });
