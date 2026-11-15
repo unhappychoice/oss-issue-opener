@@ -46,8 +46,3 @@ export type ReleaseStatus =
 
 export const ORGS = ['unhappychoice', 'irasutoya-tools', 'bitflyer-tools', 'circleci-tools'] as const;
 export const ISSUE_REPO = 'unhappychoice/oss-issue-opener';
-
-export const LABELS: Record<IssueType, { color: string; description: string }> = {
-  'ci-failure': { color: 'd73a4a', description: 'CI build is failing' },
-  'pending-release': { color: '0075ca', description: 'Repository may need a new release' },
-};
