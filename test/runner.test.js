@@ -3,6 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, initOctokit, listOrgRepos } from '../dist/github.js';
+import { detectProjectTypes } from '../dist/project-type.js';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -142,6 +143,29 @@ test('completes successfully when investigations and creation succeed', async ()
   assert.equal(batches[0].length, 6);
 });
 
+test('investigates repositories within an organization concurrently instead of one at a time', async () => {
+  const pending = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const { deps } = setup({
+    checkCIStatus: async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => pending.push(resolve));
+      inFlight--;
+      return { status: 'success', failedChecks: [] };
+    },
+    checkPendingRelease: async () => ({ status: 'up-to-date' }),
+  });
+
+  const result = runChecks(deps);
+  while (pending.length < 3) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(maxInFlight, 3);
+
+  pending.forEach((resolve) => resolve());
+  await result;
+});
+
 test('reports failures even when there are no notifications to create', async () => {
   const cause = new Error('Comparison unavailable');
   const create = mock.fn();
@@ -233,6 +257,30 @@ test('passes every detected ecosystem to the release check', async () => {
   release.mock.calls.forEach(({ arguments: args }) => {
     assert.deepEqual(args[2], ['node', 'ruby']);
   });
+});
+
+test('fetches the root listing once per repository when Ruby dependency bumps are pending', async () => {
+  const repos = stubInvestigations();
+  mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'Gemfile.lock' }],
+    commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+  } }));
+  const rootCalls = [];
+  mock.method(repos, 'getContent', async ({ path }) => {
+    if (path === '') rootCalls.push(path);
+    return {
+      data: path === ''
+        ? [{ name: 'Gemfile' }]
+        : { content: Buffer.from("gem 'rack'\n").toString('base64') },
+    };
+  });
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease, detectProjectTypes });
+
+  await runChecks(deps);
+
+  assert.equal(rootCalls.length, 3);
+  assert.equal(batches[0].filter(({ type }) => type === 'pending-release').length, 3);
 });
 
 ['User', 'Organization'].forEach((accountType) => {

@@ -11,8 +11,12 @@ const PROJECT_PATTERNS: { pattern: RegExp; type: ProjectType }[] = [
   { pattern: /^Package\.swift$/, type: 'swift' },
 ];
 
-export const detectProjectTypes = async (owner: string, repo: string): Promise<ProjectType[]> => {
-  const files = await getRepoContents(owner, repo);
+export const detectProjectTypes = async (
+  owner: string,
+  repo: string,
+  getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
+): Promise<ProjectType[]> => {
+  const files = await getContents();
   const types = PROJECT_PATTERNS
     .filter(({ pattern }) => files.some((f) => pattern.test(f)))
     .map(({ type }) => type);
