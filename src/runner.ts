@@ -7,6 +7,8 @@ import { ORGS, type Repository, type PendingIssue } from './types.js';
 const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, checkPendingRelease, createIssuesInBatch };
 type Dependencies = typeof defaultDependencies;
 
+const REPO_CONCURRENCY = 8;
+
 export const runChecks = async (deps: Dependencies = defaultDependencies): Promise<void> => {
   const failures: Error[] = [];
   const allIssues: PendingIssue[] = [];
@@ -18,14 +20,15 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
     await attempt(`${org}: repository investigation`, failures, async () => {
       const repos = await deps.listOrgRepos(org);
       console.log(`  Found ${repos.length} repositories`);
+      totalRepos += repos.length;
 
-      for (const repo of repos) {
-        totalRepos++;
+      const issuesByRepo: PendingIssue[][] = repos.map(() => []);
+      await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo, index) => {
         await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
-          const issues = await checkRepo(repo, deps, failures);
-          allIssues.push(...issues);
+          issuesByRepo[index] = await checkRepo(repo, deps, failures);
         });
-      }
+      });
+      issuesByRepo.forEach((issues) => allIssues.push(...issues));
     });
   }
 
@@ -54,6 +57,19 @@ const attempt = async (target: string, failures: Error[], action: () => Promise<
     failures.push(new Error(`Failed ${target}`, { cause }));
     console.error(`  [failed] ${target}`, cause);
   }
+};
+
+// Claims indices strictly in increasing order so repositories start their investigation
+// in the same order as the original sequential loop, keeping call order deterministic.
+const mapWithConcurrency = async <T>(items: T[], concurrency: number, fn: (item: T, index: number) => Promise<void>): Promise<void> => {
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      await fn(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
 };
 
 const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
