@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getOctokit, initOctokit } from '../dist/github.js';
-import { buildCIFailureIssue, createIssuesInBatch } from '../dist/issue.js';
+import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
 
 const setup = (t, create, existing = []) => {
   initOctokit('test-token');
@@ -14,6 +14,26 @@ const setup = (t, create, existing = []) => {
 };
 
 const issue = (repo) => buildCIFailureIssue(repo, []);
+
+test('escapes Markdown-significant check names and rejects non-http(s) URLs', () => {
+  const maliciousIssue = buildCIFailureIssue('owner/repo', [
+    { name: 'build](https://evil.example/phish)[', url: 'https://good.example/actions' },
+    { name: '`rm -rf`', url: 'javascript:alert(1)' },
+    { name: 'lint', url: 'https://good.example) [Click here](https://evil.example' },
+  ]);
+
+  assert.ok(maliciousIssue.body.includes('- [build\\]\\(https://evil.example/phish\\)\\[](https://good.example/actions)'));
+  assert.ok(maliciousIssue.body.includes('- \\`rm -rf\\`'));
+  assert.ok(!maliciousIssue.body.includes('[Click here](https://evil.example'));
+});
+
+test('escapes Markdown-significant characters in changed filenames', () => {
+  const malicious = 'src/x`](https://evil.example/malware)';
+  const maliciousIssue = buildPendingReleaseIssue('owner/repo', [malicious], [], 'https://good.example/compare');
+
+  assert.ok(maliciousIssue.body.includes('- `src/x\\`\\]\\(https://evil.example/malware\\)`'));
+  assert.ok(!maliciousIssue.body.includes('`](https://evil.example/malware)'));
+});
 
 test('continues after a failed creation and reports successes and failures', async (t) => {
   const cause = new Error('HTTP 503');
