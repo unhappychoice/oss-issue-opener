@@ -4,8 +4,25 @@ import { ISSUE_REPO } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 
+const escapeMarkdown = (s: string): string => s.replace(/[`[\]()]/g, '\\$&');
+
+const parseHttpUrl = (url: string): string | null => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+};
+
 const formatFailedChecks = (checks: FailedCheck[]): string =>
-  checks.map((c) => (c.url ? `- [${c.name}](${c.url})` : `- ${c.name}`)).join('\n');
+  checks
+    .map((c) => {
+      const name = escapeMarkdown(c.name);
+      const url = c.url ? parseHttpUrl(c.url) : null;
+      return url ? `- [${name}](${url})` : `- ${name}`;
+    })
+    .join('\n');
 
 export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => ({
   type: 'ci-failure',

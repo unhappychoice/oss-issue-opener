@@ -29,6 +29,8 @@ export const checkCIStatus = async (
   return { status, failedChecks };
 };
 
+const sanitizeFilename = (f: string): string => f.replace(/[`[\]()]/g, '');
+
 const parseBumpCommit = (msg: string): { pkg: string; from: string; to: string } | null => {
   const match = msg.match(/^(?:[a-z]+(?:\([^\r\n)]+\))?!?: )?bump (\S+) from (\S+) to (\S+)/i);
   return match ? { pkg: match[1], from: match[2], to: match[3] } : null;
@@ -57,7 +59,7 @@ export const checkPendingRelease = async (
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
   if (changedSources.length > 0) {
     reasons.push('**Source code changes:**');
-    changedSources.slice(0, 5).forEach((f) => reasons.push(`- \`${f}\``));
+    changedSources.slice(0, 5).forEach((f) => reasons.push(`- \`${sanitizeFilename(f)}\``));
     if (changedSources.length > 5) {
       reasons.push(`- ... and ${changedSources.length - 5} more files`);
     }

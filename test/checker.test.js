@@ -97,6 +97,22 @@ test('ignores bump text outside a dependency update subject', async (t) => {
   });
 });
 
+test('sanitizes Markdown-significant characters in changed filenames', async (t) => {
+  stubRepository(t, 'fix: handle empty input');
+  const malicious = 'src/x`](https://evil.example/malware)';
+  t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+    data: {
+      files: [{ filename: malicious }],
+      commits: [{ commit: { message: 'fix: handle empty input' } }],
+    },
+  }));
+
+  const result = await checkPendingRelease('owner', 'repo', 'node');
+  assert.equal(result.status, 'pending');
+  assert.equal(result.reasons, '**Source code changes:**\n- `src/xhttps://evil.example/malware`\n');
+  assert.ok(!result.reasons.includes('`]('));
+});
+
 test('detects source changes without dependency updates', async (t) => {
   stubRepository(t, 'fix: handle empty input');
   t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
