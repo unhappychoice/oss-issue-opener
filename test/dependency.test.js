@@ -229,6 +229,22 @@ test('cached Ruby checks preserve Gemfile group exclusions across packages', asy
   assert.deepEqual(calls.map(({ path }) => path), ['', 'Gemfile']);
 });
 
+test('Ruby tokenizes the Gemfile only once for repeated and distinct packages', async (t) => {
+  stubRepository({
+    '': ['Gemfile'],
+    Gemfile: 'group :development, :test do\n  gem "dev"\nend\ngem "first"\ngem "second"',
+  });
+  const originalExec = RegExp.prototype.exec;
+  const tokenizerPatterns = new Set();
+  t.mock.method(RegExp.prototype, 'exec', function (...args) {
+    if (this.source.includes('<<[-~]?')) tokenizerPatterns.add(this);
+    return originalExec.apply(this, args);
+  });
+  const check = createDependencyChecker('owner', 'repo', 'ruby');
+  for (const { pkg } of bumps) assert.equal(await check(pkg), pkg !== 'dev');
+  assert.equal(tokenizerPatterns.size, 1);
+});
+
 test('cached Go checks preserve exact requirements and ignore other directives', async () => {
   const calls = stubRepository({
     'go.mod': 'module dev\n// require dev v1\nrequire (\nfirst v1\nsecond v2 // indirect\n)\nexclude dev v1',
