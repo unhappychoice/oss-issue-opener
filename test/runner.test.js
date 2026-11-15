@@ -3,6 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, initOctokit, listOrgRepos } from '../dist/github.js';
+import { detectProjectTypes } from '../dist/project-type.js';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -212,6 +213,30 @@ test('passes every detected ecosystem to the release check', async () => {
   release.mock.calls.forEach(({ arguments: args }) => {
     assert.deepEqual(args[2], ['node', 'ruby']);
   });
+});
+
+test('fetches the root listing once per repository when Ruby dependency bumps are pending', async () => {
+  const repos = stubInvestigations();
+  mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'Gemfile.lock' }],
+    commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+  } }));
+  const rootCalls = [];
+  mock.method(repos, 'getContent', async ({ path }) => {
+    if (path === '') rootCalls.push(path);
+    return {
+      data: path === ''
+        ? [{ name: 'Gemfile' }]
+        : { content: Buffer.from("gem 'rack'\n").toString('base64') },
+    };
+  });
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease, detectProjectTypes });
+
+  await runChecks(deps);
+
+  assert.equal(rootCalls.length, 3);
+  assert.equal(batches[0].filter(({ type }) => type === 'pending-release').length, 3);
 });
 
 ['User', 'Organization'].forEach((accountType) => {

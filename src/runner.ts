@@ -1,4 +1,4 @@
-import { getDefaultBranch, listOrgRepos } from './github.js';
+import { getDefaultBranch, getRepoContents, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from './issue.js';
@@ -64,6 +64,8 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
   let defaultBranch: Promise<string | null> | undefined;
   const getBranch = () => defaultBranch ??= listedBranch
     ? Promise.resolve(listedBranch) : getDefaultBranch(owner, repo);
+  let rootContents: Promise<string[]> | undefined;
+  const getContents = () => rootContents ??= getRepoContents(owner, repo);
 
   console.log(`\n📦 ${repo}`);
 
@@ -78,10 +80,10 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
   });
 
   await attempt(`${fullName}: release investigation`, failures, async () => {
-    const projectTypes = await deps.detectProjectTypes(owner, repo);
+    const projectTypes = await deps.detectProjectTypes(owner, repo, getContents);
     log('📋', `Types: ${projectTypes.join(', ')}`);
 
-    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch);
+    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch, getContents);
     if (releaseStatus.status === 'no-tag') {
       log('⚪', 'Release: no tags found');
     } else if (releaseStatus.status === 'up-to-date') {
