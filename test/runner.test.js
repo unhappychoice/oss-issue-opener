@@ -121,6 +121,29 @@ test('completes successfully when investigations and creation succeed', async ()
   assert.equal(batches[0].length, 6);
 });
 
+test('investigates repositories within an organization concurrently instead of one at a time', async () => {
+  const pending = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const { deps } = setup({
+    checkCIStatus: async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => pending.push(resolve));
+      inFlight--;
+      return { status: 'success', failedChecks: [] };
+    },
+    checkPendingRelease: async () => ({ status: 'up-to-date' }),
+  });
+
+  const result = runChecks(deps);
+  while (pending.length < 3) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(maxInFlight, 3);
+
+  pending.forEach((resolve) => resolve());
+  await result;
+});
+
 test('reports failures even when there are no notifications to create', async () => {
   const cause = new Error('Comparison unavailable');
   const create = mock.fn();
