@@ -1,7 +1,7 @@
 import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
-import { isProductionGem } from './gemfile.js';
+import { gemfileStatements, isProductionGemIn } from './gemfile.js';
 import { rubyRuntimeDependencies } from './ruby.js';
 import { swiftDependencies } from './swift.js';
 import { gradleDependencies } from './gradle.js';
@@ -43,10 +43,11 @@ export const isProductionDependency = (
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
   const dependencies = new Set((await Promise.all(gemspecNames.map(file))).flatMap(rubyRuntimeDependencies));
+  let statements: Promise<string[][]> | undefined;
   return async (pkg) => {
     if (dependencies.has(pkg)) return true;
-    const gemfile = await file('Gemfile');
-    return isProductionGem(gemfile, pkg);
+    statements ??= file('Gemfile').then(gemfileStatements);
+    return isProductionGemIn(await statements, pkg);
   };
 };
 

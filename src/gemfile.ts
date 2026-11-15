@@ -1,8 +1,11 @@
 import { gemfileTokens } from './gemfile-tokens.js';
 
-export const isProductionGem = (content: string, pkg: string): boolean => {
+export const isProductionGem = (content: string, pkg: string): boolean =>
+  isProductionGemIn(gemfileStatements(content), pkg);
+
+export const isProductionGemIn = (statements: string[][], pkg: string): boolean => {
   const blocks: boolean[] = [];
-  return statements(content).some((tokens) => {
+  return statements.some((tokens) => {
     if (tokens[0] === 'end') blocks.pop();
     const excluded = blocks.includes(true);
     if (tokens.includes('do') || /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
@@ -31,7 +34,7 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
   return hasExcludedGroup(values[0] === '[' ? values.slice(1, values.indexOf(']')) : values.slice(0, 1));
 });
 
-const statements = (content: string): string[][] => {
+export const gemfileStatements = (content: string): string[][] => {
   const tokens = gemfileTokens(content);
   const result: string[][] = [];
   let current: string[] = [];
