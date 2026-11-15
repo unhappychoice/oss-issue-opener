@@ -66,7 +66,8 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'),
       method === 'add_development_dependency' ? { status: 'up-to-date' } : {
         status: 'pending',
-        reasons: '**Dependency updates:**\n- rack 3.0.0 -> 3.1.0',
+        changedSources: [],
+        dependencyUpdates: [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }],
         compareUrl: 'https://github.com/owner/repo/compare/v1...main',
       });
   });
@@ -147,7 +148,7 @@ test('malicious bump completes and the next repository is checked', () => {
     assert.equal((await checkPendingRelease('owner', 'malicious', 'ruby')).status, 'up-to-date');
     const next = await checkPendingRelease('owner', 'next', 'ruby');
     assert.equal(next.status, 'pending');
-    assert.match(next.reasons, /rake 1 -> 2/);
+    assert.deepEqual(next.dependencyUpdates, [{ pkg: 'rake', from: '1', to: '2' }]);
   `], { cwd: new URL('..', import.meta.url), timeout: 3000, encoding: 'utf8' });
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stderr);

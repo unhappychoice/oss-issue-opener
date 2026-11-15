@@ -39,9 +39,8 @@ test('release checks reuse parsed Node dependencies and preserve every productio
   assert.deepEqual(calls, [{ owner: 'owner', repo: 'repo', path: 'package.json' }]);
   assert.deepEqual(result, {
     status: 'pending',
-    reasons: ['**Source code changes:**', '- `src/main.ts`', '', '**Dependency updates:**',
-      ...bumps.filter(({ pkg }) => pkg !== 'dev').map(({ pkg, from, to }) =>
-        `- ${pkg} ${from} -> ${to}`)].join('\n'),
+    changedSources: ['src/main.ts'],
+    dependencyUpdates: bumps.filter(({ pkg }) => pkg !== 'dev'),
     compareUrl: 'https://github.com/owner/repo/compare/v1...main',
   });
   await checkPendingRelease('owner', 'repo', 'node');
@@ -108,7 +107,8 @@ test('Ruby loads the fallback only when needed and caches missing files and list
     } }));
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- rack 3.0.0 -> 3.1.0',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1...main',
     });
   });
@@ -256,7 +256,8 @@ test('cached Go checks preserve exact requirements and ignore other directives',
       assert.equal(await isProductionDependency('owner', 'repo', 'org.example:run', 'kotlin'), false);
       assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), {
         status: 'pending',
-        reasons: '**Dependency updates:**\n- org.example:runtime 1.0 -> 1.1',
+        changedSources: [],
+        dependencyUpdates: [{ pkg: 'org.example:runtime', from: '1.0', to: '1.1' }],
         compareUrl: 'https://github.com/owner/repo/compare/v1...main',
       });
     });
@@ -290,7 +291,8 @@ test('cached Go checks preserve exact requirements and ignore other directives',
       } }));
       assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), {
         status: 'pending',
-        reasons: '**Dependency updates:**\n- org.example:runtime 1.0 -> 1.1',
+        changedSources: [],
+        dependencyUpdates: [{ pkg: 'org.example:runtime', from: '1.0', to: '1.1' }],
         compareUrl: 'https://github.com/owner/repo/compare/v1...main',
       });
     });

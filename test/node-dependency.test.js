@@ -37,7 +37,8 @@ cases.forEach(([name, manifest, pkg, expected]) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), expected ? {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- constructor 1.0.0 -> 2.0.0',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'constructor', from: '1.0.0', to: '2.0.0' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1...main',
     } : { status: 'up-to-date' });
   });
