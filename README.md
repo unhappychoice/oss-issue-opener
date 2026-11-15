@@ -30,7 +30,11 @@ Archived, private and forked repositories are skipped.
 
 ## Setup
 
-1. Create a GitHub Personal Access Token (Classic) with `repo` scope
+1. Create a GitHub Personal Access Token (Classic) with `public_repo` scope. The tool only reads
+   public repositories and only creates issues in `unhappychoice/oss-issue-opener`, so the broader
+   `repo` scope (which also grants write access to every private repository you can reach) is not
+   needed. A fine-grained PAT limited to read access on the target orgs' public repositories plus
+   Issues: write on `unhappychoice/oss-issue-opener` works as well.
 2. Add it as `OSS_GITHUB_TOKEN` secret in this repository
 
 ## Configuration
