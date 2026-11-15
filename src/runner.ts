@@ -112,7 +112,7 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
         return [];
       }
       log('📦', 'Release: pending');
-      return [buildPendingReleaseIssue(fullName, releaseStatus.reasons, releaseStatus.compareUrl)];
+      return [buildPendingReleaseIssue(fullName, releaseStatus.changedSources, releaseStatus.dependencyUpdates, releaseStatus.compareUrl)];
     }, []),
   ]);
 

@@ -31,7 +31,8 @@ test('detects a production bump after the first 250 commits', async (t) => {
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
-    reasons: '**Dependency updates:**\n- example 1.0.0 -> 2.0.0',
+    changedSources: [],
+    dependencyUpdates: [{ pkg: 'example', from: '1.0.0', to: '2.0.0' }],
     compareUrl: 'https://github.com/owner/repo/compare/v1...main',
   });
   assert.deepEqual(compare.mock.calls.map(({ arguments: [params] }) => params),
@@ -48,7 +49,8 @@ test('preserves source changes when later pages omit files', async (t) => {
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
-    reasons: '**Source code changes:**\n- `src/index.ts`\n',
+    changedSources: ['src/index.ts'],
+    dependencyUpdates: [],
     compareUrl: 'https://github.com/owner/repo/compare/v1...main',
   });
 });
@@ -98,8 +100,8 @@ test('detects source changes omitted from a capped comparison', async (t) => {
   const getTree = stubCappedComparison(t, [['src/index.ts', 'old', 'new']]);
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
-  assert.match(result.reasons, /`src\/index.ts`/);
-  assert.doesNotMatch(result.reasons, /unchanged/);
+  assert.ok(result.changedSources.includes('src/index.ts'));
+  assert.ok(!result.changedSources.some((f) => f.includes('unchanged')));
   assert.deepEqual(getTree.mock.calls.map(({ arguments: [params] }) => params),
     ['merge-base-tree', 'head-tree'].map((tree_sha) => ({ owner: 'owner', repo: 'repo', tree_sha, recursive: '1' })));
 });
@@ -113,8 +115,8 @@ test('detects added and deleted source paths, including renames out of source di
   stubCappedComparison(t, [['src/removed.ts', 'old', undefined], ['lib/added.ts', undefined, 'new']]);
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
-  assert.match(result.reasons, /`src\/removed.ts`/);
-  assert.match(result.reasons, /`lib\/added.ts`/);
+  assert.ok(result.changedSources.includes('src/removed.ts'));
+  assert.ok(result.changedSources.includes('lib/added.ts'));
 });
 
 test('propagates tree fallback API failures instead of declaring up to date', async (t) => {

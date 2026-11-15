@@ -72,7 +72,8 @@ cases.forEach(([name, content, pkg, expected]) => {
     const result = await checkPendingRelease('owner', 'repo', 'swift');
     assert.deepEqual(result, pkg === 'swift-argument-parser' ? {
       status: 'pending',
-      reasons: '**Dependency updates:**\n- swift-argument-parser 1.0.0 -> 1.1.0',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'swift-argument-parser', from: '1.0.0', to: '1.1.0' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
   });

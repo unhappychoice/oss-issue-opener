@@ -1,7 +1,7 @@
 import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getRepoContents } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getSourcePatterns } from './project-type.js';
-import type { CIStatus, ProjectType, ReleaseStatus } from './types.js';
+import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
 export const checkCIStatus = async (
   owner: string,
@@ -29,7 +29,7 @@ export const checkCIStatus = async (
   return { status, failedChecks };
 };
 
-const parseBumpCommit = (msg: string): { pkg: string; from: string; to: string } | null => {
+const parseBumpCommit = (msg: string): DependencyUpdate | null => {
   const match = msg.match(/^(?:[a-z]+(?:\([^\r\n)]+\))?!?: )?bump (\S+) from (\S+) to (\S+)/i);
   return match ? { pkg: match[1], from: match[2], to: match[3] } : null;
 };
@@ -50,35 +50,22 @@ export const checkPendingRelease = async (
   const { files, commitMessages } = await compareCommits(owner, repo, latestTag, defaultBranch);
   if (files.length === 0 && commitMessages.length === 0) return { status: 'up-to-date' };
 
-  const reasons: string[] = [];
-
   const types = Array.isArray(projectTypes) ? projectTypes : [projectTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
-  if (changedSources.length > 0) {
-    reasons.push('**Source code changes:**');
-    changedSources.slice(0, 5).forEach((f) => reasons.push(`- \`${f}\``));
-    if (changedSources.length > 5) {
-      reasons.push(`- ... and ${changedSources.length - 5} more files`);
-    }
-    reasons.push('');
-  }
 
   const isProductionDependency = createDependencyChecker(owner, repo, types, getContents);
-  const prodDeps: string[] = [];
+  const dependencyUpdates: DependencyUpdate[] = [];
   for (const msg of commitMessages) {
     const bump = parseBumpCommit(msg);
     if (!bump) continue;
     if (await isProductionDependency(bump.pkg)) {
-      prodDeps.push(`- ${bump.pkg} ${bump.from} -> ${bump.to}`);
+      dependencyUpdates.push(bump);
     }
   }
 
-  if (prodDeps.length > 0) {
-    reasons.push('**Dependency updates:**');
-    reasons.push(...prodDeps);
-  }
-
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${latestTag}...${defaultBranch}`;
-  return reasons.length > 0 ? { status: 'pending', reasons: reasons.join('\n'), compareUrl } : { status: 'up-to-date' };
+  return changedSources.length > 0 || dependencyUpdates.length > 0
+    ? { status: 'pending', changedSources, dependencyUpdates, compareUrl }
+    : { status: 'up-to-date' };
 };

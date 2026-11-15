@@ -56,6 +56,6 @@ const stubRelease = () => {
     const result = await checkPendingRelease('owner', 'repo', 'go');
     if (!required) return assert.deepEqual(result, { status: 'up-to-date' });
     assert.equal(result.status, 'pending');
-    assert.match(result.reasons, /example\.com\/library 1\.0\.0 -> 1\.1\.0/);
+    assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example.com/library', from: '1.0.0', to: '1.1.0' }]);
   });
 });

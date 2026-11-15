@@ -33,10 +33,16 @@ export interface CheckResult {
   releaseStatus: ReleaseStatus;
 }
 
+export interface DependencyUpdate {
+  pkg: string;
+  from: string;
+  to: string;
+}
+
 export type ReleaseStatus =
   | { status: 'no-tag' }
   | { status: 'up-to-date' }
-  | { status: 'pending'; reasons: string; compareUrl: string };
+  | { status: 'pending'; changedSources: string[]; dependencyUpdates: DependencyUpdate[]; compareUrl: string };
 
 export const ORGS = ['unhappychoice', 'irasutoya-tools', 'bitflyer-tools', 'circleci-tools'] as const;
 export const ISSUE_REPO = 'unhappychoice/oss-issue-opener';
