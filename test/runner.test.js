@@ -62,6 +62,27 @@ test('creates accumulated and same-repository CI notifications after a compariso
   assert.equal(console.error.mock.calls[0].arguments[1], cause);
 });
 
+test('runs the CI and release investigations for a repository concurrently', async () => {
+  let resolveCI;
+  let releaseStartedBeforeCIFinished = false;
+  const { deps } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo' }] : [],
+    checkCIStatus: async () => new Promise((resolve) => {
+      resolveCI = () => resolve({ status: 'success', failedChecks: [] });
+    }),
+    detectProjectTypes: async () => {
+      releaseStartedBeforeCIFinished = resolveCI !== undefined;
+      resolveCI();
+      return ['node'];
+    },
+    checkPendingRelease: async () => ({ status: 'up-to-date' }),
+  });
+
+  await runChecks(deps);
+
+  assert.equal(releaseStartedBeforeCIFinished, true);
+});
+
 test('still checks releases when CI investigation fails', async () => {
   const cause = new Error('CI unavailable');
   const { deps, batches } = setup({ checkCIStatus: async () => { throw cause; } });

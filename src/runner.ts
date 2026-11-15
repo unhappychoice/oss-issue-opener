@@ -66,12 +66,15 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
   }
 };
 
-const attempt = async (target: string, failures: Error[], action: () => Promise<void>): Promise<void> => {
+const attempt = async <T = void>(
+  target: string, failures: Error[], action: () => Promise<T>, fallback: T = undefined as T
+): Promise<T> => {
   try {
-    await action();
+    return await action();
   } catch (cause) {
     failures.push(new Error(`Failed ${target}`, { cause }));
     console.error(`  [failed] ${target}`, cause);
+    return fallback;
   }
 };
 
@@ -79,7 +82,6 @@ const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 
 const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
   const [owner, repo] = fullName.split('/') as [string, string];
-  const issues: PendingIssue[] = [];
   let defaultBranch: Promise<string | null> | undefined;
   const getBranch = () => defaultBranch ??= listedBranch
     ? Promise.resolve(listedBranch) : getDefaultBranch(owner, repo);
@@ -88,31 +90,32 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
 
   console.log(`\n📦 ${repo}`);
 
-  await attempt(`${fullName}: CI investigation`, failures, async () => {
-    const ciResult = await deps.checkCIStatus(owner, repo, getBranch);
-    const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪' };
-    log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
+  const [ciIssues, releaseIssues] = await Promise.all([
+    attempt<PendingIssue[]>(`${fullName}: CI investigation`, failures, async () => {
+      const ciResult = await deps.checkCIStatus(owner, repo, getBranch);
+      const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪' };
+      log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
 
-    if (ciResult.status === 'failure') {
-      issues.push(buildCIFailureIssue(fullName, ciResult.failedChecks));
-    }
-  });
+      return ciResult.status === 'failure' ? [buildCIFailureIssue(fullName, ciResult.failedChecks)] : [];
+    }, []),
 
-  await attempt(`${fullName}: release investigation`, failures, async () => {
-    const projectTypes = await deps.detectProjectTypes(owner, repo, getContents);
-    log('📋', `Types: ${projectTypes.join(', ')}`);
+    attempt<PendingIssue[]>(`${fullName}: release investigation`, failures, async () => {
+      const projectTypes = await deps.detectProjectTypes(owner, repo, getContents);
+      log('📋', `Types: ${projectTypes.join(', ')}`);
 
-    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch, getContents);
-    if (releaseStatus.status === 'no-tag') {
-      log('⚪', 'Release: no tags found');
-    } else if (releaseStatus.status === 'up-to-date') {
-      log('✅', 'Release: up to date');
-    } else {
+      const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch, getContents);
+      if (releaseStatus.status === 'no-tag') {
+        log('⚪', 'Release: no tags found');
+        return [];
+      } else if (releaseStatus.status === 'up-to-date') {
+        log('✅', 'Release: up to date');
+        return [];
+      }
       log('📦', 'Release: pending');
-      issues.push(buildPendingReleaseIssue(fullName, releaseStatus.reasons, releaseStatus.compareUrl));
-    }
-  });
+      return [buildPendingReleaseIssue(fullName, releaseStatus.reasons, releaseStatus.compareUrl)];
+    }, []),
+  ]);
 
-  return issues;
+  return [...ciIssues, ...releaseIssues];
 };
 
