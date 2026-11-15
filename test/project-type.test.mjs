@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
+import { getOctokit, getRepoContents, initOctokit } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
 
 const owner = 'example';
@@ -119,6 +119,27 @@ test('detects source paths from every ecosystem without duplicating files', asyn
   const release = await checkPendingRelease(owner, repo, types);
   assert.equal(release.status, 'pending');
   assert.equal(release.reasons, '**Source code changes:**\n- `lib/example.js`\n- `src/example.rs`\n');
+});
+
+test('shares the root listing between project detection and the Ruby dependency checker', async () => {
+  const rootCalls = [];
+  mock.method(getOctokit().repos, 'getContent', async ({ path }) => {
+    if (path === '') rootCalls.push(path);
+    return {
+      data: path === ''
+        ? [{ name: 'Gemfile' }]
+        : { content: Buffer.from("gem 'rack'\n").toString('base64') },
+    };
+  });
+  mockReleaseComparison(['Gemfile.lock'], ['Bump rack from 3.0.0 to 3.1.0']);
+
+  let rootContents;
+  const getContents = () => rootContents ??= getRepoContents(owner, repo);
+  const types = await detectProjectTypes(owner, repo, getContents);
+  const release = await checkPendingRelease(owner, repo, types, undefined, getContents);
+
+  assert.equal(release.status, 'pending');
+  assert.equal(rootCalls.length, 1);
 });
 
 ['rack', 'prettier'].forEach((pkg) => {

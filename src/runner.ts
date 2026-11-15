@@ -1,4 +1,4 @@
-import { getDefaultBranch, listOrgRepos } from './github.js';
+import { getDefaultBranch, getRepoContents, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from './issue.js';
@@ -8,6 +8,21 @@ const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, c
 type Dependencies = typeof defaultDependencies;
 
 const REPO_CONCURRENCY = 8;
+
+// Claims indices sequentially so call order stays deterministic, while a bounded number of
+// repositories are in flight at once instead of fully serialized.
+const mapWithConcurrency = async <T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> => {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
 
 export const runChecks = async (deps: Dependencies = defaultDependencies): Promise<void> => {
   const failures: Error[] = [];
@@ -20,15 +35,16 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
     await attempt(`${org}: repository investigation`, failures, async () => {
       const repos = await deps.listOrgRepos(org);
       console.log(`  Found ${repos.length} repositories`);
-      totalRepos += repos.length;
 
-      const issuesByRepo: PendingIssue[][] = repos.map(() => []);
-      await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo, index) => {
+      const issuesByRepo = await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo) => {
+        totalRepos++;
+        const issues: PendingIssue[] = [];
         await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
-          issuesByRepo[index] = await checkRepo(repo, deps, failures);
+          issues.push(...await checkRepo(repo, deps, failures));
         });
+        return issues;
       });
-      issuesByRepo.forEach((issues) => allIssues.push(...issues));
+      allIssues.push(...issuesByRepo.flat());
     });
   }
 
@@ -59,19 +75,6 @@ const attempt = async (target: string, failures: Error[], action: () => Promise<
   }
 };
 
-// Claims indices strictly in increasing order so repositories start their investigation
-// in the same order as the original sequential loop, keeping call order deterministic.
-const mapWithConcurrency = async <T>(items: T[], concurrency: number, fn: (item: T, index: number) => Promise<void>): Promise<void> => {
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const index = next++;
-      await fn(items[index], index);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-};
-
 const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 
 const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
@@ -80,6 +83,8 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
   let defaultBranch: Promise<string | null> | undefined;
   const getBranch = () => defaultBranch ??= listedBranch
     ? Promise.resolve(listedBranch) : getDefaultBranch(owner, repo);
+  let rootContents: Promise<string[]> | undefined;
+  const getContents = () => rootContents ??= getRepoContents(owner, repo);
 
   console.log(`\n📦 ${repo}`);
 
@@ -94,10 +99,10 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
   });
 
   await attempt(`${fullName}: release investigation`, failures, async () => {
-    const projectTypes = await deps.detectProjectTypes(owner, repo);
+    const projectTypes = await deps.detectProjectTypes(owner, repo, getContents);
     log('📋', `Types: ${projectTypes.join(', ')}`);
 
-    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch);
+    const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch, getContents);
     if (releaseStatus.status === 'no-tag') {
       log('⚪', 'Release: no tags found');
     } else if (releaseStatus.status === 'up-to-date') {
@@ -110,4 +115,3 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
 
   return issues;
 };
-

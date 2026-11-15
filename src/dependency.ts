@@ -15,7 +15,8 @@ type DependencyLoader = (
 export const createDependencyChecker = (
   owner: string,
   repo: string,
-  type: ProjectType | ProjectType[]
+  type: ProjectType | ProjectType[],
+  getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file = (path: string): Promise<string> => {
@@ -25,9 +26,7 @@ export const createDependencyChecker = (
   const types = Array.isArray(type) ? type : [type];
   let checkers: Promise<DependencyChecker[]> | undefined;
   return async (pkg) => {
-    checkers ??= Promise.all(types.map((type) =>
-      loaders[type](file, () => getRepoContents(owner, repo))
-    ));
+    checkers ??= Promise.all(types.map((type) => loaders[type](file, getContents)));
     const results = await Promise.all((await checkers).map((check) => check(pkg)));
     return results.some(Boolean);
   };
@@ -37,8 +36,9 @@ export const isProductionDependency = (
   owner: string,
   repo: string,
   pkg: string,
-  type: ProjectType | ProjectType[]
-): Promise<boolean> => createDependencyChecker(owner, repo, type)(pkg);
+  type: ProjectType | ProjectType[],
+  getContents?: () => Promise<string[]>
+): Promise<boolean> => createDependencyChecker(owner, repo, type, getContents)(pkg);
 
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
