@@ -1,3 +1,5 @@
+import { scanBlockComments } from './block-comments.js';
+
 export const swiftDependencies = (content: string): Set<string> => {
   const tokens = swiftTokens(content);
   return new Set(tokens.flatMap((token, index) =>
@@ -8,19 +10,10 @@ export const swiftDependencies = (content: string): Set<string> => {
 
 const swiftTokens = (content: string): string[] => {
   const code = /\s+|\/\/[^\r\n]*|\/\*|"(?:\\.|[^"\\])*"|[A-Za-z_]\w*|[^\s]/gy;
-  const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
   const tokens: string[] = [];
-  let commentDepth = 0;
-  let index = 0;
-  while (index < content.length) {
-    const pattern = commentDepth > 0 ? comment : code;
-    pattern.lastIndex = index;
-    const token = pattern.exec(content)![0];
-    index = pattern.lastIndex;
-    if (token === '/*') commentDepth++;
-    else if (token === '*/' && commentDepth > 0) commentDepth--;
-    else if (commentDepth === 0 && !/^\s|^\/\//.test(token)) tokens.push(token);
-  }
+  scanBlockComments(content, code, (token, depth) => {
+    if (depth === 0 && token !== '/*' && !/^\s|^\/\//.test(token)) tokens.push(token);
+  });
   return tokens;
 };
 
