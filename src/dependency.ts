@@ -117,5 +117,5 @@ const loaders: Record<ProjectType, DependencyLoader> = {
   kotlin: loadKotlin,
   go: loadGo,
   swift: loadSwift,
-  unknown: async () => async () => true,
+  unknown: async () => async () => false,
 };

@@ -154,3 +154,22 @@ test('shares the root listing between project detection and the Ruby dependency 
     if (pkg === 'rack') assert.deepEqual(release.dependencyUpdates, [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }]);
   });
 });
+
+['Bump', 'chore(deps): bump'].forEach((prefix) => {
+  [false, true].forEach((sourceChanged) => {
+    test(`unknown ecosystems ignore ${prefix} updates with source changes: ${sourceChanged}`, async () => {
+      mockManifests({ 'pyproject.toml': '', 'README.md': '' });
+      const files = ['.github/workflows/test.yml', '.pre-commit-config.yaml', 'docs/requirements.txt'];
+      if (sourceChanged) files.push('src/main.py');
+      mockReleaseComparison(files, [`${prefix} actions/checkout from 6 to 7`]);
+      const types = await detectProjectTypes(owner, repo);
+      assert.deepEqual(types, ['unknown']);
+      assert.deepEqual(await checkPendingRelease(owner, repo, types), sourceChanged ? {
+        status: 'pending',
+        changedSources: ['src/main.py'],
+        dependencyUpdates: [],
+        compareUrl: `https://github.com/${owner}/${repo}/compare/v1.0.0...main`,
+      } : { status: 'up-to-date' });
+    });
+  });
+});

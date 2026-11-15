@@ -208,7 +208,7 @@ cases.forEach(([type, manifests, paths], index) => {
     const check = createDependencyChecker('owner', 'repo', type);
     const results = await Promise.all(bumps.map(({ pkg }) => check(pkg)));
     const hasDependencies = Object.keys(manifests).length > 0 && type !== 'node';
-    assert.deepEqual(results, bumps.map(({ pkg }) => type === 'unknown' || (hasDependencies && pkg !== 'dev')));
+    assert.deepEqual(results, bumps.map(({ pkg }) => hasDependencies && pkg !== 'dev'));
     assert.deepEqual(calls.map(({ path }) => path), paths);
   });
 });
