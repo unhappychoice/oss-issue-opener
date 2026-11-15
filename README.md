@@ -19,6 +19,10 @@ Weekly automated issue opener for OSS maintenance tasks.
 | Go | `go.mod` | `require` |
 | Swift | `Package.swift` | `.package()` |
 
+Repositories without any recognized root manifest use the `unknown` fallback: only
+changes under `src/` qualify for pending release detection. Dependency bump commits
+are not treated as production dependency updates.
+
 ## Target Organizations
 
 - unhappychoice
@@ -49,6 +53,10 @@ Archived, private and forked repositories are skipped.
 There are no CLI options or configuration files, and `.env` files are not loaded.
 To change the scanned accounts or issue destination, edit `src/types.ts` and rebuild
 with `npm run build`.
+
+Project types are detected automatically from the root manifests listed under
+Supported Languages. There is no override for an unrecognized ecosystem; its
+`unknown` fallback checks `src/` changes only and ignores dependency bump commits.
 
 Both `npm run start` and `npm run check` run the scan and create issues;
 `npm run check` builds first. There is no dry-run mode. Existing open issues with
@@ -82,7 +90,7 @@ results remain. The decision does not depend on workflow execution order.
 1. Gets the latest non-draft release tag (falling back to the latest repository tag when no published release exists); skips repositories without a tag
 2. Compares that tag with the default branch
 3. Detects all ecosystems with root manifests and checks source file changes using each ecosystem's source paths (`src/` or `lib/` for Node/TypeScript). When no recognized manifest (`Cargo.toml`, `package.json`, `*.gemspec`/`Gemfile`, `build.gradle(.kts)`, `go.mod`, `Package.swift`) is found, the repository is treated as an unrecognized ecosystem: any change under `src/` counts as a source change
-4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`) and checks whether each bumped package is a production dependency in any detected ecosystem. For an unrecognized ecosystem, every bumped package is treated as a production dependency, since the tool cannot tell which dependencies are production versus development
+4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`) and checks whether each bumped package is a production dependency in any detected ecosystem. For an unrecognized ecosystem, dependency bumps are ignored because no recognized manifest provides evidence of a production dependency
 5. Creates an issue if source files changed or production dependencies were updated, including both reasons when applicable
 
 Source changes alone qualify: for example, a change to `src/index.ts` with the commit
