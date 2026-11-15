@@ -74,6 +74,29 @@ test('ignores bump text outside a dependency update subject', async (t) => {
   });
 });
 
+[
+  [['pkg/foo_test.go'], 'up-to-date'],
+  [['vendor/golang.org/x/text/width/tables.go'], 'up-to-date'],
+  [['pkg/foo.go'], 'pending'],
+].forEach(([files, expected]) => {
+  test(`checks Go source changes for ${files.join(', ')}`, async (t) => {
+    const message = 'test: add edge case coverage';
+    stubRepository(t, message);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+      data: {
+        files: files.map((filename) => ({ filename })),
+        commits: [{ commit: { message } }],
+      },
+    }));
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'go'), expected === 'pending' ? {
+      status: 'pending',
+      reasons: `**Source code changes:**\n${files.map((path) => `- \`${path}\`\n`).join('')}`,
+      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    } : { status: 'up-to-date' });
+  });
+});
+
 test('detects source changes without dependency updates', async (t) => {
   stubRepository(t, 'fix: handle empty input');
   t.mock.method(getOctokit().repos, 'compareCommits', async () => ({

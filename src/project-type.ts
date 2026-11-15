@@ -29,7 +29,7 @@ export const getSourcePatterns = (type: ProjectType): RegExp => {
     node: /^(src|lib)\//,
     rust: /^src\//,
     kotlin: /^(src|app\/src)\//,
-    go: /\.go$/,
+    go: /^(?!vendor\/).*(?<!_test)\.go$/,
     swift: /^Sources\//,
     unknown: /^src\//,
   };
