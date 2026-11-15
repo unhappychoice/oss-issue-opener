@@ -7,6 +7,23 @@ import { ORGS, type Repository, type PendingIssue } from './types.js';
 const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, checkPendingRelease, createIssuesInBatch };
 type Dependencies = typeof defaultDependencies;
 
+const REPO_CONCURRENCY = 8;
+
+// Claims indices sequentially so call order stays deterministic, while a bounded number of
+// repositories are in flight at once instead of fully serialized.
+const mapWithConcurrency = async <T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> => {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
+
 export const runChecks = async (deps: Dependencies = defaultDependencies): Promise<void> => {
   const failures: Error[] = [];
   const allIssues: PendingIssue[] = [];
@@ -19,13 +36,15 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
       const repos = await deps.listOrgRepos(org);
       console.log(`  Found ${repos.length} repositories`);
 
-      for (const repo of repos) {
+      const issuesByRepo = await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo) => {
         totalRepos++;
+        const issues: PendingIssue[] = [];
         await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
-          const issues = await checkRepo(repo, deps, failures);
-          allIssues.push(...issues);
+          issues.push(...await checkRepo(repo, deps, failures));
         });
-      }
+        return issues;
+      });
+      allIssues.push(...issuesByRepo.flat());
     });
   }
 
