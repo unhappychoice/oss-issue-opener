@@ -93,9 +93,28 @@ test('ignores bump text outside a dependency update subject', async (t) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'go'), expected === 'pending' ? {
       status: 'pending',
-      reasons: `**Source code changes:**\n${files.map((path) => `- \`${path}\`\n`).join('')}`,
+      changedSources: files,
+      dependencyUpdates: [],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
+  });
+});
+
+test('passes through Markdown-significant characters in changed filenames unescaped', async (t) => {
+  stubRepository(t, 'fix: handle empty input');
+  const malicious = 'src/x`](https://evil.example/malware)';
+  t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
+    data: {
+      files: [{ filename: malicious }],
+      commits: [{ commit: { message: 'fix: handle empty input' } }],
+    },
+  }));
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'pending',
+    changedSources: [malicious],
+    dependencyUpdates: [],
+    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
   });
 });
 
