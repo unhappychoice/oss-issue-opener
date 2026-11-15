@@ -9,6 +9,9 @@ concurrency:
   group: oss-issue-opener-notifications
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest

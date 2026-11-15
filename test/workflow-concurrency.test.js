@@ -8,3 +8,8 @@ test('scheduled and manual scans share a fixed concurrency group without cancell
   assert.match(workflow, /^  workflow_dispatch:/m);
   assert.match(workflow, /^concurrency:\n  group: oss-issue-opener-notifications\n  cancel-in-progress: false\n/m);
 });
+
+test('weekly workflow restricts the default GITHUB_TOKEN to least-privilege read access', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/weekly.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /^permissions:\n  contents: read\n/m);
+});
