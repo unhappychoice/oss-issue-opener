@@ -79,6 +79,9 @@ gh workflow run weekly.yml
 
 ## How it works
 
+For module responsibilities, execution flow, and contributor entry points, see
+the [architecture guide](docs/architecture.md).
+
 ### CI Failure Check
 Combines commit statuses and check runs for the default branch, excluding results whose names
 contain `codecov` (case-insensitive). If any remaining result has a failure or error state,
