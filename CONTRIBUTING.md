@@ -2,7 +2,8 @@
 
 ## Development setup
 
-Requires Node.js >= 20.
+Requires Node.js >= 22. Use the Node.js 22 LTS version specified in `.node-version`
+to match the test and weekly workflows.
 
 ```bash
 npm install
