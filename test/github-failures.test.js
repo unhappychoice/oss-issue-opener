@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
-import { getOctokit, initOctokit, listOpenIssues } from '../dist/github.js';
+import {
+  getCheckRuns, getCommitStatus, getDefaultBranch, getLatestRelease,
+  getOctokit, initOctokit, listOpenIssues,
+} from '../dist/github.js';
 import { buildCIFailureIssue, createIssuesInBatch } from '../dist/issue.js';
 
 beforeEach(() => {
@@ -11,6 +14,35 @@ beforeEach(() => {
 afterEach(() => mock.restoreAll());
 
 const pendingIssue = () => buildCIFailureIssue('owner/repo', []);
+
+[
+  ['default branch', 'get', () => getDefaultBranch('owner', 'repo'), null],
+  ['commit statuses', 'getCombinedStatusForRef', () => getCommitStatus('owner', 'repo', 'main'), []],
+  ['latest release', 'listReleases', () => getLatestRelease('owner', 'repo'), null],
+].forEach(([name, method, read, fallback]) => {
+  test(`returns the documented fallback when ${name} retrieval fails`, async () => {
+    const request = mock.method(getOctokit().repos, method, async () => {
+      throw new Error('HTTP 503');
+    });
+
+    assert.deepEqual(await read(), fallback);
+    assert.equal(request.mock.callCount(), 1);
+    assert.equal(request.mock.calls[0].arguments[0].owner, 'owner');
+    assert.equal(request.mock.calls[0].arguments[0].repo, 'repo');
+  });
+});
+
+test('returns no check runs when their retrieval fails', async () => {
+  const request = mock.method(getOctokit(), 'paginate', async () => {
+    throw new Error('HTTP 503');
+  });
+
+  assert.deepEqual(await getCheckRuns('owner', 'repo', 'main'), []);
+  assert.equal(request.mock.callCount(), 1);
+  assert.deepEqual(request.mock.calls[0].arguments, [
+    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main' },
+  ]);
+});
 
 const mockRelease = () => {
   mock.method(getOctokit().repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
