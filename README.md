@@ -64,6 +64,8 @@ the same title and matching `ci-failure` or `pending-release` label are skipped.
 
 ## Local Development
 
+For a complete first-run walkthrough, see the [getting started guide](docs/getting-started.md).
+
 ```bash
 npm install
 npm run build
