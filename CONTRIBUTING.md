@@ -17,6 +17,10 @@ npm test        # build, then run the test suite (node --test)
 npm run test:coverage # build and test with coverage (requires Node.js >= 22)
 ```
 
+The build enables TypeScript strict mode, exact optional property types, and checks
+for missing return paths, switch fallthrough, unused locals, and unused parameters.
+These checks also run in CI because the coverage command builds first.
+
 The pull request and `main` branch CI job runs `npm run test:coverage` on Node.js 22.
 Node's built-in coverage report appears in the job log and covers executed compiled
 production modules under `dist/`, excluding tests and dependencies. The suite fails
