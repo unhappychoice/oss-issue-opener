@@ -8,7 +8,7 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
   return statements.some((tokens) => {
     if (tokens[0] === 'end') blocks.pop();
     const excluded = blocks.includes(true);
-    if (tokens.includes('do') || /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
+    if (tokens.includes('do') || /^(def|if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
       blocks.push(tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1)));
     }
     if (tokens[0] !== 'gem') return false;
