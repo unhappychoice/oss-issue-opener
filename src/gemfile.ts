@@ -8,13 +8,24 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
   return statements.some((tokens) => {
     if (tokens[0] === 'end') blocks.pop();
     const excluded = blocks.includes(true);
-    if (tokens.includes('do') || /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
+    if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+      /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
       blocks.push(tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1)));
     }
     if (tokens[0] !== 'gem') return false;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
     return unquote(tokens[nameIndex] ?? '') === pkg && !excluded &&
       !hasInlineExcludedGroup(tokens.slice(nameIndex + 1));
+  });
+};
+
+const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };
 

@@ -163,6 +163,9 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
+  ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
+  ["group :development do\n  def test_helper\n    def nested_helper\n      true\n    end\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
+  ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", true],
   ["gem \\\n  'rack', '~> 3.0'", true],
   ["gem 'rubocop', \\\n  group: :development", false, 'rubocop'],
   ["message = <<~TEXT\ngem 'rack'\nTEXT\ngroup :development do\n  gem 'rack'\nend", false],

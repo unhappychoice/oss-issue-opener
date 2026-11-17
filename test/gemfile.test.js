@@ -142,3 +142,34 @@ test('ignores heredoc openers in strings and comments', () => {
   const gemfile = "message = '<<TEXT' # <<OTHER\ngem 'rake'";
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
+
+[':test', ':development', ':development, :test'].forEach((group) => {
+  ['def test_helper\n  true\nend',
+    'def test_helper = true',
+    'def self.test_helper = true',
+    'def test_helper(value = true) = value',
+    'def test_helper = (true)',
+    'def test_helper(value = true)\n  value\nend',
+    'def test_helper() end',
+    'def test_helper value = true\n  value\nend',
+    'def test_helper=(value)\n  @value = value\nend',
+    'def self.test_helper=(value)\n  @value = value\nend',
+    'def test_helper\n  def nested_helper\n    true\n  end\nend',
+    'def self.test_helper; true; end'].forEach((definition) => {
+    const gemfile = `group ${group} do
+${definition}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    test(`preserves ${group} scope across ${definition}`, async (t) => {
+      t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+        data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
+      }));
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(await isProductionDependency('owner', 'repo', 'rspec', 'ruby'), false);
+      assert.equal(await isProductionDependency('owner', 'repo', 'rack', 'ruby'), true);
+    });
+  });
+});
