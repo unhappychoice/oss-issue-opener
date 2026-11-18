@@ -17,8 +17,9 @@ setup and check commands, see [Contributing](../CONTRIBUTING.md).
    so those lookups can be reused within the repository investigation.
 4. [checker.ts](../src/checker.ts) combines commit statuses and check runs for the
    CI result. For releases, it compares the latest release tag (or fallback tag)
-   with the default branch, checks source paths, and checks dependency bump commit
-   messages against production dependencies.
+   with the default branch and checks source paths. For each dependency bump commit,
+   it fetches changed paths by SHA and checks production dependencies when those
+   paths identify exactly one detected ecosystem.
 5. [issue.ts](../src/issue.ts) builds `PendingIssue` objects. After all accounts
    have been scanned, the runner submits the collected issues as one batch.
    The batch sorts by issue type and repository name, reads existing open issues
@@ -73,7 +74,9 @@ When changing error handling, inspect both the API helper and its caller.
   [issue.test.js](../test/issue.test.js), and
   [issue-pagination.test.js](../test/issue-pagination.test.js).
 
-`npm test` compiles `src/` into `dist/` and runs the Node.js test suite, whose tests
-import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
-runs it on pull requests. The [weekly workflow](../.github/workflows/weekly.yml)
-runs the same checks before starting the scanner.
+Both test commands compile `src/` into `dist/` and run the Node.js test suite,
+whose tests import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
+runs `npm run lint`, `npm run test:coverage` on pull requests and pushes to `main`, enforcing the
+coverage thresholds defined in [package.json](../package.json). The
+[weekly workflow](../.github/workflows/weekly.yml) runs `npm test` followed by
+`npm run start`.

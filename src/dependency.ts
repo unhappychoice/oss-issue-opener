@@ -16,7 +16,7 @@ export const createDependencyChecker = (
   owner: string,
   repo: string,
   type: ProjectType | ProjectType[],
-  getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
+  getContents?: () => Promise<string[]>
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file = (path: string): Promise<string> => {
@@ -26,7 +26,9 @@ export const createDependencyChecker = (
   const types = Array.isArray(type) ? type : [type];
   let checkers: Promise<DependencyChecker[]> | undefined;
   return async (pkg) => {
-    checkers ??= Promise.all(types.map((type) => loaders[type](file, getContents)));
+    checkers ??= Promise.all(types.map((type) => loaders[type](file,
+      getContents ?? (async () => type === 'ruby' ? getRepoContents(owner, repo) : [])
+    )));
     const results = await Promise.all((await checkers).map((check) => check(pkg)));
     return results.some(Boolean);
   };
@@ -70,10 +72,15 @@ const loadRust: DependencyLoader = async (file) => {
   const content = await file('Cargo.toml');
   try {
     const manifest = parse(content);
+    const workspaceDependencies = asTable(asTable(manifest.workspace).dependencies);
     const tables = [manifest, ...Object.values(asTable(manifest.target))];
     const dependencies = tables.map((table) => asTable(asTable(table).dependencies));
     const packages = new Set(dependencies.flatMap((table) =>
-      Object.entries(table).map(([name, declaration]) => asTable(declaration).package ?? name)
+      Object.entries(table).map(([name, declaration]) => {
+        const dependency = asTable(declaration);
+        const resolved = dependency.workspace === true ? asTable(workspaceDependencies[name]) : dependency;
+        return resolved.package ?? name;
+      })
     ));
     return async (pkg) => packages.has(pkg);
   } catch {
@@ -81,8 +88,11 @@ const loadRust: DependencyLoader = async (file) => {
   }
 };
 
-const loadKotlin: DependencyLoader = async (file) => {
-  const content = await file('build.gradle') || await file('build.gradle.kts');
+const loadKotlin: DependencyLoader = async (file, contents) => {
+  const files = await contents();
+  const kotlinOnly = files.includes('build.gradle.kts') && !files.includes('build.gradle');
+  const groovy = kotlinOnly ? '' : await file('build.gradle');
+  const content = groovy || await file('build.gradle.kts');
   const coordinates = gradleDependencies(content);
   return async (pkg) => coordinates.some((coordinate) =>
     coordinate === pkg || coordinate.startsWith(`${pkg}:`)

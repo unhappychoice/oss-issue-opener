@@ -4,6 +4,7 @@ import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, initOctokit, listOrgRepos } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
+import { mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -38,6 +39,48 @@ const expectFailures = async (deps, expected) => {
     return true;
   });
 };
+
+test('preserves GitHub read failures and waits for the remaining notifications', async () => {
+  const checksFailure = new Error('Check runs HTTP 503');
+  const releasesFailure = new Error('Releases HTTP 503');
+  initOctokit('test-token');
+  const client = getOctokit();
+  mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => ({ data: { statuses: [
+    { state: repo === 'broken' ? 'success' : 'failure', context: 'build' },
+  ] } }));
+  mock.method(client, 'paginate', async (_route, { repo }) => {
+    if (repo === 'broken') throw checksFailure;
+    return [];
+  });
+  mock.method(client.repos, 'listReleases', async ({ repo }) => {
+    if (repo === 'first') throw releasesFailure;
+    return { data: [{ tag_name: 'v1' }] };
+  });
+  mock.method(client.repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'src/example.ts' }], commits: [],
+  } }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+  const submit = deps.createIssuesInBatch;
+  deps.createIssuesInBatch = async (issues) => {
+    await new Promise((resolve) => setImmediate(resolve));
+    await submit(issues);
+  };
+
+  await assert.rejects(runChecks(deps), (error) => {
+    assert.ok(error instanceof AggregateError);
+    const causes = new Map(error.errors.map(({ message, cause }) => [message, cause]));
+    assert.equal(error.errors.length, 2);
+    assert.equal(causes.get('Failed owner/broken: CI investigation'), checksFailure);
+    assert.equal(causes.get('Failed owner/first: release investigation'), releasesFailure);
+    assert.deepEqual(batches.map((issues) => issues.map(({ repo, type }) => [repo, type])), [[
+      ['owner/first', 'ci-failure'],
+      ['owner/broken', 'pending-release'],
+      ['owner/last', 'ci-failure'], ['owner/last', 'pending-release'],
+    ]]);
+    return true;
+  });
+});
 
 test('creates accumulated and same-repository CI notifications after a comparison failure', async () => {
   const cause = new Error('comparison HTTP 404');
@@ -77,7 +120,10 @@ test('runs the CI and release investigations for a repository concurrently', asy
       resolveCI();
       return ['node'];
     },
-    checkPendingRelease: async () => ({ status: 'up-to-date' }),
+    checkPendingRelease: async (_owner, _repo, getProjectTypes) => {
+      await getProjectTypes();
+      return { status: 'up-to-date' };
+    },
   });
 
   await runChecks(deps);
@@ -98,10 +144,11 @@ test('still checks releases when CI investigation fails', async () => {
 
 test('preserves CI notifications when project detection fails', async () => {
   const cause = new Error('Project detection unavailable');
-  const release = mock.fn(async () => { throw new Error('Should not run'); });
+  const repos = stubInvestigations();
+  const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Project detection failed'));
   const { deps, batches, checked } = setup({
     detectProjectTypes: async () => { throw cause; },
-    checkPendingRelease: release,
+    checkPendingRelease,
   });
 
   await expectFailures(deps, ['first', 'broken', 'last'].map((repo) => [
@@ -110,7 +157,7 @@ test('preserves CI notifications when project detection fails', async () => {
 
   assert.deepEqual(checked, ['first', 'broken', 'last']);
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
-  assert.equal(release.mock.callCount(), 0);
+  assert.equal(compare.mock.callCount(), 0);
 });
 
 test('continues other organizations and reports investigation and batch failures together', async () => {
@@ -182,10 +229,10 @@ test('reports failures even when there are no notifications to create', async ()
   assert.equal(create.mock.callCount(), 0);
 });
 
-const stubInvestigations = () => {
+const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   initOctokit('test-token');
   const client = getOctokit();
-  mock.method(client.repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+  mock.method(client.repos, 'listReleases', async () => ({ data: releases }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
@@ -249,28 +296,52 @@ test('shares failed branch lookups without retrying or creating notifications', 
 });
 
 test('passes every detected ecosystem to the release check', async () => {
-  const release = mock.fn(async () => ({ status: 'up-to-date' }));
+  const release = mock.fn(async (_owner, _repo, getProjectTypes) => {
+    assert.deepEqual(await getProjectTypes(), ['node', 'ruby']);
+    return { status: 'up-to-date' };
+  });
   const { deps } = setup({
     detectProjectTypes: async () => ['node', 'ruby'],
     checkPendingRelease: release,
   });
   await runChecks(deps);
   assert.equal(release.mock.callCount(), 3);
-  release.mock.calls.forEach(({ arguments: args }) => {
-    assert.deepEqual(args[2], ['node', 'ruby']);
-  });
 });
 
-test('fetches the root listing once per repository when Ruby dependency bumps are pending', async () => {
-  const repos = stubInvestigations();
+test('skips root listings when neither releases nor tags provide a baseline', async () => {
+  const repos = stubInvestigations([]);
+  const tags = mock.method(repos, 'listTags', async () => ({ data: [] }));
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({
+    checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await runChecks(deps);
+
+  assert.equal(repos.listReleases.mock.callCount(), 3);
+  assert.equal(tags.mock.callCount(), 3);
+  assert.equal(contents.mock.callCount(), 0);
+  assert.equal(console.log.mock.calls.filter(({ arguments: [line] }) => line.includes('Release: no tags found')).length, 3);
+  assert.deepEqual(batches, []);
+});
+
+test('reuses one root listing per repository after finding a tag baseline', async () => {
+  const repos = stubInvestigations([]);
+  const tags = mock.method(repos, 'listTags', async () => ({ data: [{ name: 'v1' }] }));
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mockCommitFiles(mock, ['Gemfile.lock']);
   mock.method(repos, 'compareCommits', async () => ({ data: {
     files: [{ filename: 'Gemfile.lock' }],
-    commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
   } }));
   const rootCalls = [];
-  mock.method(repos, 'getContent', async ({ path }) => {
-    if (path === '') rootCalls.push(path);
+  mock.method(repos, 'getContent', async ({ repo, path }) => {
+    if (path === '') {
+      assert.ok(tags.mock.calls.some(({ arguments: [params] }) => params.repo === repo));
+      rootCalls.push(repo);
+    }
     return {
       data: path === ''
         ? [{ name: 'Gemfile' }]
@@ -281,8 +352,43 @@ test('fetches the root listing once per repository when Ruby dependency bumps ar
 
   await runChecks(deps);
 
-  assert.equal(rootCalls.length, 3);
+  assert.deepEqual(rootCalls.sort(), ['broken', 'first', 'last']);
   assert.equal(batches[0].filter(({ type }) => type === 'pending-release').length, 3);
+});
+
+const groovyBuild = "dependencies { implementation 'org.example:groovy:1.1' }";
+const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
+[
+  ['Kotlin DSL only', { 'build.gradle.kts': kotlinBuild }, ['build.gradle.kts'], 'kotlin'],
+  ['Groovy only', { 'build.gradle': groovyBuild }, ['build.gradle'], 'groovy'],
+  ['both manifests', { 'build.gradle': groovyBuild, 'build.gradle.kts': kotlinBuild }, ['build.gradle'], 'groovy'],
+  ['empty Groovy manifest', { 'build.gradle': '', 'build.gradle.kts': kotlinBuild }, ['build.gradle', 'build.gradle.kts'], 'kotlin'],
+].forEach(([name, manifests, paths, expectedDependency]) => {
+  test(`scans Gradle dependency bumps with ${name}`, async () => {
+    const repos = stubInvestigations();
+    mockCommitFiles(mock, paths);
+    mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: Object.keys(manifests).map((filename) => ({ filename })),
+      commits: ['groovy', 'kotlin'].map((pkg) => ({ sha: pkg, commit: { message: `Bump org.example:${pkg} from 1.0 to 1.1` } })),
+    } }));
+    const content = mock.method(repos, 'getContent', async ({ path }) => {
+      if (path === '') return { data: Object.keys(manifests).map((name) => ({ name })) };
+      if (!Object.hasOwn(manifests, path)) throw new Error('Not found');
+      return { data: { content: Buffer.from(manifests[path]).toString('base64') } };
+    });
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    await runChecks(deps);
+
+    assert.deepEqual(content.mock.calls.map(({ arguments: [request] }) => request.path), ['', ...paths]);
+    const releases = batches.flat().filter(({ type }) => type === 'pending-release');
+    assert.equal(releases.length, 1);
+    assert.deepEqual(releases[0].body.match(/org\.example:\w+/g), [`org.example:${expectedDependency}`]);
+  });
 });
 
 ['User', 'Organization'].forEach((accountType) => {
