@@ -40,7 +40,7 @@ test('returns no check runs when their retrieval fails', async () => {
   assert.deepEqual(await getCheckRuns('owner', 'repo', 'main'), []);
   assert.equal(request.mock.callCount(), 1);
   assert.deepEqual(request.mock.calls[0].arguments, [
-    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main' },
+    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main', per_page: 100 },
   ]);
 });
 
