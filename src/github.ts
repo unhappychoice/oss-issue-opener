@@ -182,7 +182,7 @@ export const listOpenIssues = async (
     state: 'open',
     per_page: 100,
   });
-  return data.map((i) => ({ title: i.title, number: i.number }));
+  return data.filter((i) => !i.pull_request).map((i) => ({ title: i.title, number: i.number }));
 };
 
 export const createIssue = async (
