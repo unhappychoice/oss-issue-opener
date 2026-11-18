@@ -4,6 +4,7 @@ import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, initOctokit, listOrgRepos } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
+import { mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -264,9 +265,10 @@ test('passes every detected ecosystem to the release check', async () => {
 test('fetches the root listing once per repository when Ruby dependency bumps are pending', async () => {
   const repos = stubInvestigations();
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mockCommitFiles(mock, ['Gemfile.lock']);
   mock.method(repos, 'compareCommits', async () => ({ data: {
     files: [{ filename: 'Gemfile.lock' }],
-    commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
   } }));
   const rootCalls = [];
   mock.method(repos, 'getContent', async ({ path }) => {

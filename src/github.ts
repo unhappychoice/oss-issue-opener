@@ -138,13 +138,28 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
     .filter((path) => trees[0].get(path) !== trees[1].get(path));
 };
 
+export const getCommitFiles = async (owner: string, repo: string, ref: string): Promise<string[]> => {
+  const perPage = 100;
+  const fileLimit = 3000;
+  const paths: string[] = [];
+  for (let page = 1; ; page++) {
+    const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
+    if (!data.files) return [];
+    paths.push(...data.files.map(({ filename }) => filename));
+    if (paths.length >= fileLimit) return [];
+    if (!headers?.link?.includes('rel="next"')) return paths;
+  }
+};
+
+export type ComparedCommit = { sha: string; message: string };
+
 export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
   head: string
-): Promise<{ files: string[]; commitMessages: string[] }> => {
-  const result = { files: [] as string[], commitMessages: [] as string[] };
+): Promise<{ files: string[]; commits: ComparedCommit[] }> => {
+  const result = { files: [] as string[], commits: [] as ComparedCommit[] };
   let needsTreeComparison = false;
   let baseTree: string | undefined;
   let headTree: string | undefined;
@@ -159,7 +174,7 @@ export const compareCommits = async (
     if (page === 1) result.files = [...new Set(data.files?.flatMap((f) =>
       f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
     ) ?? [])];
-    result.commitMessages.push(...data.commits.map((c) => c.commit.message));
+    result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
     if (data.commits.length < 100) {
       if (needsTreeComparison) result.files = await compareTrees(owner, repo, baseTree, headTree);
       return result;
