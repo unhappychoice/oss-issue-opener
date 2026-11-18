@@ -147,26 +147,25 @@ export const compareCommits = async (
   base: string,
   head: string
 ): Promise<{ files: string[]; commits: ComparedCommit[] }> => {
+  const { repos } = getOctokit();
+  const [{ data: baseCommit }, { data: headCommit }] = await Promise.all([
+    repos.getCommit({ owner, repo, ref: base }),
+    repos.getCommit({ owner, repo, ref: head }),
+  ]);
+  const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
   const result = { files: [] as string[], commits: [] as ComparedCommit[] };
-  let needsTreeComparison = false;
-  let baseTree: string | undefined;
-  let headTree: string | undefined;
+
   for (let page = 1; ; page++) {
-    const { data } = await getOctokit().repos.compareCommits({ owner, repo, base, head, per_page: 100, page });
+    const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
     if (page === 1) {
-      needsTreeComparison = (data.files?.length ?? 0) >= 300;
-      baseTree = data.merge_base_commit?.commit.tree.sha;
-      headTree = baseTree;
+      result.files = (data.files?.length ?? 0) >= 300
+        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, headCommit.commit?.tree?.sha)
+        : [...new Set(data.files?.flatMap((f) =>
+          f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
+        ) ?? [])];
     }
-    if (data.commits.length > 0) headTree = data.commits.at(-1)?.commit.tree?.sha;
-    if (page === 1) result.files = [...new Set(data.files?.flatMap((f) =>
-      f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
-    ) ?? [])];
     result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-    if (data.commits.length < 100) {
-      if (needsTreeComparison) result.files = await compareTrees(owner, repo, baseTree, headTree);
-      return result;
-    }
+    if (data.commits.length < 100) return result;
   }
 };
 

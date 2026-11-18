@@ -3,12 +3,13 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import {
   getCheckRuns, getCommitStatus, getDefaultBranch, getLatestRelease,
-  getOctokit, initOctokit, listOpenIssues,
+  getOctokit, listOpenIssues,
 } from '../dist/github.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
+import { initMockOctokit } from './helpers/github.mjs';
 
 beforeEach(() => {
-  initOctokit('test-token');
+  initMockOctokit('test-token');
   mock.method(console, 'log', () => {});
   mock.method(console, 'error', () => {});
 });
