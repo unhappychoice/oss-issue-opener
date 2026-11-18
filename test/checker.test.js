@@ -50,8 +50,20 @@ test('ignores bump text outside a dependency update subject', async (t) => {
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
 });
 
-['dependencies', 'dev-dependencies', 'build-dependencies'].forEach((kind) => {
-  test(`checks Rust aliased ${kind} updates without source changes`, async (t) => {
+[
+  ...['dependencies', 'dev-dependencies', 'build-dependencies'].map((kind) => [
+    `aliased ${kind}`,
+    `[${kind}]\nserde_alias = { package = "serde", version = "1.0.219" }`,
+    kind === 'dependencies',
+  ]),
+  [
+    'inherited production aliases',
+    '[dependencies]\nserde_alias = { workspace = true }\n' +
+      '[workspace.dependencies]\nserde_alias = { package = "serde", version = "1.0.219" }',
+    true,
+  ],
+].forEach(([description, manifest, isProduction]) => {
+  test(`checks Rust ${description} updates without source changes`, async (t) => {
     const message = 'Bump serde from 1.0.218 to 1.0.219';
     stubRepository(t, message);
     t.mock.method(getOctokit().repos, 'compareCommits', async () => ({
@@ -61,12 +73,10 @@ test('ignores bump text outside a dependency update subject', async (t) => {
       },
     }));
     t.mock.method(getOctokit().repos, 'getContent', async () => ({
-      data: { content: Buffer.from(
-        `[${kind}]\nserde_alias = { package = "serde", version = "1.0.219" }`
-      ).toString('base64') },
+      data: { content: Buffer.from(manifest).toString('base64') },
     }));
 
-    const expected = kind === 'dependencies' ? {
+    const expected = isProduction ? {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'serde', from: '1.0.218', to: '1.0.219' }],
