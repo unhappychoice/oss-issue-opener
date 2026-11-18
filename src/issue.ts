@@ -80,18 +80,24 @@ const sortIssues = (issues: PendingIssue[]): PendingIssue[] =>
 export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void> => {
   const sorted = sortIssues(issues);
   const existingByLabel = new Map<IssueType, Set<string>>();
+  const failures: Error[] = [];
 
-  for (const type of ['ci-failure', 'pending-release'] as IssueType[]) {
-    const existing = await listOpenIssues(issueOwner, issueRepo, type);
-    existingByLabel.set(type, new Set(existing.map((i) => i.title)));
+  for (const type of new Set(sorted.map((issue) => issue.type))) {
+    try {
+      const existing = await listOpenIssues(issueOwner, issueRepo, type);
+      existingByLabel.set(type, new Set(existing.map((i) => i.title)));
+    } catch (cause) {
+      failures.push(new Error(`Failed to look up open issues for ${type}`, { cause }));
+      console.error(`  [failed] Looking up open issues for ${type}`, cause);
+    }
   }
 
   console.log('\n=== Creating Issues (sorted by type, then repo) ===\n');
-  const failures: Error[] = [];
 
   for (const issue of sorted) {
     const existing = existingByLabel.get(issue.type);
-    if (existing?.has(issue.title)) {
+    if (!existing) continue;
+    if (existing.has(issue.title)) {
       console.log(`  [skip] ${issue.title} (already exists)`);
       continue;
     }
@@ -107,6 +113,6 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
   }
 
   if (failures.length > 0) {
-    throw new AggregateError(failures, `Failed to create ${failures.length} of ${sorted.length} issues`);
+    throw new AggregateError(failures, `Issue batch failed with ${failures.length} errors`);
   }
 };
