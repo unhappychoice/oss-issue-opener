@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
+import { getOctokit } from '../dist/github.js';
+import { initMockOctokit } from './helpers/github.mjs';
 
 const stubRepository = (manifests, commitMessages = []) => {
-  initOctokit('test');
+  initMockOctokit('test');
   const calls = [];
   Object.assign(getOctokit().repos, {
     getContent: async ({ owner, repo, path }) => {

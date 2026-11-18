@@ -47,7 +47,9 @@ export const checkPendingRelease = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
-  const { files, commitMessages } = await compareCommits(owner, repo, latestTag, defaultBranch);
+  const { files, commitMessages } = await compareCommits(
+    owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
+  );
   if (files.length === 0 && commitMessages.length === 0) return { status: 'up-to-date' };
 
   const types = Array.isArray(projectTypes) ? projectTypes : [projectTypes];

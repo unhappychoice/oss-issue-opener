@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { afterEach, mock, test } from 'node:test';
+import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
+import { getOctokit } from '../dist/github.js';
+import { initMockOctokit } from './helpers/github.mjs';
 
-initOctokit('test-token');
+beforeEach(() => initMockOctokit('test-token'));
 afterEach(() => mock.restoreAll());
 
 const stubGoMod = (content) => {

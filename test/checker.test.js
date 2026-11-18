@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
+import { getOctokit } from '../dist/github.js';
+import { initMockOctokit } from './helpers/github.mjs';
 
-initOctokit('test-token');
+initMockOctokit('test-token');
 
 const prefixes = ['Bump', 'chore(deps): bump', 'fix(deps): bump', 'chore: bump', 'chore(deps)!: bump'];
 

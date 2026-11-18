@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
-import { getOctokit, initOctokit, listOrgRepos } from '../dist/github.js';
+import { getOctokit, listOrgRepos } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
+import { commitSha, initMockOctokit } from './helpers/github.mjs';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -41,7 +42,7 @@ const expectFailures = async (deps, expected) => {
 
 test('creates accumulated and same-repository CI notifications after a comparison failure', async () => {
   const cause = new Error('comparison HTTP 404');
-  initOctokit('test-token');
+  initMockOctokit('test-token');
   mock.method(getOctokit().repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(getOctokit().repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
   const compared = [];
@@ -183,7 +184,7 @@ test('reports failures even when there are no notifications to create', async ()
 });
 
 const stubInvestigations = () => {
-  initOctokit('test-token');
+  initMockOctokit('test-token');
   const client = getOctokit();
   mock.method(client.repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
@@ -209,7 +210,7 @@ test('shares default branches per repository and refreshes them on each scan', a
   assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params),
     [...Array(2)].flatMap(() => ['first', 'broken', 'last'].map((repo) => ({ owner: 'owner', repo }))));
   assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
-    ['main', 'main', 'main', 'next', 'next', 'next']);
+    ['main', 'main', 'main', 'next', 'next', 'next'].map((branch) => commitSha(`heads/${branch}`)));
   batches.forEach((issues, scan) => {
     assert.equal(issues.length, 6);
     issues.filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
@@ -319,7 +320,8 @@ test('fetches the root listing once per repository when Ruby dependency bumps ar
     const branches = [...listed.map(({ default_branch }) => default_branch), ...Array(3).fill('fallback')];
     assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), branches);
     assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), branches);
-    assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head), branches);
+    assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
+      branches.map((branch) => commitSha(`heads/${branch}`)));
     assert.equal(batches[0].length, 206);
     batches[0].filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
       assert.ok(body.includes('[build](https://example.com/build)'));

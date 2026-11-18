@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
-import { getLatestRelease, getOctokit, initOctokit } from '../dist/github.js';
+import { getLatestRelease, getOctokit } from '../dist/github.js';
+import { commitSha, initMockOctokit } from './helpers/github.mjs';
 
-beforeEach(() => initOctokit('test-token'));
+beforeEach(() => initMockOctokit('test-token'));
 
 const draft = { tag_name: 'v2.0.0', draft: true };
 const published = { tag_name: 'v1.0.0', draft: false };
@@ -13,7 +14,7 @@ test('reports source changes against the published release when a draft points t
   t.mock.method(repos, 'listReleases', async () => ({ data: [draft, published] }));
   t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   const compare = t.mock.method(repos, 'compareCommits', async ({ base }) => ({ data: {
-    files: base === published.tag_name ? [{ filename: 'src/index.ts' }] : [],
+    files: base === commitSha(`tags/${published.tag_name}`) ? [{ filename: 'src/index.ts' }] : [],
     commits: [],
   } }));
 
@@ -23,7 +24,7 @@ test('reports source changes against the published release when a draft points t
     dependencyUpdates: [],
     compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
   });
-  assert.equal(compare.mock.calls[0].arguments[0].base, published.tag_name);
+  assert.equal(compare.mock.calls[0].arguments[0].base, commitSha(`tags/${published.tag_name}`));
 });
 
 test('finds a published release on a later page and stops searching', async (t) => {

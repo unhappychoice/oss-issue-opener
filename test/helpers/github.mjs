@@ -1,8 +1,18 @@
+import { createHash } from 'node:crypto';
 import { mock } from 'node:test';
 import { getOctokit, initOctokit } from '../../dist/github.js';
 
+export const commitSha = (ref) => createHash('sha1').update(ref).digest('hex');
+
+export const initMockOctokit = (token) => {
+  initOctokit(token);
+  mock.method(getOctokit().repos, 'getCommit', async ({ ref }) => ({
+    data: { sha: commitSha(ref), commit: { tree: { sha: 'head-tree' } } },
+  }));
+};
+
 export const mockRubyRepository = (gemspec, gemfile = '') => {
-  initOctokit('test-token');
+  initMockOctokit('test-token');
   const repos = getOctokit().repos;
   mock.method(repos, 'getContent', async ({ path }) => ({
     data: path === '' ? [{ name: 'example.gemspec' }] : {
