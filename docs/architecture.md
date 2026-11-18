@@ -76,7 +76,7 @@ When changing error handling, inspect both the API helper and its caller.
 
 Both test commands compile `src/` into `dist/` and run the Node.js test suite,
 whose tests import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
-runs `npm run test:coverage` on pull requests and pushes to `main`, enforcing the
+runs `npm run lint`, `npm run test:coverage` on pull requests and pushes to `main`, enforcing the
 coverage thresholds defined in [package.json](../package.json). The
 [weekly workflow](../.github/workflows/weekly.yml) runs `npm test` followed by
 `npm run start`.
