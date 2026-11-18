@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
-import { compareCommits, getOctokit, initOctokit } from '../dist/github.js';
+import { compareCommits, getCommitFiles, getOctokit, initOctokit } from '../dist/github.js';
+import { mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => initOctokit('test-token'));
 
 const commits = (count) => Array.from({ length: count }, (_, index) => ({
+  sha: `commit-${index}`,
   commit: { message: `docs: update documentation ${index}` },
 }));
 
@@ -18,7 +20,8 @@ const stubRelease = (t) => {
 
 test('detects a production bump after the first 250 commits', async (t) => {
   const repos = stubRelease(t);
-  const messages = [...commits(250), { commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }];
+  mockCommitFiles(t.mock, ['package-lock.json']);
+  const messages = [...commits(250), { sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }];
   const compare = t.mock.method(repos, 'compareCommits', async ({ page, per_page }) => ({
     data: {
       ...(page === 1 ? { files: [{ filename: 'package-lock.json' }] } : {}),
@@ -62,7 +65,7 @@ test('finishes on an empty page after an exactly full page', async (t) => {
 
   assert.deepEqual(await compareCommits('owner', 'repo', 'v1', 'main'), {
     files: [],
-    commitMessages: commits(100).map(({ commit }) => commit.message),
+    commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
   });
   assert.equal(compare.mock.callCount(), 2);
 });
@@ -171,4 +174,29 @@ test('does not fetch trees for file lists below the comparison limit', async (t)
   });
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
   assert.equal(getTree.mock.callCount(), 0);
+});
+
+
+test('retrieves dependency paths from later commit file pages', async (t) => {
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ page }) => ({
+    headers: page === 1 ? { link: '<https://api.github.com/?page=2>; rel="next"' } : {},
+    data: { files: page === 1
+      ? Array.from({ length: 100 }, (_, i) => ({ filename: `docs/${i}.md` }))
+      : [{ filename: 'Gemfile.lock' }] },
+  }));
+  const paths = await getCommitFiles('owner', 'repo', 'bump');
+  assert.equal(paths.length, 101);
+  assert.equal(paths.at(-1), 'Gemfile.lock');
+  assert.deepEqual(getCommit.mock.calls.map(({ arguments: [params] }) => params),
+    [1, 2].map((page) => ({ owner: 'owner', repo: 'repo', ref: 'bump', per_page: 100, page })));
+});
+
+test('discards commit paths when the API file limit may hide changes', async (t) => {
+  const files = Array.from({ length: 100 }, (_, i) => ({ filename: `docs/${i}.md` }));
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async () => ({
+    data: { files },
+    headers: { link: '<https://api.github.com/?page=2>; rel="next"' },
+  }));
+  assert.deepEqual(await getCommitFiles('owner', 'repo', 'bump'), []);
+  assert.equal(getCommit.mock.callCount(), 30);
 });

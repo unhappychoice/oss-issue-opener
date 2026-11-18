@@ -5,6 +5,8 @@ import { getOctokit, initOctokit } from '../dist/github.js';
 
 initOctokit('test-token');
 
+const workspaceAlias = '[workspace.dependencies]\njson = { package = "serde_json", version = "1" }';
+
 const cases = [
   ['ordinary dependencies', '[dependencies]\nserde = "1"', 'serde', true],
   ['individual tables', '[dependencies.serde]\nversion = "1"', 'serde', true],
@@ -20,6 +22,11 @@ const cases = [
   ['commented declarations', '[dependencies]\n# serde = "1"', 'serde', false],
   ['workspace declarations', '[workspace.dependencies]\nserde = "1"', 'serde', false],
   ['workspace references', '[dependencies.serde]\nworkspace = true', 'serde', true],
+  ['unused workspace aliases', workspaceAlias, 'serde_json', false],
+  ['development-only workspace aliases', `${workspaceAlias}\n[dev-dependencies]\njson.workspace = true`, 'serde_json', false],
+  ['target workspace aliases', `${workspaceAlias}\n[target.'cfg(unix)'.dependencies.json]\nworkspace = true`, 'serde_json', true],
+  ['inherited aliases are excluded', `${workspaceAlias}\n[dependencies]\njson.workspace = true`, 'json', false],
+  ['local declarations use their own name', `${workspaceAlias}\n[dependencies]\njson = "1"`, 'serde_json', false],
   ['metadata', '[package.metadata.dependencies]\nserde = "1"', 'serde', false],
   ['strings containing declarations', '[package]\ndescription = """\n[dependencies]\nserde = "1"\n"""', 'serde', false],
   ['inherited property names', '[dependencies]\nserde = "1"', 'constructor', false],

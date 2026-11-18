@@ -39,7 +39,7 @@ test('continues after a failed creation and reports successes and failures', asy
   const cause = new Error('HTTP 503');
   const { attempts, logs, errors } = setup(t, async ({ title }) => {
     if (title === issue('a').title) throw cause;
-    return { data: { number: 42 } };
+    return { data: { number: 42, labels: [{ name: 'ci-failure' }] } };
   });
 
   await assert.rejects(createIssuesInBatch([issue('b'), issue('a')]), (error) => {
@@ -54,6 +54,27 @@ test('continues after a failed creation and reports successes and failures', asy
   assert.equal(errors.mock.calls[0].arguments[0], '  [failed] [CI Failure] a');
 });
 
+test('reports the issue number when a successful create response lacks the expected label', async (t) => {
+  const { attempts, logs, errors } = setup(t, async ({ title }) => title === issue('a').title
+    ? { status: 201, data: { number: 41, labels: [] } }
+    : { status: 201, data: { number: 42, labels: [{ name: 'ci-failure' }] } });
+
+  await assert.rejects(createIssuesInBatch([issue('a'), issue('b')]), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.equal(error.errors.length, 1);
+    assert.match(error.errors[0].message, /\[CI Failure\] a/);
+    assert.match(error.errors[0].cause.message, /#41.*ci-failure/);
+    return true;
+  });
+  assert.equal(attempts.mock.callCount(), 2);
+  assert.deepEqual(logs.mock.calls.map(({ arguments: [message] }) => message)
+    .filter((message) => message.includes('[created]')), ['  [created] [CI Failure] b (#42)']);
+  assert.equal(errors.mock.callCount(), 1);
+  const [message, cause] = errors.mock.calls[0].arguments;
+  assert.equal(message, '  [failed] [CI Failure] a');
+  assert.match(cause.message, /#41.*ci-failure/);
+});
+
 test('aggregates all creation failures after attempting every issue', async (t) => {
   const { attempts } = setup(t, async () => { throw new Error('HTTP 503'); });
   await assert.rejects(createIssuesInBatch([issue('a'), issue('b')]), (error) => {
@@ -66,7 +87,7 @@ test('aggregates all creation failures after attempting every issue', async (t) 
 });
 
 test('resolves when creation succeeds and skips existing issues', async (t) => {
-  const { attempts, logs, errors } = setup(t, async () => ({ data: { number: 42 } }), [
+  const { attempts, logs, errors } = setup(t, async () => ({ data: { number: 42, labels: ['ci-failure'] } }), [
     { title: issue('a').title, number: 1 },
   ]);
   await createIssuesInBatch([issue('a'), issue('b')]);
@@ -80,7 +101,7 @@ test('a subsequent batch skips notifications created by the preceding batch', as
   const existing = [];
   const { attempts, logs } = setup(t, async ({ title, labels }) => {
     existing.push({ title, labels, number: existing.length + 1 });
-    return { data: { number: existing.length } };
+    return { data: { number: existing.length, labels: labels.map((name) => ({ name })) } };
   });
   const lookup = t.mock.method(getOctokit(), 'paginate', async (_method, { labels }) =>
     existing.filter((entry) => entry.labels.includes(labels)));
