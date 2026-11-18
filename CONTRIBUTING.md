@@ -33,8 +33,8 @@ To run the scanner itself against real repositories:
 GH_TOKEN=your_token npm run start
 ```
 
-`npm run check` builds and runs the scanner in one step; it is what the weekly workflow runs in CI
-after `npm test`.
+The [weekly workflow](.github/workflows/weekly.yml) runs `npm test` followed by
+`npm run start`. For a local build and scan in one step, use `npm run check`.
 
 ## Opening a pull request
 

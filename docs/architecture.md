@@ -73,7 +73,9 @@ When changing error handling, inspect both the API helper and its caller.
   [issue.test.js](../test/issue.test.js), and
   [issue-pagination.test.js](../test/issue-pagination.test.js).
 
-`npm test` compiles `src/` into `dist/` and runs the Node.js test suite, whose tests
-import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
-runs it on pull requests. The [weekly workflow](../.github/workflows/weekly.yml)
-runs the same checks before starting the scanner.
+Both test commands compile `src/` into `dist/` and run the Node.js test suite,
+whose tests import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
+runs `npm run test:coverage` on pull requests and pushes to `main`, enforcing the
+coverage thresholds defined in [package.json](../package.json). The
+[weekly workflow](../.github/workflows/weekly.yml) runs `npm test` followed by
+`npm run start`.
