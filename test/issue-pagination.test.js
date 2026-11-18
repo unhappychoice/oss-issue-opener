@@ -13,7 +13,8 @@ import { createIssuesInBatch } from '../dist/issue.js';
       const url = new URL(endpoint.url);
       if (endpoint.method === 'POST') {
         created.push({ ...endpoint.body });
-        return { status: 201, headers: {}, data: { number: 32 }, url: url.href };
+        const data = { number: 32, labels: [{ name: label }] };
+        return { status: 201, headers: {}, data, url: url.href };
       }
 
       assert.equal(url.pathname, '/repos/unhappychoice/oss-issue-opener/issues');

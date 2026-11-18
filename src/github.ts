@@ -190,5 +190,10 @@ export const createIssue = async (
   labels: string[]
 ): Promise<number> => {
   const { data } = await getOctokit().issues.create({ owner, repo, title, body, labels });
+  const appliedLabels = new Set(data.labels.map((label) => typeof label === 'string' ? label : label.name));
+  const missingLabels = labels.filter((label) => !appliedLabels.has(label));
+  if (missingLabels.length > 0) {
+    throw new Error(`Issue ${owner}/${repo}#${data.number} was created without expected labels: ${missingLabels.join(', ')}`);
+  }
   return data.number;
 };

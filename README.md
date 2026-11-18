@@ -38,7 +38,9 @@ Archived, private and forked repositories are skipped.
    public repositories and only creates issues in `unhappychoice/oss-issue-opener`, so the broader
    `repo` scope (which also grants write access to every private repository you can reach) is not
    needed. A fine-grained PAT limited to read access on the target orgs' public repositories plus
-   Issues: write on `unhappychoice/oss-issue-opener` works as well.
+   Issues: write on `unhappychoice/oss-issue-opener` works as well. For either token type, the
+   token owner needs push access to the destination issue repository to apply the
+   `ci-failure` and `pending-release` notification labels.
 2. Add it as `OSS_GITHUB_TOKEN` secret in this repository
 
 ## Configuration
