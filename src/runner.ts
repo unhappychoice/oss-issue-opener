@@ -100,10 +100,12 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
     }, []),
 
     attempt<PendingIssue[]>(`${fullName}: release investigation`, failures, async () => {
-      const projectTypes = await deps.detectProjectTypes(owner, repo, getContents);
-      log('📋', `Types: ${projectTypes.join(', ')}`);
-
-      const releaseStatus = await deps.checkPendingRelease(owner, repo, projectTypes, getBranch, getContents);
+      const getProjectTypes = async () => {
+        const types = await deps.detectProjectTypes(owner, repo, getContents);
+        log('📋', `Types: ${types.join(', ')}`);
+        return types;
+      };
+      const releaseStatus = await deps.checkPendingRelease(owner, repo, getProjectTypes, getBranch, getContents);
       if (releaseStatus.status === 'no-tag') {
         log('⚪', 'Release: no tags found');
         return [];
