@@ -16,7 +16,7 @@ export const createDependencyChecker = (
   owner: string,
   repo: string,
   type: ProjectType | ProjectType[],
-  getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
+  getContents?: () => Promise<string[]>
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file = (path: string): Promise<string> => {
@@ -26,7 +26,9 @@ export const createDependencyChecker = (
   const types = Array.isArray(type) ? type : [type];
   let checkers: Promise<DependencyChecker[]> | undefined;
   return async (pkg) => {
-    checkers ??= Promise.all(types.map((type) => loaders[type](file, getContents)));
+    checkers ??= Promise.all(types.map((type) => loaders[type](file,
+      getContents ?? (async () => type === 'ruby' ? getRepoContents(owner, repo) : [])
+    )));
     const results = await Promise.all((await checkers).map((check) => check(pkg)));
     return results.some(Boolean);
   };
@@ -86,8 +88,11 @@ const loadRust: DependencyLoader = async (file) => {
   }
 };
 
-const loadKotlin: DependencyLoader = async (file) => {
-  const content = await file('build.gradle') || await file('build.gradle.kts');
+const loadKotlin: DependencyLoader = async (file, contents) => {
+  const files = await contents();
+  const kotlinOnly = files.includes('build.gradle.kts') && !files.includes('build.gradle');
+  const groovy = kotlinOnly ? '' : await file('build.gradle');
+  const content = groovy || await file('build.gradle.kts');
   const coordinates = gradleDependencies(content);
   return async (pkg) => coordinates.some((coordinate) =>
     coordinate === pkg || coordinate.startsWith(`${pkg}:`)

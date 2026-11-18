@@ -1,4 +1,4 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles } from './github.js';
 import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
@@ -40,7 +40,7 @@ export const checkPendingRelease = async (
   repo: string,
   projectTypes: ProjectType | ProjectType[] | (() => Promise<ProjectType[]>),
   getBranch = () => getDefaultBranch(owner, repo),
-  getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
+  getContents?: () => Promise<string[]>
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
@@ -69,7 +69,7 @@ const findDependencyUpdates = async (
   repo: string,
   commits: ComparedCommit[],
   types: ProjectType[],
-  getContents: () => Promise<string[]>
+  getContents?: () => Promise<string[]>
 ): Promise<DependencyUpdate[]> => {
   if (types.every((type) => type === 'unknown')) return [];
   const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents)]));
