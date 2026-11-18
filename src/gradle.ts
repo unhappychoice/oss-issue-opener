@@ -17,7 +17,7 @@ export const gradleDependencies = (content: string): string[] => {
 };
 
 export const stripGradleComments = (content: string): string => {
-  const code = /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^]/gy;
+  const code = /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[\s\S]/gy;
   let result = '';
   scanBlockComments(content, code, (token, depth) => {
     const hidden = depth > 0 || token === '/*' || token.startsWith('//');

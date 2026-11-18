@@ -7,7 +7,7 @@ single issue repository.
 
 ## Install from source
 
-Use Node.js 22, matching `.node-version` and the GitHub Actions workflows, and
+Use Node.js 26, matching `.node-version` and the GitHub Actions workflows, and
 the npm included with Node.js.
 
 ```bash
@@ -80,5 +80,6 @@ Manual dispatch requires GitHub CLI authentication and permission to run the
 workflow. Inspect the workflow's job log and the destination issues for results.
 
 See the [configuration reference](../README.md#configuration) for settings and
-the [architecture guide](architecture.md) for module responsibilities and
-failure handling.
+the [architecture guide](architecture.md) for module responsibilities. If a scan
+fails or an expected notification is missing, see the
+[troubleshooting guide](troubleshooting.md).

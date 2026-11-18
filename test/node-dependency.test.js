@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
+import { mockCommitFiles } from './helpers/github.mjs';
 
 initOctokit('test-token');
 
@@ -30,9 +31,10 @@ cases.forEach(([name, manifest, pkg, expected]) => {
     }));
     t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
     t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+    mockCommitFiles(t.mock, ['package-lock.json']);
     t.mock.method(repos, 'compareCommits', async () => ({ data: {
       files: [{ filename: 'package-lock.json' }],
-      commits: [{ commit: { message: `Bump ${pkg} from 1.0.0 to 2.0.0` } }],
+      commits: [{ sha: 'bump', commit: { message: `Bump ${pkg} from 1.0.0 to 2.0.0` } }],
     } }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), expected ? {

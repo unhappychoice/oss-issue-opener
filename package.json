@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "lint": "biome lint --error-on-warnings src test",
     "test": "npm run build && node --test",
     "test:coverage": "npm run build && node --test --experimental-test-coverage --test-coverage-include='dist/**/*.js' --test-coverage-lines=97 --test-coverage-branches=95 --test-coverage-functions=99",
     "start": "node dist/index.js",
     "check": "npm run build && npm run start"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
   },
@@ -19,6 +21,6 @@
     "smol-toml": "^1.9.1"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   }
 }
