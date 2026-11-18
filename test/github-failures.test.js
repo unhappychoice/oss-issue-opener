@@ -5,11 +5,12 @@ import {
   getCheckRuns, getCommitStatus, getDefaultBranch, getLatestRelease,
   getOctokit, initOctokit, listOpenIssues,
 } from '../dist/github.js';
-import { buildCIFailureIssue, createIssuesInBatch } from '../dist/issue.js';
+import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
 
 beforeEach(() => {
   initOctokit('test-token');
   mock.method(console, 'log', () => {});
+  mock.method(console, 'error', () => {});
 });
 afterEach(() => mock.restoreAll());
 
@@ -74,27 +75,58 @@ const mockRelease = () => {
 };
 
 ['ci-failure', 'pending-release'].forEach((failedLabel) => {
-  test(`does not create issues when ${failedLabel} lookup fails`, async () => {
+  test(`continues the mixed batch when the ${failedLabel} lookup fails`, async () => {
     const failure = new Error('Issue lookup failed');
     mock.method(getOctokit(), 'paginate', async (_route, { labels }) => {
       if (labels === failedLabel) throw failure;
       return [];
     });
-    const create = mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 1 } }));
+    const create = mock.method(getOctokit().issues, 'create', async (input) => ({
+      data: { number: 1, labels: input.labels },
+    }));
+    const release = buildPendingReleaseIssue('owner/repo', ['src/index.ts'], [], 'https://example.com/compare');
 
-    await assert.rejects(createIssuesInBatch([pendingIssue()]), (error) => error === failure);
-    assert.equal(create.mock.callCount(), 0);
+    await assert.rejects(createIssuesInBatch([pendingIssue(), release]), (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.errors.length, 1);
+      assert.match(error.errors[0].message, new RegExp(failedLabel));
+      assert.equal(error.errors[0].cause, failure);
+      return true;
+    });
+    const eligibleIssue = failedLabel === 'ci-failure' ? release : pendingIssue();
+    assert.deepEqual(create.mock.calls.map(({ arguments: [input] }) => input.title), [eligibleIssue.title]);
   });
 });
 
-test('creates an issue when existing issue lists are successfully empty', async () => {
-  mock.method(getOctokit(), 'paginate', async () => []);
+test('reports lookup and creation failures in the same batch', async () => {
+  const lookupFailure = new Error('Issue lookup failed');
+  const creationFailure = new Error('Issue creation failed');
+  mock.method(getOctokit(), 'paginate', async (_route, { labels }) => {
+    if (labels === 'pending-release') throw lookupFailure;
+    return [];
+  });
+  mock.method(getOctokit().issues, 'create', async () => { throw creationFailure; });
+  const release = buildPendingReleaseIssue('owner/repo', ['src/index.ts'], [], 'https://example.com/compare');
+
+  await assert.rejects(createIssuesInBatch([pendingIssue(), release]), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors.map(({ cause }) => cause), [lookupFailure, creationFailure]);
+    return true;
+  });
+});
+
+test('creates a CI issue without looking up pending release issues', async () => {
+  const lookup = mock.method(getOctokit(), 'paginate', async (_route, { labels }) => {
+    assert.equal(labels, 'ci-failure');
+    return [];
+  });
   const create = mock.method(getOctokit().issues, 'create', async () => ({
     data: { number: 1, labels: [{ name: 'ci-failure' }] },
   }));
 
   await createIssuesInBatch([pendingIssue()]);
 
+  assert.equal(lookup.mock.callCount(), 1);
   assert.equal(create.mock.callCount(), 1);
   assert.equal(create.mock.calls[0].arguments[0].title, pendingIssue().title);
 });

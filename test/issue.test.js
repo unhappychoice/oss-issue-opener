@@ -80,7 +80,7 @@ test('aggregates all creation failures after attempting every issue', async (t) 
   await assert.rejects(createIssuesInBatch([issue('a'), issue('b')]), (error) => {
     assert.ok(error instanceof AggregateError);
     assert.equal(error.errors.length, 2);
-    assert.match(error.message, /Failed to create 2 of 2 issues/);
+    assert.match(error.message, /Issue batch failed with 2 errors/);
     return true;
   });
   assert.equal(attempts.mock.callCount(), 2);
