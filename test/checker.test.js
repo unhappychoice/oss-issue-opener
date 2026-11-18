@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
+import { buildPendingReleaseIssue } from '../dist/issue.js';
 
 initOctokit('test-token');
 
@@ -42,6 +43,18 @@ prefixes.forEach((prefix) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
   });
+});
+
+test('renders versions from a production dependency bump as literal text', async (t) => {
+  const from = '`[old](https://example.com/old)`';
+  const to = '``<https://example.com/new>``';
+  stubRepository(t, `Bump @octokit/rest from ${from} to ${to}`);
+
+  const release = await checkPendingRelease('owner', 'repo', 'node');
+  assert.equal(release.status, 'pending');
+  const issue = buildPendingReleaseIssue('owner/repo', release.changedSources, release.dependencyUpdates, release.compareUrl);
+
+  assert.equal(issue.body.split('\n')[3], '- ` @octokit/rest ` `` ' + from + ' `` -> ``` ' + to + ' ```');
 });
 
 test('ignores bump text outside a dependency update subject', async (t) => {
