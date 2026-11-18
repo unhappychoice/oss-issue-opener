@@ -65,7 +65,9 @@ const mockRelease = () => {
 
 test('creates an issue when existing issue lists are successfully empty', async () => {
   mock.method(getOctokit(), 'paginate', async () => []);
-  const create = mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 1 } }));
+  const create = mock.method(getOctokit().issues, 'create', async () => ({
+    data: { number: 1, labels: [{ name: 'ci-failure' }] },
+  }));
 
   await createIssuesInBatch([pendingIssue()]);
 
