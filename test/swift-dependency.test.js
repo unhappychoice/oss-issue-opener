@@ -34,6 +34,13 @@ test('Swift matches declared package identities instead of comments, targets or 
 
 const cases = [
   ['Git URL suffix', '.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0")', 'swift-log', true],
+  ['extended Git URL', '.package(url: #"https://github.com/apple/swift-log.git"#, from: "1.0.0")', 'swift-log', true],
+  ['multiple extended delimiters', '.package(url: ##"https://example.com/"#/Swift-Log.git/"##)', 'swift-log', true],
+  ['inactive escape in extended URL', String.raw`.package(url: ##"https://example.com/\#(literal)/swift-log.git"##)`, 'swift-log', true],
+  ['interpolated extended URL', String.raw`.package(url: #"https://example.com/\#(host)/swift-log.git"#)`, 'swift-log', false],
+  ['escaped quote in extended URL', String.raw`.package(url: #"https://example.com/\#"#/swift-log.git"#)`, 'swift-log', false],
+  ['extended string containing declaration', 'let text = #".package(url: "swift-log")"#', 'swift-log', false],
+  ['extended string expression', '.package(url: #"swift-log"# + "-extra")', 'swift-log', false],
   ['SSH URL', '.package(url: "git@github.com:apple/swift-log.git", branch: "main")', 'swift-log', true],
   ['trailing slash and case', '.package(url: "https://github.com/apple/Swift-Log.git/", from: "1.0.0")', 'swift-log', true],
   ['explicit name', '.package(name: "Logging", url: "https://github.com/apple/swift-log", from: "1.0.0")', 'Logging', true],
@@ -59,21 +66,26 @@ cases.forEach(([name, content, pkg, expected]) => {
   });
 });
 
-['swift-log', 'argument', 'swift-argument-parser'].forEach((pkg) => {
-  test(`Swift release check only includes declared dependency updates: ${pkg}`, async () => {
-    stubManifest(manifest);
+[
+  ['swift-log', manifest, 'Package.resolved', false],
+  ['argument', manifest, 'Package.resolved', false],
+  ['swift-argument-parser', manifest, 'Package.resolved', true],
+  ['swift-log', '.package(url: #"https://example.com/swift-log.git"#, from: "1.1.0")', 'Package.swift', true],
+].forEach(([pkg, content, filename, pending]) => {
+  test(`Swift release check with ${filename} change and ${pkg} bump`, async () => {
+    stubManifest(content);
     const repos = getOctokit().repos;
     mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1.0.0' }] }));
     mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
     mock.method(repos, 'compareCommits', async () => ({ data: {
-      files: [{ filename: 'Package.resolved' }],
+      files: [{ filename }],
       commits: [{ commit: { message: `Bump ${pkg} from 1.0.0 to 1.1.0` } }],
     } }));
     const result = await checkPendingRelease('owner', 'repo', 'swift');
-    assert.deepEqual(result, pkg === 'swift-argument-parser' ? {
+    assert.deepEqual(result, pending ? {
       status: 'pending',
       changedSources: [],
-      dependencyUpdates: [{ pkg: 'swift-argument-parser', from: '1.0.0', to: '1.1.0' }],
+      dependencyUpdates: [{ pkg, from: '1.0.0', to: '1.1.0' }],
       compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
     } : { status: 'up-to-date' });
   });

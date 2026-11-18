@@ -9,7 +9,7 @@ export const swiftDependencies = (content: string): Set<string> => {
 };
 
 const swiftTokens = (content: string): string[] => {
-  const code = /\s+|\/\/[^\r\n]*|\/\*|"(?:\\.|[^"\\])*"|[A-Za-z_]\w*|[^\s]/gy;
+  const code = /\s+|\/\/[^\r\n]*|\/\*|(#+)"(?:\\\1[^\r\n]|(?!"\1|\\\1)[^\r\n])*"\1|"(?:\\.|[^"\\])*"|[A-Za-z_]\w*|[^\s]/gy;
   const tokens: string[] = [];
   scanBlockComments(content, code, (token, depth) => {
     if (depth === 0 && token !== '/*' && !/^\s|^\/\//.test(token)) tokens.push(token);
@@ -26,13 +26,20 @@ const packageIdentifiers = (tokens: string[], start: number): string[] => {
     if (token === ')') depth--;
     if (depth === 0) break;
     if (depth !== 1 || !['name', 'url', 'path', 'id'].includes(token)) continue;
-    const value = tokens[index + 2];
-    if (tokens[index + 1] !== ':' || !/^"[^"\\]*"$/.test(value ?? '')) continue;
+    if (tokens[index + 1] !== ':') continue;
+    const literal = staticStringValue(tokens[index + 2] ?? '');
+    if (literal === undefined) continue;
     if (![',', ')'].includes(tokens[index + 3])) continue;
-    const literal = value.slice(1, -1);
     const identity = token === 'url' || token === 'path'
       ? literal.replace(/\/+$/, '').split('/').pop()!.replace(/\.git$/i, '') : literal;
     identifiers.push(identity.toLowerCase());
   }
   return identifiers;
+};
+
+const staticStringValue = (token: string): string | undefined => {
+  const match = /^(#*)"(.*)"\1$/s.exec(token);
+  if (!match) return undefined;
+  const [, delimiter, value] = match;
+  return value.includes('\\' + delimiter) ? undefined : value;
 };
