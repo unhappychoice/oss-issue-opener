@@ -40,6 +40,10 @@ const cases = [
   ['interpolated extended URL', String.raw`.package(url: #"https://example.com/\#(host)/swift-log.git"#)`, 'swift-log', false],
   ['escaped quote in extended URL', String.raw`.package(url: #"https://example.com/\#"#/swift-log.git"#)`, 'swift-log', false],
   ['extended string containing declaration', 'let text = #".package(url: "swift-log")"#', 'swift-log', false],
+  ['declaration inside interpolation', String.raw`let text = #"\#(render(/* ) /* ( */ */ .package(url: #"swift-log"#)))"#`, 'swift-log', false],
+  ['multiline string inside interpolation', String.raw`let text = #"\#("""
+    .package(url: "swift-log")
+    """)"#`, 'swift-log', false],
   ['extended string expression', '.package(url: #"swift-log"# + "-extra")', 'swift-log', false],
   ['SSH URL', '.package(url: "git@github.com:apple/swift-log.git", branch: "main")', 'swift-log', true],
   ['trailing slash and case', '.package(url: "https://github.com/apple/Swift-Log.git/", from: "1.0.0")', 'swift-log', true],
@@ -59,6 +63,13 @@ const cases = [
   ['empty manifest', '', 'swift-log', false],
 ];
 
+const interpolatedManifest = String.raw`
+let label = #"\#(#"nested"#)"#
+let package = Package(dependencies: [
+  .package(url: "https://example.com/swift-nio.git", from: "1.1.0"),
+])
+`;
+
 cases.forEach(([name, content, pkg, expected]) => {
   test(`Swift production dependency: ${name}`, async () => {
     stubManifest(content);
@@ -71,6 +82,7 @@ cases.forEach(([name, content, pkg, expected]) => {
   ['argument', manifest, 'Package.resolved', false],
   ['swift-argument-parser', manifest, 'Package.resolved', true],
   ['swift-log', '.package(url: #"https://example.com/swift-log.git"#, from: "1.1.0")', 'Package.swift', true],
+  ['swift-nio', interpolatedManifest, 'Package.resolved', true],
 ].forEach(([pkg, content, filename, pending]) => {
   test(`Swift release check with ${filename} change and ${pkg} bump`, async () => {
     stubManifest(content);
