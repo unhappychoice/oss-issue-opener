@@ -3,7 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit } from './helpers/github.mjs';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 afterEach(() => mock.restoreAll());
@@ -43,9 +43,10 @@ const stubRelease = () => {
   const repos = getOctokit().repos;
   mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1.0.0' }] }));
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mockCommitFiles(mock, ['go.mod', 'go.sum']);
   mock.method(repos, 'compareCommits', async () => ({ data: {
     files: [{ filename: 'go.mod' }, { filename: 'go.sum' }],
-    commits: [{ commit: { message: 'Bump example.com/library from 1.0.0 to 1.1.0' } }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump example.com/library from 1.0.0 to 1.1.0' } }],
   } }));
 };
 

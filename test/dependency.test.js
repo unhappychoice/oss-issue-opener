@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit } from './helpers/github.mjs';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const stubRepository = (manifests, commitMessages = []) => {
   initMockOctokit('test');
@@ -21,9 +21,10 @@ const stubRepository = (manifests, commitMessages = []) => {
     compareCommits: async ({ page, per_page }) => ({ data: {
       files: [{ filename: 'src/main.ts' }],
       commits: commitMessages.slice((page - 1) * per_page, page * per_page)
-        .map((message) => ({ commit: { message } })),
+        .map((message) => ({ sha: message, commit: { message } })),
     } }),
   });
+  mockCommitFiles(mock, ['package-lock.json']);
   return calls;
 };
 
@@ -102,9 +103,10 @@ test('Ruby loads the fallback only when needed and caches missing files and list
       'b.gemspec': 'spec.add_runtime_dependency "rack"',
       Gemfile: 'gemspec name: "a"\ngemspec name: "b"',
     });
+    mockCommitFiles(t.mock, ['b.gemspec']);
     t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
       files: [{ filename: 'b.gemspec' }, { filename: 'Gemfile.lock' }],
-      commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
     } }));
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), {
       status: 'pending',
@@ -132,9 +134,10 @@ dialects.forEach(({ file, declaration }) => {
         ${declaration('api', 'org.example:public:1.0//literal')}
       }`;
       stubRepository({ [file]: content }, ['Bump junit:junit from 4.13.1 to 4.13.2']);
+      mockCommitFiles(t.mock, [file]);
       t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
         files: [{ filename: file }],
-        commits: [{ commit: { message: 'Bump junit:junit from 4.13.1 to 4.13.2' } }],
+        commits: [{ sha: 'bump', commit: { message: 'Bump junit:junit from 4.13.1 to 4.13.2' } }],
       } }));
       const check = createDependencyChecker('owner', 'repo', 'kotlin');
 
@@ -265,9 +268,10 @@ test('cached Go checks preserve exact requirements and ignore other directives',
   ['implementation', 'api'].forEach((configuration) => {
     test(`${file}: ${configuration} named coordinates produce dependency-only releases: ${argumentsText}`, async (t) => {
       stubRepository({ [file]: `dependencies {\n${configuration} ${argumentsText}\n}` });
+      mockCommitFiles(t.mock, [file]);
       t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
         files: [{ filename: file }],
-        commits: [{ commit: { message: 'Bump org.example:runtime from 1.0 to 1.1' } }],
+        commits: [{ sha: 'bump', commit: { message: 'Bump org.example:runtime from 1.0 to 1.1' } }],
       } }));
       assert.equal(await isProductionDependency('owner', 'repo', 'org.example:runtime', 'kotlin'), true);
       assert.equal(await isProductionDependency('owner', 'repo', 'org.example:run', 'kotlin'), false);
@@ -302,9 +306,10 @@ test('cached Go checks preserve exact requirements and ignore other directives',
   ['dependencies { ', 'dependencies {\n testImplementation("org.example:test:1.0"); '].forEach((prefix) => {
     test(`${file}: dependency-only updates after ${JSON.stringify(prefix)} produce pending releases`, async (t) => {
       stubRepository({ [file]: `${prefix}${declaration} }` });
+      mockCommitFiles(t.mock, [file]);
       t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
         files: [{ filename: file }],
-        commits: [{ commit: { message: 'Bump org.example:runtime from 1.0 to 1.1' } }],
+        commits: [{ sha: 'bump', commit: { message: 'Bump org.example:runtime from 1.0 to 1.1' } }],
       } }));
       assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), {
         status: 'pending',

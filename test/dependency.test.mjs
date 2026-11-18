@@ -59,7 +59,7 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
     mockRubyRepository(declaration, 'source "https://rubygems.org"\ngemspec');
     mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
       files: [{ filename: 'example.gemspec' }, { filename: 'Gemfile.lock' }],
-      commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
     } }));
 
     assert.equal(await check('rack'), method !== 'add_development_dependency');
@@ -79,7 +79,7 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
       # spec.${method} 'rack', '~> 3.0'`, 'gemspec');
     mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
       files: [{ filename: 'Gemfile.lock' }],
-      commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
     } }));
 
     assert.equal(await check('rack'), false);
@@ -106,7 +106,7 @@ const metadataStrings = [
       end`, 'gemspec');
       mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
         files: [{ filename: 'Gemfile.lock' }],
-        commits: [{ commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+        commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
       } }));
 
       assert.equal(await check('rack'), false);

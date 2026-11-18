@@ -4,7 +4,7 @@ import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, getRepoContents } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
-import { initMockOctokit } from './helpers/github.mjs';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const owner = 'example';
 const repo = 'gemfile-only';
@@ -29,17 +29,18 @@ test('checks declared dependencies for a Gemfile-only repository', async () => {
   assert.equal(await isProductionDependency(owner, repo, 'nonexistent', type), false);
 });
 
-const mockReleaseComparison = (files, commitMessages = []) => {
+const mockReleaseComparison = (files, commitMessages = [], bumpPaths = files) => {
   mock.method(getOctokit().repos, 'listReleases', async () => ({
     data: [{ tag_name: 'v1.0.0' }],
   }));
   mock.method(getOctokit().repos, 'get', async () => ({
     data: { default_branch: 'main' },
   }));
+  mockCommitFiles(mock, bumpPaths);
   mock.method(getOctokit().repos, 'compareCommits', async () => ({
     data: {
       files: files.map((filename) => ({ filename })),
-      commits: commitMessages.map((message) => ({ commit: { message } })),
+      commits: commitMessages.map((message) => ({ sha: 'commit', commit: { message } })),
     },
   }));
 };
@@ -103,7 +104,7 @@ const mockManifests = (manifests) => {
       });
       mockReleaseComparison([rubyManifest, 'Gemfile.lock', 'package.json'], [
         `Bump ${pkg} from 3.0.0 to 3.1.0`,
-      ]);
+      ], pkg === 'rack' ? ['Gemfile.lock'] : ['package.json']);
       const types = await detectProjectTypes(owner, repo);
       const release = await checkPendingRelease(owner, repo, types);
       assert.equal(release.status, expected);

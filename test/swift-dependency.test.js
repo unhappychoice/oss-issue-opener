@@ -3,7 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit } from './helpers/github.mjs';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 afterEach(() => mock.restoreAll());
@@ -66,9 +66,10 @@ cases.forEach(([name, content, pkg, expected]) => {
     const repos = getOctokit().repos;
     mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1.0.0' }] }));
     mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+    mockCommitFiles(mock, ['Package.resolved']);
     mock.method(repos, 'compareCommits', async () => ({ data: {
       files: [{ filename: 'Package.resolved' }],
-      commits: [{ commit: { message: `Bump ${pkg} from 1.0.0 to 1.1.0` } }],
+      commits: [{ sha: 'bump', commit: { message: `Bump ${pkg} from 1.0.0 to 1.1.0` } }],
     } }));
     const result = await checkPendingRelease('owner', 'repo', 'swift');
     assert.deepEqual(result, pkg === 'swift-argument-parser' ? {

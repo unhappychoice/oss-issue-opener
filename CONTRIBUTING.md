@@ -2,7 +2,7 @@
 
 ## Development setup
 
-Requires Node.js >= 22. Use the Node.js 22 LTS version specified in `.node-version`
+Requires Node.js >= 26. Use the Node.js 26 LTS version specified in `.node-version`
 to match the test and weekly workflows.
 
 ```bash
@@ -14,14 +14,14 @@ npm install
 ```bash
 npm run build   # compile TypeScript (tsc)
 npm test        # build, then run the test suite (node --test)
-npm run test:coverage # build and test with coverage (requires Node.js >= 22)
+npm run test:coverage # build and test with coverage (requires Node.js >= 26)
 ```
 
 The build enables TypeScript strict mode, exact optional property types, and checks
 for missing return paths, switch fallthrough, unused locals, and unused parameters.
 These checks also run in CI because the coverage command builds first.
 
-The pull request and `main` branch CI job runs `npm run test:coverage` on Node.js 22.
+The pull request and `main` branch CI job runs `npm run test:coverage` on Node.js 26.
 Node's built-in coverage report appears in the job log and covers executed compiled
 production modules under `dist/`, excluding tests and dependencies. The suite fails
 below 97% line, 95% branch, or 99% function coverage across those modules. Run the
@@ -33,8 +33,8 @@ To run the scanner itself against real repositories:
 GH_TOKEN=your_token npm run start
 ```
 
-`npm run check` builds and runs the scanner in one step; it is what the weekly workflow runs in CI
-after `npm test`.
+The [weekly workflow](.github/workflows/weekly.yml) runs `npm test` followed by
+`npm run start`. For a local build and scan in one step, use `npm run check`.
 
 ## Opening a pull request
 

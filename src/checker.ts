@@ -1,6 +1,7 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
+import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
-import { getSourcePatterns } from './project-type.js';
+import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
 export const checkCIStatus = async (
@@ -37,37 +38,50 @@ const parseBumpCommit = (msg: string): DependencyUpdate | null => {
 export const checkPendingRelease = async (
   owner: string,
   repo: string,
-  projectTypes: ProjectType | ProjectType[],
+  projectTypes: ProjectType | ProjectType[] | (() => Promise<ProjectType[]>),
   getBranch = () => getDefaultBranch(owner, repo),
   getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
+  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes() : projectTypes;
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
-  const { files, commitMessages } = await compareCommits(
+  const { files, commits } = await compareCommits(
     owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
   );
-  if (files.length === 0 && commitMessages.length === 0) return { status: 'up-to-date' };
+  if (files.length === 0 && commits.length === 0) return { status: 'up-to-date' };
 
-  const types = Array.isArray(projectTypes) ? projectTypes : [projectTypes];
+  const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
 
-  const isProductionDependency = createDependencyChecker(owner, repo, types, getContents);
-  const dependencyUpdates: DependencyUpdate[] = [];
-  for (const msg of commitMessages) {
-    const bump = parseBumpCommit(msg);
-    if (!bump) continue;
-    if (await isProductionDependency(bump.pkg)) {
-      dependencyUpdates.push(bump);
-    }
-  }
+  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, types, getContents);
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${latestTag}...${defaultBranch}`;
   return changedSources.length > 0 || dependencyUpdates.length > 0
     ? { status: 'pending', changedSources, dependencyUpdates, compareUrl }
     : { status: 'up-to-date' };
+};
+
+const findDependencyUpdates = async (
+  owner: string,
+  repo: string,
+  commits: ComparedCommit[],
+  types: ProjectType[],
+  getContents: () => Promise<string[]>
+): Promise<DependencyUpdate[]> => {
+  if (types.every((type) => type === 'unknown')) return [];
+  const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents)]));
+  const updates: DependencyUpdate[] = [];
+  for (const { sha, message } of commits) {
+    const bump = parseBumpCommit(message);
+    if (!bump) continue;
+    const affected = getDependencyProjectTypes(await getCommitFiles(owner, repo, sha));
+    if (affected.length !== 1) continue;
+    if (await checkers.get(affected[0])?.(bump.pkg)) updates.push(bump);
+  }
+  return updates;
 };

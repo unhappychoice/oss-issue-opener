@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
-import { compareCommits, getOctokit } from '../dist/github.js';
-import { commitSha, initMockOctokit } from './helpers/github.mjs';
+import { compareCommits, getCommitFiles, getOctokit } from '../dist/github.js';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 
 const commits = (count) => Array.from({ length: count }, (_, index) => ({
+  sha: `commit-${index}`,
   commit: { message: `docs: update documentation ${index}` },
 }));
 
@@ -19,7 +20,8 @@ const stubRelease = (t) => {
 
 test('detects a production bump after the first 250 commits', async (t) => {
   const repos = stubRelease(t);
-  const messages = [...commits(250), { commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }];
+  mockCommitFiles(t.mock, ['package-lock.json']);
+  const messages = [...commits(250), { sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }];
   const compare = t.mock.method(repos, 'compareCommits', async ({ page, per_page }) => ({
     data: {
       ...(page === 1 ? { files: [{ filename: 'package-lock.json' }] } : {}),
@@ -40,22 +42,26 @@ test('detects a production bump after the first 250 commits', async (t) => {
     [1, 2, 3].map((page) => ({ owner: 'owner', repo: 'repo', base: commitSha('tags/v1'), head: commitSha('heads/main'), per_page: 100, page })));
 });
 
-test('detects the original final production bump after a force-push between pages', async (t) => {
+test('detects the original final production bump after the tag and branch move between pages', async (t) => {
   const repos = stubRelease(t);
   const originalHead = commitSha('heads/main');
   const baseSha = commitSha('tags/v1');
-  let branchHead = originalHead;
+  const refs = new Map([['tags/v1', baseSha], ['heads/main', originalHead]]);
   const resolve = t.mock.method(repos, 'getCommit', async ({ ref }) => ({
-    data: { sha: ref === 'heads/main' ? branchHead : commitSha(ref) },
+    data: ref === 'bump'
+      ? { files: [{ filename: 'package-lock.json' }] }
+      : { sha: refs.get(ref) },
   }));
-  const compare = t.mock.method(repos, 'compareCommits', async ({ head, page }) => {
-    const resolvedHead = head === 'main' ? branchHead : head;
+  const compare = t.mock.method(repos, 'compareCommits', async ({ base, head, page }) => {
+    const resolvedBase = refs.get(base) ?? base;
+    const resolvedHead = refs.get(head) ?? head;
     if (page === 1) {
-      branchHead = commitSha('replacement');
+      refs.set('tags/v1', commitSha('replacement-tag'));
+      refs.set('heads/main', commitSha('replacement-head'));
       return { data: { files: [{ filename: 'package-lock.json' }], commits: commits(100) } };
     }
-    return { data: { commits: resolvedHead === originalHead
-      ? [{ commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
+    return { data: { commits: resolvedBase === baseSha && resolvedHead === originalHead
+      ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
   t.mock.method(repos, 'getContent', async () => ({
@@ -66,7 +72,7 @@ test('detects the original final production bump after a force-push between page
   assert.equal(result.status, 'pending');
   assert.deepEqual(result.changedSources, []);
   assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example', from: '1.0.0', to: '2.0.0' }]);
-  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main']);
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
 });
@@ -94,7 +100,7 @@ test('finishes on an empty page after an exactly full page', async (t) => {
 
   assert.deepEqual(await compareCommits('owner', 'repo', 'v1', 'main'), {
     files: [],
-    commitMessages: commits(100).map(({ commit }) => commit.message),
+    commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
   });
   assert.equal(compare.mock.callCount(), 2);
 });
@@ -203,4 +209,28 @@ test('does not fetch trees for file lists below the comparison limit', async (t)
   });
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
   assert.equal(getTree.mock.callCount(), 0);
+});
+
+test('retrieves dependency paths from later commit file pages', async (t) => {
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ page }) => ({
+    headers: page === 1 ? { link: '<https://api.github.com/?page=2>; rel="next"' } : {},
+    data: { files: page === 1
+      ? Array.from({ length: 100 }, (_, i) => ({ filename: `docs/${i}.md` }))
+      : [{ filename: 'Gemfile.lock' }] },
+  }));
+  const paths = await getCommitFiles('owner', 'repo', 'bump');
+  assert.equal(paths.length, 101);
+  assert.equal(paths.at(-1), 'Gemfile.lock');
+  assert.deepEqual(getCommit.mock.calls.map(({ arguments: [params] }) => params),
+    [1, 2].map((page) => ({ owner: 'owner', repo: 'repo', ref: 'bump', per_page: 100, page })));
+});
+
+test('discards commit paths when the API file limit may hide changes', async (t) => {
+  const files = Array.from({ length: 100 }, (_, i) => ({ filename: `docs/${i}.md` }));
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async () => ({
+    data: { files },
+    headers: { link: '<https://api.github.com/?page=2>; rel="next"' },
+  }));
+  assert.deepEqual(await getCommitFiles('owner', 'repo', 'bump'), []);
+  assert.equal(getCommit.mock.callCount(), 30);
 });
