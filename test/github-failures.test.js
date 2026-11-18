@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
-import { checkPendingRelease } from '../dist/checker.js';
+import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import {
   getCheckRuns, getCommitStatus, getDefaultBranch, getLatestRelease,
   getOctokit, initOctokit, listOpenIssues,
@@ -16,32 +16,56 @@ afterEach(() => mock.restoreAll());
 const pendingIssue = () => buildCIFailureIssue('owner/repo', []);
 
 [
-  ['default branch', 'get', () => getDefaultBranch('owner', 'repo'), null],
-  ['commit statuses', 'getCombinedStatusForRef', () => getCommitStatus('owner', 'repo', 'main'), []],
-  ['latest release', 'listReleases', () => getLatestRelease('owner', 'repo'), null],
-].forEach(([name, method, read, fallback]) => {
-  test(`returns the documented fallback when ${name} retrieval fails`, async () => {
+  ['commit statuses', 'getCombinedStatusForRef', () => getCommitStatus('owner', 'repo', 'main')],
+  ['releases', 'listReleases', () => getLatestRelease('owner', 'repo')],
+  ['fallback tags', 'listTags', () => getLatestRelease('owner', 'repo')],
+].forEach(([name, method, read]) => {
+  test(`preserves the request error when ${name} retrieval fails`, async () => {
+    const failure = new Error('HTTP 503');
+    if (method === 'listTags') {
+      mock.method(getOctokit().repos, 'listReleases', async () => ({ data: [] }));
+    }
     const request = mock.method(getOctokit().repos, method, async () => {
-      throw new Error('HTTP 503');
+      throw failure;
     });
 
-    assert.deepEqual(await read(), fallback);
+    await assert.rejects(read(), (error) => error === failure);
     assert.equal(request.mock.callCount(), 1);
     assert.equal(request.mock.calls[0].arguments[0].owner, 'owner');
     assert.equal(request.mock.calls[0].arguments[0].repo, 'repo');
   });
 });
 
-test('returns no check runs when their retrieval fails', async () => {
+test('returns null when default branch retrieval fails', async () => {
+  mock.method(getOctokit().repos, 'get', async () => { throw new Error('HTTP 503'); });
+
+  assert.equal(await getDefaultBranch('owner', 'repo'), null);
+});
+
+test('preserves the request error when check runs retrieval fails', async () => {
+  const failure = new Error('HTTP 503');
   const request = mock.method(getOctokit(), 'paginate', async () => {
-    throw new Error('HTTP 503');
+    throw failure;
   });
 
-  assert.deepEqual(await getCheckRuns('owner', 'repo', 'main'), []);
+  await assert.rejects(getCheckRuns('owner', 'repo', 'main'), (error) => error === failure);
   assert.equal(request.mock.callCount(), 1);
   assert.deepEqual(request.mock.calls[0].arguments, [
     getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main' },
   ]);
+});
+
+test('reports no-ci and no-tag after successful empty reads', async () => {
+  const client = getOctokit();
+  mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
+  mock.method(client, 'paginate', async () => []);
+  mock.method(client.repos, 'listReleases', async () => ({ data: [] }));
+  mock.method(client.repos, 'listTags', async () => ({ data: [] }));
+
+  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+    status: 'no-ci', failedChecks: [],
+  });
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'no-tag' });
 });
 
 const mockRelease = () => {

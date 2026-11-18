@@ -65,15 +65,11 @@ export const getCommitStatus = async (
   repo: string,
   ref: string
 ): Promise<{ state: string; context: string; url: string }[]> => {
-  try {
-    const statuses: { state: string; context: string; url: string }[] = [];
-    for (let page = 1; ; page++) {
-      const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-      statuses.push(...data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' })));
-      if (data.statuses.length < 100) return statuses;
-    }
-  } catch {
-    return [];
+  const statuses: { state: string; context: string; url: string }[] = [];
+  for (let page = 1; ; page++) {
+    const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
+    statuses.push(...data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' })));
+    if (data.statuses.length < 100) return statuses;
   }
 };
 
@@ -94,32 +90,24 @@ export const getCheckRuns = async (
     startup_failure: 'failure',
   };
 
-  try {
-    const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
-    return checkRuns.map((c) => ({
-      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
-      context: c.name,
-      url: c.html_url ?? '',
-    }));
-  } catch {
-    return [];
-  }
+  const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
+  return checkRuns.map((c) => ({
+    state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
+    context: c.name,
+    url: c.html_url ?? '',
+  }));
 };
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
-  try {
-    for (let page = 1; ; page++) {
-      const { data: releases } = await getOctokit().repos.listReleases({ owner, repo, per_page: 100, page });
-      const release = releases.find((release) => !release.draft);
-      if (release) return release.tag_name;
-      if (releases.length < 100) break;
-    }
-
-    const { data: tags } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
-    return tags[0]?.name ?? null;
-  } catch {
-    return null;
+  for (let page = 1; ; page++) {
+    const { data: releases } = await getOctokit().repos.listReleases({ owner, repo, per_page: 100, page });
+    const release = releases.find((release) => !release.draft);
+    if (release) return release.tag_name;
+    if (releases.length < 100) break;
   }
+
+  const { data: tags } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
+  return tags[0]?.name ?? null;
 };
 
 const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {

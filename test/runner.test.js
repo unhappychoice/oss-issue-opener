@@ -40,6 +40,48 @@ const expectFailures = async (deps, expected) => {
   });
 };
 
+test('preserves GitHub read failures and waits for the remaining notifications', async () => {
+  const checksFailure = new Error('Check runs HTTP 503');
+  const releasesFailure = new Error('Releases HTTP 503');
+  initOctokit('test-token');
+  const client = getOctokit();
+  mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => ({ data: { statuses: [
+    { state: repo === 'broken' ? 'success' : 'failure', context: 'build' },
+  ] } }));
+  mock.method(client, 'paginate', async (_route, { repo }) => {
+    if (repo === 'broken') throw checksFailure;
+    return [];
+  });
+  mock.method(client.repos, 'listReleases', async ({ repo }) => {
+    if (repo === 'first') throw releasesFailure;
+    return { data: [{ tag_name: 'v1' }] };
+  });
+  mock.method(client.repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'src/example.ts' }], commits: [],
+  } }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+  const submit = deps.createIssuesInBatch;
+  deps.createIssuesInBatch = async (issues) => {
+    await new Promise((resolve) => setImmediate(resolve));
+    await submit(issues);
+  };
+
+  await assert.rejects(runChecks(deps), (error) => {
+    assert.ok(error instanceof AggregateError);
+    const causes = new Map(error.errors.map(({ message, cause }) => [message, cause]));
+    assert.equal(error.errors.length, 2);
+    assert.equal(causes.get('Failed owner/broken: CI investigation'), checksFailure);
+    assert.equal(causes.get('Failed owner/first: release investigation'), releasesFailure);
+    assert.deepEqual(batches.map((issues) => issues.map(({ repo, type }) => [repo, type])), [[
+      ['owner/first', 'ci-failure'],
+      ['owner/broken', 'pending-release'],
+      ['owner/last', 'ci-failure'], ['owner/last', 'pending-release'],
+    ]]);
+    return true;
+  });
+});
+
 test('creates accumulated and same-repository CI notifications after a comparison failure', async () => {
   const cause = new Error('comparison HTTP 404');
   initOctokit('test-token');
