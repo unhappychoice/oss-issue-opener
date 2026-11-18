@@ -38,20 +38,21 @@ const parseBumpCommit = (msg: string): DependencyUpdate | null => {
 export const checkPendingRelease = async (
   owner: string,
   repo: string,
-  projectTypes: ProjectType | ProjectType[],
+  projectTypes: ProjectType | ProjectType[] | (() => Promise<ProjectType[]>),
   getBranch = () => getDefaultBranch(owner, repo),
   getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
+  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes() : projectTypes;
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
   const { files, commits } = await compareCommits(owner, repo, latestTag, defaultBranch);
   if (files.length === 0 && commits.length === 0) return { status: 'up-to-date' };
 
-  const types = Array.isArray(projectTypes) ? projectTypes : [projectTypes];
+  const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
 
