@@ -23,7 +23,7 @@ import { createIssuesInBatch } from '../dist/issue.js';
       const currentLabel = url.searchParams.get('labels');
       const page = Number(url.searchParams.get('page') ?? 1);
       pages.push([currentLabel, page]);
-      const data = currentLabel !== label ? [] : page === 1
+      const data = page === 1
         ? [
             { title: 'Existing issue', number: 1 },
             { title: 'Later page title', number: 2, pull_request: {} },
@@ -31,7 +31,7 @@ import { createIssuesInBatch } from '../dist/issue.js';
           ]
         : [{ title: 'Later page title', number: 31 }];
       url.searchParams.set('page', '2');
-      const headers = currentLabel === label && page === 1
+      const headers = page === 1
         ? { link: `<${url.href}>; rel="next"` } : {};
       return { status: 200, headers, data, url: endpoint.url };
     });
@@ -41,9 +41,7 @@ import { createIssuesInBatch } from '../dist/issue.js';
       type: label, repo: 'owner/repo', title, body: 'Issue body',
     })));
 
-    assert.deepEqual(pages, label === 'ci-failure'
-      ? [['ci-failure', 1], ['ci-failure', 2], ['pending-release', 1]]
-      : [['ci-failure', 1], ['pending-release', 1], ['pending-release', 2]]);
+    assert.deepEqual(pages, [[label, 1], [label, 2]]);
     assert.deepEqual(created, [{ title: 'PR-only title', body: 'Issue body', labels: [label] }]);
   });
 });
@@ -54,6 +52,7 @@ import { createIssuesInBatch } from '../dist/issue.js';
     const failure = new Error('Later page lookup failed');
     const pages = [];
     const create = t.mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 32 } }));
+    t.mock.method(console, 'error', () => {});
     t.after(() => t.mock.restoreAll());
     getOctokit().hook.wrap('request', async (_request, options) => {
       const endpoint = getOctokit().request.endpoint(options);
@@ -61,7 +60,6 @@ import { createIssuesInBatch } from '../dist/issue.js';
       const currentLabel = url.searchParams.get('labels');
       const page = Number(url.searchParams.get('page') ?? 1);
       pages.push([currentLabel, page]);
-      if (currentLabel !== label) return { status: 200, headers: {}, data: [], url: url.href };
       if (page === 2) throw failure;
       url.searchParams.set('page', '2');
       return {
@@ -74,8 +72,13 @@ import { createIssuesInBatch } from '../dist/issue.js';
 
     await assert.rejects(createIssuesInBatch([
       { type: label, repo: 'owner/repo', title: 'New title', body: 'Issue body' },
-    ]), (error) => error === failure);
-    assert.ok(pages.some(([currentLabel, page]) => currentLabel === label && page === 2));
+    ]), (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.errors.length, 1);
+      assert.equal(error.errors[0].cause, failure);
+      return true;
+    });
+    assert.deepEqual(pages, [[label, 1], [label, 2]]);
     assert.equal(create.mock.callCount(), 0);
   });
 });
