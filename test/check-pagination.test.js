@@ -3,14 +3,17 @@ import { test } from 'node:test';
 import { checkCIStatus } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
+const sha = 'a'.repeat(40);
+
 ['failure', 'success', 'action_required'].forEach((conclusion) => {
   test(`reads all check pages when the last check is ${conclusion}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
+    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
     t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
     t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
     const requests = [];
-    const nextUrl = 'https://api.github.com/repos/owner/repo/commits/main/check-runs?page=2';
+    const nextUrl = `https://api.github.com/repos/owner/repo/commits/${sha}/check-runs?page=2`;
     const check = (index, result) => ({
       name: `check-${index}`,
       status: 'completed',

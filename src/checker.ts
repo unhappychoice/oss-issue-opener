@@ -1,4 +1,4 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getBranchHead, getDefaultBranch, getLatestRelease, compareCommits, getRepoContents } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
@@ -11,9 +11,12 @@ export const checkCIStatus = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
 
+  const sha = await getBranchHead(owner, repo, defaultBranch);
+  if (!sha) return { status: 'no-ci', failedChecks: [] };
+
   const [statuses, checkRuns] = await Promise.all([
-    getCommitStatus(owner, repo, defaultBranch),
-    getCheckRuns(owner, repo, defaultBranch),
+    getCommitStatus(owner, repo, sha),
+    getCheckRuns(owner, repo, sha),
   ]);
 
   const allStatuses = [...statuses, ...checkRuns];

@@ -182,10 +182,13 @@ test('reports failures even when there are no notifications to create', async ()
   assert.equal(create.mock.callCount(), 0);
 });
 
+const headSha = (repo) => Buffer.from(repo).toString('hex').padEnd(40, '0');
+
 const stubInvestigations = () => {
   initOctokit('test-token');
   const client = getOctokit();
   mock.method(client.repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+  mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo) } } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
@@ -317,8 +320,11 @@ test('fetches the root listing once per repository when Ruby dependency bumps ar
     assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params.repo),
       ['fallback-0', 'fallback-1', 'fallback-2']);
     const branches = [...listed.map(({ default_branch }) => default_branch), ...Array(3).fill('fallback')];
-    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), branches);
-    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), branches);
+    const heads = repos.getBranch.mock.calls.map(({ arguments: [params] }) => params);
+    assert.deepEqual(heads.map(({ branch }) => branch), branches);
+    const shas = heads.map(({ repo }) => headSha(repo));
+    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), shas);
+    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), shas);
     assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head), branches);
     assert.equal(batches[0].length, 206);
     batches[0].filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
