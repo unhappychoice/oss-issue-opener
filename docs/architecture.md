@@ -17,8 +17,9 @@ setup and check commands, see [Contributing](../CONTRIBUTING.md).
    so those lookups can be reused within the repository investigation.
 4. [checker.ts](../src/checker.ts) combines commit statuses and check runs for the
    CI result. For releases, it compares the latest release tag (or fallback tag)
-   with the default branch, checks source paths, and checks dependency bump commit
-   messages against production dependencies.
+   with the default branch and checks source paths. For each dependency bump commit,
+   it fetches changed paths by SHA and checks production dependencies when those
+   paths identify exactly one detected ecosystem.
 5. [issue.ts](../src/issue.ts) builds `PendingIssue` objects. After all accounts
    have been scanned, the runner submits the collected issues as one batch.
    The batch sorts by issue type and repository name, reads existing open issues
