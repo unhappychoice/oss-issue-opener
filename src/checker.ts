@@ -1,4 +1,4 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
@@ -39,7 +39,7 @@ export const checkPendingRelease = async (
   repo: string,
   projectTypes: ProjectType | ProjectType[],
   getBranch = () => getDefaultBranch(owner, repo),
-  getContents: () => Promise<string[]> = () => getRepoContents(owner, repo)
+  getContents?: () => Promise<string[]>
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };

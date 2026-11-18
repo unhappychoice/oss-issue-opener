@@ -285,6 +285,40 @@ test('fetches the root listing once per repository when Ruby dependency bumps ar
   assert.equal(batches[0].filter(({ type }) => type === 'pending-release').length, 3);
 });
 
+const groovyBuild = "dependencies { implementation 'org.example:groovy:1.1' }";
+const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
+[
+  ['Kotlin DSL only', { 'build.gradle.kts': kotlinBuild }, ['build.gradle.kts'], 'kotlin'],
+  ['Groovy only', { 'build.gradle': groovyBuild }, ['build.gradle'], 'groovy'],
+  ['both manifests', { 'build.gradle': groovyBuild, 'build.gradle.kts': kotlinBuild }, ['build.gradle'], 'groovy'],
+  ['empty Groovy manifest', { 'build.gradle': '', 'build.gradle.kts': kotlinBuild }, ['build.gradle', 'build.gradle.kts'], 'kotlin'],
+].forEach(([name, manifests, paths, expectedDependency]) => {
+  test(`scans Gradle dependency bumps with ${name}`, async () => {
+    const repos = stubInvestigations();
+    mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: Object.keys(manifests).map((filename) => ({ filename })),
+      commits: ['groovy', 'kotlin'].map((pkg) => ({ commit: { message: `Bump org.example:${pkg} from 1.0 to 1.1` } })),
+    } }));
+    const content = mock.method(repos, 'getContent', async ({ path }) => {
+      if (path === '') return { data: Object.keys(manifests).map((name) => ({ name })) };
+      if (!Object.hasOwn(manifests, path)) throw new Error('Not found');
+      return { data: { content: Buffer.from(manifests[path]).toString('base64') } };
+    });
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    await runChecks(deps);
+
+    assert.deepEqual(content.mock.calls.map(({ arguments: [request] }) => request.path), ['', ...paths]);
+    const releases = batches.flat().filter(({ type }) => type === 'pending-release');
+    assert.equal(releases.length, 1);
+    assert.deepEqual(releases[0].body.match(/org\.example:\w+/g), [`org.example:${expectedDependency}`]);
+  });
+});
+
 ['User', 'Organization'].forEach((accountType) => {
   test(`reuses branches from paginated ${accountType} listings and falls back only for missing metadata`, async () => {
     const repos = stubInvestigations();
