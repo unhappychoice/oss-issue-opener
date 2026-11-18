@@ -12,6 +12,7 @@ npm install
 ## Running checks
 
 ```bash
+npm run lint    # lint source and tests, failing on warnings
 npm run build   # compile TypeScript (tsc)
 npm test        # build, then run the test suite (node --test)
 npm run test:coverage # build and test with coverage (requires Node.js >= 22)
@@ -21,7 +22,8 @@ The build enables TypeScript strict mode, exact optional property types, and che
 for missing return paths, switch fallthrough, unused locals, and unused parameters.
 These checks also run in CI because the coverage command builds first.
 
-The pull request and `main` branch CI job runs `npm run test:coverage` on Node.js 22.
+The pull request and `main` branch CI job runs `npm run lint` and
+`npm run test:coverage` on Node.js 22.
 Node's built-in coverage report appears in the job log and covers executed compiled
 production modules under `dist/`, excluding tests and dependencies. The suite fails
 below 97% line, 95% branch, or 99% function coverage across those modules. Run the
@@ -41,6 +43,6 @@ The [weekly workflow](.github/workflows/weekly.yml) runs `npm test` followed by
 1. Fork the repository and create a branch for your change.
 2. Make your change, keeping it focused and adding or updating tests under `test/` for any
    behavior change.
-3. Run `npm test` and make sure it passes.
+3. Run `npm run lint` and `npm test` and make sure both pass.
 4. Open a pull request against `main`. The `Test` workflow (`.github/workflows/test.yml`) runs
-   `npm run test:coverage` on every pull request and must pass before merging.
+   `npm run lint` and `npm run test:coverage` on every pull request and must pass before merging.
