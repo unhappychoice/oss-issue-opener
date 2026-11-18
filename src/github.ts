@@ -90,7 +90,7 @@ export const getCheckRuns = async (
     startup_failure: 'failure',
   };
 
-  const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
+  const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref, per_page: 100 });
   return checkRuns.map((c) => ({
     state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
     context: c.name,

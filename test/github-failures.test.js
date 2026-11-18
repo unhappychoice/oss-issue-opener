@@ -52,7 +52,7 @@ test('preserves the request error when check runs retrieval fails', async () => 
   await assert.rejects(getCheckRuns('owner', 'repo', 'main'), (error) => error === failure);
   assert.equal(request.mock.callCount(), 1);
   assert.deepEqual(request.mock.calls[0].arguments, [
-    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main' },
+    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main', per_page: 100 },
   ]);
 });
 

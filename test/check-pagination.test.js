@@ -3,14 +3,20 @@ import { test } from 'node:test';
 import { checkCIStatus } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
-['failure', 'success', 'action_required'].forEach((conclusion) => {
-  test(`reads all check pages when the last check is ${conclusion}`, async (t) => {
+[
+  { total: 100, conclusion: 'success', requestCount: 1 },
+  { total: 101, conclusion: 'failure', requestCount: 2 },
+  { total: 101, conclusion: 'success', requestCount: 2 },
+  { total: 101, conclusion: 'action_required', requestCount: 2 },
+].forEach(({ total, conclusion, requestCount }) => {
+  test(`reads ${total} checks with ${requestCount} API call(s) when the last check is ${conclusion}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
     t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
     t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
     const requests = [];
-    const nextUrl = 'https://api.github.com/repos/owner/repo/commits/main/check-runs?page=2';
+    const firstUrl = 'https://api.github.com/repos/owner/repo/commits/main/check-runs?per_page=100';
+    const nextUrl = `${firstUrl}&page=2`;
     const check = (index, result) => ({
       name: `check-${index}`,
       status: 'completed',
@@ -18,15 +24,25 @@ import { getOctokit, initOctokit } from '../dist/github.js';
       html_url: `https://github.com/owner/repo/actions/runs/${index}`,
     });
     octokit.hook.wrap('request', async (_request, options) => {
-      requests.push(options);
-      const secondPage = options.url === nextUrl;
+      const { url } = options;
+      requests.push(url);
+      const { searchParams } = new URL(url);
+      const pageSize = Number(searchParams.get('per_page') ?? 30);
+      const page = Number(searchParams.get('page') ?? 1);
+      const start = (page - 1) * pageSize;
+      const end = Math.min(start + pageSize, total);
+      const nextPage = new URL(url);
+      nextPage.searchParams.set('page', String(page + 1));
       return {
         status: 200,
-        url: secondPage ? nextUrl : nextUrl.replace('?page=2', ''),
-        headers: secondPage ? {} : { link: `<${nextUrl}>; rel="next"` },
+        url,
+        headers: end < total ? { link: `<${nextPage}>; rel="next"` } : {},
         data: {
-          total_count: 31,
-          check_runs: secondPage ? [check(31, conclusion)] : Array.from({ length: 30 }, (_, i) => check(i + 1, 'success')),
+          total_count: total,
+          check_runs: Array.from({ length: end - start }, (_, i) => {
+            const index = start + i + 1;
+            return check(index, index === total ? conclusion : 'success');
+          }),
         },
       };
     });
@@ -34,11 +50,9 @@ import { getOctokit, initOctokit } from '../dist/github.js';
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: conclusion === 'success' ? 'success' : 'failure',
       failedChecks: conclusion !== 'success'
-        ? [{ name: 'check-31', url: 'https://github.com/owner/repo/actions/runs/31' }]
+        ? [{ name: `check-${total}`, url: `https://github.com/owner/repo/actions/runs/${total}` }]
         : [],
     });
-    assert.equal(requests.length, 2);
-    assert.equal(requests[0].url, nextUrl.replace('?page=2', ''));
-    assert.equal(requests[1].url, nextUrl);
+    assert.deepEqual(requests, requestCount === 1 ? [firstUrl] : [firstUrl, nextUrl]);
   });
 });
