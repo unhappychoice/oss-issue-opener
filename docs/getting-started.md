@@ -7,7 +7,7 @@ single issue repository.
 
 ## Install from source
 
-Use Node.js 22, matching `.node-version` and the GitHub Actions workflows, and
+Use Node.js 26, matching `.node-version` and the GitHub Actions workflows, and
 the npm included with Node.js.
 
 ```bash

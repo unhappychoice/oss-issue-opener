@@ -72,10 +72,15 @@ const loadRust: DependencyLoader = async (file) => {
   const content = await file('Cargo.toml');
   try {
     const manifest = parse(content);
+    const workspaceDependencies = asTable(asTable(manifest.workspace).dependencies);
     const tables = [manifest, ...Object.values(asTable(manifest.target))];
     const dependencies = tables.map((table) => asTable(asTable(table).dependencies));
     const packages = new Set(dependencies.flatMap((table) =>
-      Object.entries(table).map(([name, declaration]) => asTable(declaration).package ?? name)
+      Object.entries(table).map(([name, declaration]) => {
+        const dependency = asTable(declaration);
+        const resolved = dependency.workspace === true ? asTable(workspaceDependencies[name]) : dependency;
+        return resolved.package ?? name;
+      })
     ));
     return async (pkg) => packages.has(pkg);
   } catch {

@@ -65,15 +65,11 @@ export const getCommitStatus = async (
   repo: string,
   ref: string
 ): Promise<{ state: string; context: string; url: string }[]> => {
-  try {
-    const statuses: { state: string; context: string; url: string }[] = [];
-    for (let page = 1; ; page++) {
-      const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-      statuses.push(...data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' })));
-      if (data.statuses.length < 100) return statuses;
-    }
-  } catch {
-    return [];
+  const statuses: { state: string; context: string; url: string }[] = [];
+  for (let page = 1; ; page++) {
+    const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
+    statuses.push(...data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' })));
+    if (data.statuses.length < 100) return statuses;
   }
 };
 
@@ -94,32 +90,24 @@ export const getCheckRuns = async (
     startup_failure: 'failure',
   };
 
-  try {
-    const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
-    return checkRuns.map((c) => ({
-      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
-      context: c.name,
-      url: c.html_url ?? '',
-    }));
-  } catch {
-    return [];
-  }
+  const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref });
+  return checkRuns.map((c) => ({
+    state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
+    context: c.name,
+    url: c.html_url ?? '',
+  }));
 };
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
-  try {
-    for (let page = 1; ; page++) {
-      const { data: releases } = await getOctokit().repos.listReleases({ owner, repo, per_page: 100, page });
-      const release = releases.find((release) => !release.draft);
-      if (release) return release.tag_name;
-      if (releases.length < 100) break;
-    }
-
-    const { data: tags } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
-    return tags[0]?.name ?? null;
-  } catch {
-    return null;
+  for (let page = 1; ; page++) {
+    const { data: releases } = await getOctokit().repos.listReleases({ owner, repo, per_page: 100, page });
+    const release = releases.find((release) => !release.draft);
+    if (release) return release.tag_name;
+    if (releases.length < 100) break;
   }
+
+  const { data: tags } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
+  return tags[0]?.name ?? null;
 };
 
 const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {
@@ -138,13 +126,28 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
     .filter((path) => trees[0].get(path) !== trees[1].get(path));
 };
 
+export const getCommitFiles = async (owner: string, repo: string, ref: string): Promise<string[]> => {
+  const perPage = 100;
+  const fileLimit = 3000;
+  const paths: string[] = [];
+  for (let page = 1; ; page++) {
+    const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
+    if (!data.files) return [];
+    paths.push(...data.files.map(({ filename }) => filename));
+    if (paths.length >= fileLimit) return [];
+    if (!headers?.link?.includes('rel="next"')) return paths;
+  }
+};
+
+export type ComparedCommit = { sha: string; message: string };
+
 export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
   head: string
-): Promise<{ files: string[]; commitMessages: string[] }> => {
-  const result = { files: [] as string[], commitMessages: [] as string[] };
+): Promise<{ files: string[]; commits: ComparedCommit[] }> => {
+  const result = { files: [] as string[], commits: [] as ComparedCommit[] };
   let needsTreeComparison = false;
   let baseTree: string | undefined;
   let headTree: string | undefined;
@@ -159,7 +162,7 @@ export const compareCommits = async (
     if (page === 1) result.files = [...new Set(data.files?.flatMap((f) =>
       f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
     ) ?? [])];
-    result.commitMessages.push(...data.commits.map((c) => c.commit.message));
+    result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
     if (data.commits.length < 100) {
       if (needsTreeComparison) result.files = await compareTrees(owner, repo, baseTree, headTree);
       return result;
@@ -190,5 +193,10 @@ export const createIssue = async (
   labels: string[]
 ): Promise<number> => {
   const { data } = await getOctokit().issues.create({ owner, repo, title, body, labels });
+  const appliedLabels = new Set(data.labels.map((label) => typeof label === 'string' ? label : label.name));
+  const missingLabels = labels.filter((label) => !appliedLabels.has(label));
+  if (missingLabels.length > 0) {
+    throw new Error(`Issue ${owner}/${repo}#${data.number} was created without expected labels: ${missingLabels.join(', ')}`);
+  }
   return data.number;
 };
