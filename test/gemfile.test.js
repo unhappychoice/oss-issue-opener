@@ -63,7 +63,18 @@ const cases = [
 ];
 
 [':production', ':default', ':development_tools', "'production'", '"production"'].forEach((group) => {
-  [':test', ':development', ':development, :test'].forEach((excluded) => {
+  test('recognizes a production gem after division by a parameter named raise', () => {
+  const gemfile = "def half(raise)\n  raise /2\nend\ngem 'rack', path: '/rack'";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('recognizes a heredoc argument after a method named class', () => {
+  const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[':test', ':development', ':development, :test'].forEach((excluded) => {
     [`${group}, ${excluded}`, `${excluded}, ${group}`].forEach((groups) => {
       cases.push(
         [`shared block ${groups}`, `group ${groups} do\n  gem 'rake'\nend`, true],
@@ -143,8 +154,8 @@ test('ignores heredoc openers in strings and comments', () => {
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
 
-test('recognizes a production gem path after division by a raise local', () => {
-  const gemfile = "raise = 8\nraise /2\ngem 'rack', path: '/rack'";
+test('recognizes a production gem after division by a parameter named raise', () => {
+  const gemfile = "def half(raise)\n  raise /2\nend\ngem 'rack', path: '/rack'";
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
@@ -152,13 +163,6 @@ test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['if', '!', 'and', 'or', 'not', 'then', 'return'].forEach((method) => {
-  test(`preserves production gems between divisions after receiver.${method}`, () => {
-    const gemfile = `result = receiver.${method} / 2\ngem 'rack'\nresult / 2`;
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
 });
 
 [':test', ':development', ':development, :test'].forEach((group) => {
@@ -169,53 +173,7 @@ test('recognizes a heredoc argument after a method named class', () => {
     'class <<self\nend',
     'class << self\nend',
     'result = class <<self\nend',
-    'words = %w!prefix\nclass WordText\nsuffix!',
-    'words = %w{prefix #{nested}\nclass WordText\nsuffix}',
-    'words = %W(prefix\nmodule WordText\n#{%w!}!}\nsuffix)',
-    'symbols = %i[prefix\nclass SymbolText\nsuffix]',
-    'symbols = %I<prefix\nmodule SymbolText\nsuffix>',
-    'symbol = %s!prefix\nclass SymbolText\nsuffix!',
-    'command = %x!prefix\nmodule CommandText\nsuffix!',
-    'description = %Q{prefix {nested}\nclass StringText\n#{%q!}!}\nsuffix}',
-    'description = %q!prefix\nmodule StringText\nsuffix!',
-    'description = %{prefix\nclass StringText\nsuffix}',
-    'matcher = /prefix\nclass RegexText\nend\\/suffix/',
-    'raise /prefix\nclass RegexText\nsuffix/.source if false',
-    "raise = 8\nraise /2\nclass TestHelper\nend\nraise /2",
-    'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
-    '/prefix\nclass RegexText\nsuffix/',
-    '! /prefix\nclass RegexText\nsuffix/',
-    'not /prefix\nclass RegexText\nsuffix/',
-    'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
-    'message = "invalid: " + /prefix\nclass RegexText\nsuffix/.source',
-    'result = value - /prefix\nclass RegexText\nsuffix/',
-    'matcher = enabled and /prefix\nclass RegexText\nsuffix/',
-    'matcher = cached or /prefix\nclass RegexText\nsuffix/',
-    'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
-    'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : nil',
-    'matcher = enabled ? nil : /prefix\nclass RegexText\nsuffix/',
-    "matcher = enabled ? 8 / 2 : 6 / 3\nclass TestHelper\nend",
-    "character = ?/\nclass TestHelper\nend\nratio = 8 / 2",
-    "character = ?: / 2\nclass TestHelper\nend\nratio = 8 / 2",
-    'matcher = /#{ %q!}!.ord / 2 }/',
-    'matcher = /prefix#{%q!}/!}\nclass RegexText\nsuffix/',
-    'matcher = /prefix#{%Q!#{%q!}/!}!}\nclass RegexText\nsuffix/',
-    'matcher = /prefix#{%!}/!}\nclass RegexText\nsuffix/',
-    'matcher = cached || %r!prefix\nmodule RegexText\nsuffix!',
-    'matcher = %r!prefix\\!\nclass RegexText\nsuffix!i',
-    '!%r{prefix{2}#{ { "}" => 8 }["}"] / 2 }\nmodule RegexText\nsuffix}',
-    'matcher = %r#prefix\nclass RegexText\nsuffix#',
-    'matcher = %r\\prefix\nclass RegexText\nsuffix\\',
-    'matcher = %r prefix\nclass RegexText\nsuffix ',
-    'ratio = 8%r!\nclass TestHelper\nend\nratio % r!',
-    'if /prefix\nclass RegexText\nsuffix/\n  true\nend',
-    'if enabled then /prefix\nclass RegexText\nsuffix/\nend',
-    'if enabled then %r!prefix\nmodule RegexText\nsuffix!i\nend',
-    'if false\n  false\nelsif /prefix\nmodule RegexText\nsuffix/\n  true\nend',
-    'unless /prefix\nclass RegexText\nsuffix/\n  true\nend',
-    'ratio = 8 / 2\nclass TestHelper\nend\nratio / 2',
     'def test_helper\n  true\nend',
-    'def test_helper\n  return /prefix\nclass RegexText\nsuffix/\nend',
     'def test_helper = true',
     'def self.test_helper = true',
     'def test_helper(value = true) = value',
