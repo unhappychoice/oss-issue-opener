@@ -174,6 +174,36 @@ suffix/x
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores scope tokens inside a multiline percent regexp', () => {
+  const gemfile = String.raw`group :test do
+    pattern = %r!prefix\!
+class FakeScope
+suffix!x
+    gem 'rspec'
+  end
+  gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+const interpolations = ['{ path: "/}" }.fetch(:path)', '%q!}/!', '8 / 2'];
+
+interpolations.forEach((expression) => {
+  test(`ignores slashes in regexp interpolation containing ${expression}`, () => {
+    const gemfile = `group :test do
+    pattern = enabled ? /prefix#{ ${expression} }
+end
+suffix/x : %r{prefix{2}
+class FakeScope
+suffix}
+    gem 'rspec'
+  end
+  gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 [':test', ':development', ':development, :test'].forEach((group) => {
   ['class TestHelper\nend',
     'module TestHelpers\n  class TestHelper\n  end\nend',
