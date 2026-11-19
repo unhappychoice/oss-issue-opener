@@ -9,7 +9,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
-    if (token === '/' && regexpExpected) {
+    if ((token === '/' || token === '%') && regexpExpected) {
       const literal = readRegexp(content, match.index);
       if (literal) {
         pattern.lastIndex = match.index + literal.length;
@@ -51,19 +51,38 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
+const pairedRegexpDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
 const readRegexp = (content: string, start: number): string | undefined => {
-  const regexpPart = /\\[\s\S]|#\{|\/[imxounes]*|[^/\\#]+|#/y;
+  const opening = /\/|%r([^a-zA-Z0-9\u0080-\uffff])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const delimiter = match[1] ?? '/';
+  const closing = pairedRegexpDelimiters.get(delimiter) ?? delimiter;
+  const end = regexpEnd(content, opening.lastIndex, delimiter, closing);
+  if (end === undefined) return undefined;
+  const options = /[imxounes]*/y;
+  options.lastIndex = end;
+  options.exec(content);
+  return content.slice(start, options.lastIndex);
+};
+
+const regexpEnd = (content: string, start: number, opening: string, closing: string): number | undefined => {
+  const regexpPart = /\\[\s\S]|#\{|[\s\S]/y;
   const expressionPart = /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|#[^\n]*|[{}]|[^"'#{}]+/y;
-  let offset = start + 1;
+  let offset = start;
   let braces = 0;
+  let delimiters = 1;
   while (offset < content.length) {
+    if (braces === 0 && content[offset] === closing && --delimiters === 0) return offset + 1;
     const part = braces === 0 ? regexpPart : expressionPart;
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;
     offset = part.lastIndex;
     if (braces === 0) {
-      if (match[0].startsWith('/')) return content.slice(start, offset);
+      if (opening !== closing && match[0] === opening) delimiters++;
       if (match[0] === '#{') braces++;
     } else {
       if (match[0] === '{') braces++;
