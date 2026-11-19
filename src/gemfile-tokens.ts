@@ -54,7 +54,7 @@ const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 const expectsExpression = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
-  (previous !== '.' && /^(?:do|if|elsif|unless)$/.test(token));
+  (previous !== '.' && /^(?:do|if|elsif|unless|case|when)$/.test(token));
 
 const expressionLiteralEnd = (content: string, match: RegExpExecArray, interpolating: boolean): number | undefined => {
   if (match[0] === '/' || match[0] === '%') {

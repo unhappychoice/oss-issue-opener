@@ -146,6 +146,7 @@ test('ignores heredoc openers in strings and comments', () => {
 [
   'def half(raise)\n  raise /2\nend',
   'ratio = receiver.if / 2',
+  'ratio = receiver.case / 2',
   'ratio = ?/.ord / 2',
 ].forEach((division) => {
   test('recognizes a production gem after division in ' + division, () => {
@@ -163,6 +164,8 @@ test('recognizes a heredoc argument after a method named class', () => {
 [
   ['slash literal', 'pattern = /\nclass Fake\n/'],
   ['conditional', 'if /\nclass Fake\n/\nend'],
+  ['case expression', 'case /\nclass Fake\n/\nwhen nil\nend'],
+  ['when condition', 'case value\nwhen %r{\nmodule Fake\n}\nend'],
   ['negated literal', 'pattern = !/\nclass Fake\n/'],
   ['ternary branches', 'pattern = flag ? /a\\/b\nclass Fake\n/ : /\nmodule Fake\n/'],
   ['percent literal', 'pattern = %r{outer{inner}\nclass Fake\n}x'],
