@@ -95,6 +95,12 @@ test('gemspec runtime dependencies take precedence over Gemfile groups', async (
   assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), true);
 });
 
+test('ignores bare dependency names in Gemfile declarations', () => {
+  const gemfile = "rack = 'puma'\ngem rack\ngem(rack)";
+  assert.equal(isProductionGem(gemfile, 'rack'), false);
+  assert.equal(isProductionGem(gemfile, 'puma'), false);
+});
+
 ["'", '"'].forEach((quote) => {
   test(`preserves backslash-newline inside ${quote} strings`, () => {
     const name = "ra\\\n#ke";
