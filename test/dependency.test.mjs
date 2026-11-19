@@ -4,7 +4,7 @@ import { afterEach, mock, test } from 'node:test';
 import { isProductionDependency } from '../dist/dependency.js';
 import { checkPendingRelease } from '../dist/checker.js';
 import { getOctokit } from '../dist/github.js';
-import { mockRubyRepository } from './helpers/github.mjs';
+import { commitSha, mockRubyRepository } from './helpers/github.mjs';
 
 afterEach(() => mock.restoreAll());
 
@@ -68,7 +68,7 @@ const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
         status: 'pending',
         changedSources: [],
         dependencyUpdates: [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }],
-        compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+        compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
       });
   });
 });

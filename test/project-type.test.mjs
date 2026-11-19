@@ -4,7 +4,7 @@ import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, getRepoContents } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const owner = 'example';
 const repo = 'gemfile-only';
@@ -170,7 +170,7 @@ test('shares the root listing between project detection and the Ruby dependency 
         status: 'pending',
         changedSources: ['src/main.py'],
         dependencyUpdates: [],
-        compareUrl: `https://github.com/${owner}/${repo}/compare/v1.0.0...main`,
+        compareUrl: `https://github.com/${owner}/${repo}/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
       } : { status: 'up-to-date' });
     });
   });

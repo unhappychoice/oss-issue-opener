@@ -60,6 +60,7 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
 });
 
 test('CLI submits confirmed CI failures before exiting with status 1 for an endpoint error', () => {
+  const sha = 'a'.repeat(40);
   const preload = `
     globalThis.fetch = async (url, options) => {
       const { origin, pathname } = new URL(url);
@@ -77,10 +78,13 @@ test('CLI submits confirmed CI failures before exiting with status 1 for an endp
         if (pathname.startsWith('/users/')) {
           return Response.json(pathname.endsWith('/repos') ? [] : { type: 'User' });
         }
-        if (pathname.endsWith('/commits/main/status')) {
+        if (pathname === '/repos/unhappychoice/example/branches/main') {
+          return Response.json({ commit: { sha: '${sha}' } });
+        }
+        if (pathname === '/repos/unhappychoice/example/commits/${sha}/status') {
           return Response.json({ statuses: [{ state: 'failure', context: 'build' }] });
         }
-        if (pathname.endsWith('/commits/main/check-runs')) {
+        if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-runs') {
           return Response.json({ message: 'Check runs unavailable' }, { status: 503 });
         }
         if (['/releases', '/tags', '/issues'].some((suffix) => pathname.endsWith(suffix))) {

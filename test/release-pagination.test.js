@@ -22,7 +22,7 @@ test('reports source changes against the published release when a draft points t
     status: 'pending',
     changedSources: ['src/index.ts'],
     dependencyUpdates: [],
-    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
   assert.equal(compare.mock.calls[0].arguments[0].base, commitSha(`tags/${published.tag_name}`));
 });
