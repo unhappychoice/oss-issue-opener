@@ -135,9 +135,9 @@ test('Gemfile fallback preserves group exclusions for literal package names', as
   assert.equal(await check('runtimeXtest'), false);
 });
 
-test('Gemfile fallback preserves group exclusions around a multiline percent regexp', async () => {
+test('Gemfile fallback preserves group exclusions around a multiline percent regexp after or', async () => {
   mockRubyRepository('', `group :test do
-    matcher = %r!prefix
+    matcher = cached or %r!prefix
 class RegexText
 suffix!i
     gem 'rspec'
