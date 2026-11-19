@@ -63,18 +63,7 @@ const cases = [
 ];
 
 [':production', ':default', ':development_tools', "'production'", '"production"'].forEach((group) => {
-  test('recognizes a production gem after division by a parameter named raise', () => {
-  const gemfile = "def half(raise)\n  raise /2\nend\ngem 'rack', path: '/rack'";
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('recognizes a heredoc argument after a method named class', () => {
-  const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[':test', ':development', ':development, :test'].forEach((excluded) => {
+  [':test', ':development', ':development, :test'].forEach((excluded) => {
     [`${group}, ${excluded}`, `${excluded}, ${group}`].forEach((groups) => {
       cases.push(
         [`shared block ${groups}`, `group ${groups} do\n  gem 'rake'\nend`, true],
@@ -154,15 +143,46 @@ test('ignores heredoc openers in strings and comments', () => {
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
 
-test('recognizes a production gem after division by a parameter named raise', () => {
-  const gemfile = "def half(raise)\n  raise /2\nend\ngem 'rack', path: '/rack'";
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+[
+  'def half(raise)\n  raise /2\nend',
+  'ratio = receiver.if / 2',
+  'ratio = ?/.ord / 2',
+].forEach((division) => {
+  test('recognizes a production gem after division in ' + division, () => {
+    const gemfile = division + "\ngem 'rack', path: '/rack'";
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
+  ['slash literal', 'pattern = /\nclass Fake\n/'],
+  ['conditional', 'if /\nclass Fake\n/\nend'],
+  ['negated literal', 'pattern = !/\nclass Fake\n/'],
+  ['ternary branches', 'pattern = flag ? /a\\/b\nclass Fake\n/ : /\nmodule Fake\n/'],
+  ['percent literal', 'pattern = %r{outer{inner}\nclass Fake\n}x'],
+  ['unpaired delimiter', 'pattern = %r!\nclass Fake\n!'],
+  ['percent string and division', 'pattern = /#{%q!}!.ord / 2}/'],
+  ['quoted slash', 'pattern = /#{"/"}/'],
+  ['interpolation', 'pattern = /#{%q(}/)} #{ { key: /\// }[:key] }\nclass Fake\n/'],
+  ['scope closer and fake gem', "pattern = /\nend\ngem 'fake'\n/"],
+].forEach(([description, pattern]) => {
+  test(`ignores scope tokens inside a multiline regexp (${description})`, async (t) => {
+    const gemfile = `group :test do\n  ${pattern}\n  gem 'rspec'\nend\ngem 'rack'`;
+    t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+      data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
+    }));
+    assert.equal(isProductionGem(gemfile, 'fake'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(await isProductionDependency('owner', 'repo', 'rspec', 'ruby'), false);
+    assert.equal(await isProductionDependency('owner', 'repo', 'rack', 'ruby'), true);
+  });
 });
 
 [':test', ':development', ':development, :test'].forEach((group) => {
