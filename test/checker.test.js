@@ -191,7 +191,7 @@ test('detects source changes without dependency updates', async (t) => {
     const message = `Bump ${pkg} from 3.1.0 to 3.1.1`;
     stubRepository(t, message, ['Gemfile.lock']);
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
+      data: path === '' ? [{ name: 'Gemfile' }] : { content: Buffer.from(gemfile).toString('base64') },
     }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), production ? {
