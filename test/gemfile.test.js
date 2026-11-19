@@ -169,6 +169,8 @@ test('recognizes a heredoc argument after a method named class', () => {
 [
   ['slash literal', 'pattern = /\nclass Fake\n/'],
   ['bare command argument', 'p /prefix\nclass Fake\n/'],
+  ['bare command percent regexp with an unpaired delimiter', 'p %r!prefix\\!\nclass Fake\n!x'],
+  ['bare command percent regexp with a paired delimiter', 'p %r{outer{inner}\nmodule Fake\n}'],
   ['method return', 'def pattern\n  return /\nclass Fake\n/\nend'],
   ['conditional', 'if /\nclass Fake\n/\nend'],
   ['then branch', 'if flag then /\nclass Fake\n/\nend'],

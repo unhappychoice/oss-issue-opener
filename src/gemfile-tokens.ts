@@ -59,8 +59,8 @@ const expectsExpression = (token: string, previous: string): boolean =>
 
 const commandRegexpEnd = (content: string, match: RegExpExecArray): number | undefined => {
   const start = match.index;
-  if (match[0] !== '/' || !/[^\S\r\n]/.test(content[start - 1] ?? '') ||
-    !/[^\s=]/.test(content[start + 1] ?? '')) return undefined;
+  if ((match[0] !== '/' && match[0] !== '%') || !/[^\S\r\n]/.test(content[start - 1] ?? '')) return undefined;
+  if (match[0] === '/' && !/[^\s=]/.test(content[start + 1] ?? '')) return undefined;
   const end = literalEnd(content, start, regexpOpening);
   // Only shield multiline arguments here, where literal text can look like a new statement.
   if (end !== undefined && content.slice(start, end).includes('\n') &&
