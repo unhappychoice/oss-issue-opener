@@ -3,7 +3,7 @@ import { mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const stubRepository = (manifests, commitMessages = []) => {
   initMockOctokit('test');
@@ -19,7 +19,7 @@ const stubRepository = (manifests, commitMessages = []) => {
     listReleases: async () => ({ data: [{ tag_name: 'v1' }] }),
     get: async () => ({ data: { default_branch: 'main' } }),
     compareCommits: async ({ page, per_page }) => ({ data: {
-      files: [{ filename: 'src/main.ts' }],
+      files: [{ filename: 'src/main.ts' }, { filename: 'package-lock.json' }],
       commits: commitMessages.slice((page - 1) * per_page, page * per_page)
         .map((message) => ({ sha: message, commit: { message } })),
     } }),
@@ -43,7 +43,7 @@ test('release checks reuse parsed Node dependencies and preserve every productio
     status: 'pending',
     changedSources: ['src/main.ts'],
     dependencyUpdates: bumps.filter(({ pkg }) => pkg !== 'dev'),
-    compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
   });
   await checkPendingRelease('owner', 'repo', 'node');
   await checkPendingRelease('owner', 'other', 'node');
@@ -112,7 +112,7 @@ test('Ruby loads the fallback only when needed and caches missing files and list
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
     });
   });
 });
@@ -298,7 +298,7 @@ test('cached Go checks preserve exact requirements and ignore other directives',
         status: 'pending',
         changedSources: [],
         dependencyUpdates: [{ pkg: 'org.example:runtime', from: '1.0', to: '1.1' }],
-        compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+        compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
       });
     });
   });
@@ -334,7 +334,7 @@ test('cached Go checks preserve exact requirements and ignore other directives',
         status: 'pending',
         changedSources: [],
         dependencyUpdates: [{ pkg: 'org.example:runtime', from: '1.0', to: '1.1' }],
-        compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+        compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
       });
     });
   });
