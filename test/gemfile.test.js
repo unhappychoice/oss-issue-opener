@@ -148,6 +148,7 @@ test('ignores heredoc openers in strings and comments', () => {
   'ratio = receiver.if / 2',
   'ratio = receiver.case / 2',
   'ratio = receiver.else / 2',
+  'ratio = receiver.then / 2',
   'ratio = receiver.return / 2',
   'ratio = ?/.ord / 2',
 ].forEach((division) => {
@@ -167,6 +168,8 @@ test('recognizes a heredoc argument after a method named class', () => {
   ['slash literal', 'pattern = /\nclass Fake\n/'],
   ['method return', 'def pattern\n  return /\nclass Fake\n/\nend'],
   ['conditional', 'if /\nclass Fake\n/\nend'],
+  ['then branch', 'if flag then /\nclass Fake\n/\nend'],
+  ['when branch after then', 'case value\nwhen nil then %r{\nmodule Fake\n}\nend'],
   ['else branch', 'if flag\n  nil\nelse /prefix\nclass Fake\nsuffix/\nend'],
   ['case expression', 'case /\nclass Fake\n/\nwhen nil\nend'],
   ['when condition', 'case value\nwhen %r{\nmodule Fake\n}\nend'],
