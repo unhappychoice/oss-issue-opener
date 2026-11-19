@@ -13,7 +13,7 @@ const checkStatus = async (status, conclusion) => {
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
   mock.method(client, 'paginate', async (method, params) => {
     assert.equal(method, client.checks.listForRef);
-    assert.deepEqual(params, { owner: 'owner', repo: 'repo', ref: 'main' });
+    assert.deepEqual(params, { owner: 'owner', repo: 'repo', ref: 'main', per_page: 100 });
     return [{ status, conclusion, name: 'build', html_url: checkUrl }];
   });
   return checkCIStatus('owner', 'repo');

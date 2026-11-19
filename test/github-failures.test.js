@@ -3,12 +3,13 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import {
   getCheckRuns, getCommitStatus, getDefaultBranch, getLatestRelease,
-  getOctokit, initOctokit, listOpenIssues,
+  getOctokit, listOpenIssues,
 } from '../dist/github.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
+import { initMockOctokit } from './helpers/github.mjs';
 
 beforeEach(() => {
-  initOctokit('test-token');
+  initMockOctokit('test-token');
   mock.method(console, 'log', () => {});
   mock.method(console, 'error', () => {});
 });
@@ -52,7 +53,7 @@ test('preserves the request error when check runs retrieval fails', async () => 
   await assert.rejects(getCheckRuns('owner', 'repo', 'main'), (error) => error === failure);
   assert.equal(request.mock.callCount(), 1);
   assert.deepEqual(request.mock.calls[0].arguments, [
-    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main' },
+    getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main', per_page: 100 },
   ]);
 });
 

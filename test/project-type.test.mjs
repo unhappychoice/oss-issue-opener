@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
-import { getOctokit, getRepoContents, initOctokit } from '../dist/github.js';
+import { getOctokit, getRepoContents } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
-import { mockCommitFiles } from './helpers/github.mjs';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const owner = 'example';
 const repo = 'gemfile-only';
 
 beforeEach(() => {
   mock.restoreAll();
-  initOctokit('test-token');
+  initMockOctokit('test-token');
   mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
     data: path === ''
       ? [{ name: 'Gemfile' }]
