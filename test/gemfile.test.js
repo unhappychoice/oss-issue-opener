@@ -154,7 +154,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', '!', 'and', 'or', 'then', 'return'].forEach((method) => {
+['if', '!', 'and', 'or', 'not', 'then', 'return'].forEach((method) => {
   test(`preserves production gems between divisions after receiver.${method}`, () => {
     const gemfile = `result = receiver.${method} / 2\ngem 'rack'\nresult / 2`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -185,6 +185,7 @@ test('recognizes a heredoc argument after a method named class', () => {
     'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
     '/prefix\nclass RegexText\nsuffix/',
     '! /prefix\nclass RegexText\nsuffix/',
+    'not /prefix\nclass RegexText\nsuffix/',
     'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
     'matcher = enabled and /prefix\nclass RegexText\nsuffix/',
     'matcher = cached or /prefix\nclass RegexText\nsuffix/',
