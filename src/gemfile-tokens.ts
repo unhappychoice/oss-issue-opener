@@ -31,7 +31,7 @@ export const gemfileTokens = (content: string): string[] => {
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       regexpExpected = /^(?:\n|;|=|=>|~|\(|\[|,)$/.test(token) ||
-        (previous !== '.' && /^(?:do|if|elsif|unless)$/.test(token));
+        (previous !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
       previous = token;
     }
     if (token.startsWith('<<')) {

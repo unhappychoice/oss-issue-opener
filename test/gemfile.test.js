@@ -149,9 +149,11 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('preserves production gems between divisions after keyword-named calls', () => {
-  const gemfile = "result = receiver.if / 2\ngem 'rack'\nresult / 2";
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+['if', '!'].forEach((method) => {
+  test(`preserves production gems between divisions after receiver.${method}`, () => {
+    const gemfile = `result = receiver.${method} / 2\ngem 'rack'\nresult / 2`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [':test', ':development', ':development, :test'].forEach((group) => {
@@ -165,6 +167,7 @@ test('preserves production gems between divisions after keyword-named calls', ()
     'matcher = /prefix\nclass RegexText\nend\\/suffix/',
     'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
     '/prefix\nclass RegexText\nsuffix/',
+    '! /prefix\nclass RegexText\nsuffix/',
     'if /prefix\nclass RegexText\nsuffix/\n  true\nend',
     'if false\n  false\nelsif /prefix\nmodule RegexText\nsuffix/\n  true\nend',
     'unless /prefix\nclass RegexText\nsuffix/\n  true\nend',
