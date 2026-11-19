@@ -264,7 +264,7 @@ test('shares default branches per repository and refreshes them on each scan', a
     });
     issues.filter(({ type }) => type === 'pending-release').forEach(({ body }) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`v1...${scan === 0 ? 'main' : 'next'}`));
+      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${commitSha(scan === 0 ? 'heads/main' : 'heads/next')}`));
     });
   });
 });
@@ -433,7 +433,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     });
     batches[0].filter(({ type }) => type === 'pending-release').forEach(({ body }, index) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`v1...${branches[index]}`));
+      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${commitSha(`heads/${branches[index]}`)}`));
     });
   });
 });

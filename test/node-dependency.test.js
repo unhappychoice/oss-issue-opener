@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 initMockOctokit('test-token');
 
@@ -41,7 +41,7 @@ cases.forEach(([name, manifest, pkg, expected]) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'constructor', from: '1.0.0', to: '2.0.0' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
