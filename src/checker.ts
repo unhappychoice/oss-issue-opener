@@ -45,7 +45,6 @@ export const checkPendingRelease = async (
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes() : projectTypes;
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
@@ -54,6 +53,7 @@ export const checkPendingRelease = async (
   );
   if (files.length === 0 && commits.length === 0) return { status: 'up-to-date' };
 
+  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes() : projectTypes;
   const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));

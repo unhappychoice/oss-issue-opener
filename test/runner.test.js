@@ -145,7 +145,10 @@ test('still checks releases when CI investigation fails', async () => {
 test('preserves CI notifications when project detection fails', async () => {
   const cause = new Error('Project detection unavailable');
   const repos = stubInvestigations();
-  const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Project detection failed'));
+  mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'src/example.ts' }], commits: [],
+  } }));
   const { deps, batches, checked } = setup({
     detectProjectTypes: async () => { throw cause; },
     checkPendingRelease,
@@ -157,7 +160,6 @@ test('preserves CI notifications when project detection fails', async () => {
 
   assert.deepEqual(checked, ['first', 'broken', 'last']);
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
-  assert.equal(compare.mock.callCount(), 0);
 });
 
 test('continues other organizations and reports investigation and batch failures together', async () => {
@@ -273,12 +275,35 @@ test('shares the default branch when release comparison is empty', async () => {
   const repos = stubInvestigations();
   const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(repos, 'compareCommits', async () => ({ data: { files: [], commits: [] } }));
-  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease, detectProjectTypes });
 
   await runChecks(deps);
 
   assert.equal(lookup.mock.callCount(), 3);
+  assert.equal(contents.mock.callCount(), 0);
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
+});
+
+test('reports up to date without comparing or listing root contents when both refs resolve to the same commit', async () => {
+  const repos = stubInvestigations();
+  const resolve = mock.method(repos, 'getCommit', async () => ({ data: { sha: commitSha('heads/main') } }));
+  const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    checkCIStatus,
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await runChecks(deps);
+
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main']);
+  assert.equal(compare.mock.callCount(), 0);
+  assert.equal(contents.mock.callCount(), 0);
+  assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Release: up to date')));
+  assert.deepEqual(batches[0].map(({ type }) => type), ['ci-failure']);
 });
 
 test('shares failed branch lookups without retrying or creating notifications', async () => {

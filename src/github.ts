@@ -152,9 +152,10 @@ export const compareCommits = async (
     repos.getCommit({ owner, repo, ref: base }),
     repos.getCommit({ owner, repo, ref: head }),
   ]);
-  const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
   const result = { files: [] as string[], commits: [] as ComparedCommit[] };
+  if (baseCommit.sha === headCommit.sha) return result;
 
+  const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
   for (let page = 1; ; page++) {
     const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
     if (page === 1) {
