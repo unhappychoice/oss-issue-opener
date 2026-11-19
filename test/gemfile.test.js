@@ -169,6 +169,7 @@ test('recognizes a heredoc argument after a method named class', () => {
     '/prefix\nclass RegexText\nsuffix/',
     '! /prefix\nclass RegexText\nsuffix/',
     'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
+    'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
     'matcher = cached || %r!prefix\nmodule RegexText\nsuffix!',
     'matcher = %r!prefix\\!\nclass RegexText\nsuffix!i',
     '!%r{prefix{2}#{ { "}" => 8 }["}"] / 2 }\nmodule RegexText\nsuffix}',
