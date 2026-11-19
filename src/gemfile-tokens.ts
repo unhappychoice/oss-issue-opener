@@ -10,7 +10,7 @@ export const gemfileTokens = (content: string): string[] => {
     let token = match[0];
     if (token.startsWith('#')) continue;
     if (expressionExpected) {
-      const end = expressionLiteralEnd(content, match, false);
+      const end = expressionLiteralEnd(content, match);
       if (end !== undefined) {
         token = content.slice(match.index, end);
         pattern.lastIndex = end;
@@ -56,10 +56,10 @@ const expectsExpression = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
   (previous !== '.' && /^(?:do|if|elsif|unless|case|when)$/.test(token));
 
-const expressionLiteralEnd = (content: string, match: RegExpExecArray, interpolating: boolean): number | undefined => {
+const expressionLiteralEnd = (content: string, match: RegExpExecArray): number | undefined => {
   if (match[0] === '/' || match[0] === '%') {
     return literalEnd(content, match.index, regexpOpening) ??
-      (interpolating ? literalEnd(content, match.index, percentOpening) : undefined);
+      literalEnd(content, match.index, percentOpening);
   }
   if (match[0] === '?') {
     const character = /\?(?:\\[^\n]|[^\s\\])/uy;
@@ -110,7 +110,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
     if (token === '}' && --depth === 0) return pattern.lastIndex;
     if (token === '{') depth++;
     if (expressionExpected) {
-      const end = expressionLiteralEnd(content, match, true);
+      const end = expressionLiteralEnd(content, match);
       if (end !== undefined) {
         pattern.lastIndex = end;
         expressionExpected = false;

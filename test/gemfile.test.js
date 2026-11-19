@@ -174,8 +174,10 @@ test('recognizes a heredoc argument after a method named class', () => {
   ['quoted slash', 'pattern = /#{"/"}/'],
   ['interpolation', 'pattern = /#{%q(}/)} #{ { key: /\// }[:key] }\nclass Fake\n/'],
   ['scope closer and fake gem', "pattern = /\nend\ngem 'fake'\n/"],
+  ['non-interpolated percent string', 'text = %q{outer{inner}\nclass Fake\n}'],
+  ['interpolated percent string', 'text = %Q!#{%q!nested!}\nmodule Fake\n!'],
 ].forEach(([description, pattern]) => {
-  test(`ignores scope tokens inside a multiline regexp (${description})`, async (t) => {
+  test(`ignores scope tokens inside a multiline literal (${description})`, async (t) => {
     const gemfile = `group :test do\n  ${pattern}\n  gem 'rspec'\nend\ngem 'rack'`;
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
       data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
