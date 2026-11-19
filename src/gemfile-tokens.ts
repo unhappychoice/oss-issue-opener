@@ -66,7 +66,7 @@ const readToken = (pattern: RegExp, match: RegExpExecArray, content: string, ope
 
 const expectsRegexp = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|,|&&|\|\||\?|:)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless|or)$/.test(token));
+  (previous !== '.' && /^(?:!|do|if|elsif|unless|and|or)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
