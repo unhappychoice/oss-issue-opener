@@ -1,5 +1,8 @@
 import { scanBlockComments } from './block-comments.js';
 
+// Match expression starts and the bare because argument so division stays visible as code.
+const groovySlashyString = /(?<=[(=,:;{~]\s*|\bbecause[ \t]+)\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
+
 export const gradleDependencies = (content: string): string[] => {
   const code = gradleDeclarations(stripGradleComments(content));
   const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?(['"])([^'"\r\n]+)\1/g)));
@@ -17,7 +20,11 @@ export const gradleDependencies = (content: string): string[] => {
 };
 
 export const stripGradleComments = (content: string): string => {
-  const code = /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[\s\S]/gy;
+  const code = new RegExp(
+    /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
+    + '|' + groovySlashyString.source + '|' + /[\s\S]/.source,
+    'gy'
+  );
   let result = '';
   scanBlockComments(content, code, (token, depth) => {
     const hidden = depth > 0 || token === '/*' || token.startsWith('//');
@@ -27,7 +34,11 @@ export const stripGradleComments = (content: string): string => {
 };
 
 const gradleDeclarations = (content: string): string[] => {
-  const tokens = /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/gm;
+  const tokens = new RegExp(
+    /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
+    + '|' + groovySlashyString.source + '|' + /(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
+    'gm'
+  );
   const declarations: string[] = [];
   let constraintDepth = 0;
   for (const { 0: token, 1: constraint, 2: configuration, index } of content.matchAll(tokens)) {

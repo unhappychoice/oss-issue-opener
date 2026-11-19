@@ -63,6 +63,21 @@ test('Gradle keeps constraint scope across nested blocks, strings, and comments'
   assert.deepEqual(gradleDependencies(content), ['org.example:before:1.0', 'org.example:after:1.0']);
 });
 
+test('Gradle keeps constraint scope across Groovy slashy strings', () => {
+  const content = String.raw`dependencies {
+    constraints {
+      implementation('org.example:first:1.0') { because(/reason }/) }
+      api('org.example:second:1.0') { because /escaped slash } \// }
+      implementation('org.example:third:1.0')
+    }
+    def ratio = 8 / 2
+    def pattern = /{ api('org.example:string:1.0') }/
+    api('org.example:runtime:1.0')
+  }`;
+  assert.equal(stripGradleComments(content), content);
+  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+});
+
 ['implementation', 'api'].forEach((configuration) => {
   ['platform', 'enforcedPlatform'].forEach((wrapper) => {
     [
