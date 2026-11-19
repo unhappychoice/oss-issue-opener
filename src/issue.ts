@@ -113,6 +113,7 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
 
     try {
       const num = await createIssue(issueOwner, issueRepo, issue.title, issue.body, [issue.type]);
+      existing.add(issue.title);
       console.log(`  [created] ${issue.title} (#${num})`);
     } catch (cause) {
       const failure = new Error(`Failed to create issue: ${issue.title}`, { cause });

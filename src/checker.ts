@@ -1,8 +1,13 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles } from './github.js';
+import { getCommitStatus, getCheckRuns, getBranchHead, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles } from './github.js';
 import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
+
+// Share the lookup budget across repository scans, including paginated lookups.
+const COMMIT_FILE_CONCURRENCY = 16;
+const waitingLookups: (() => void)[] = [];
+let activeLookups = 0;
 
 export const checkCIStatus = async (
   owner: string,
@@ -12,9 +17,12 @@ export const checkCIStatus = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
 
+  const sha = await getBranchHead(owner, repo, defaultBranch);
+  if (!sha) return { status: 'no-ci', failedChecks: [] };
+
   const [statuses, checkRuns] = await Promise.all([
-    getCommitStatus(owner, repo, defaultBranch),
-    getCheckRuns(owner, repo, defaultBranch),
+    getCommitStatus(owner, repo, sha),
+    getCheckRuns(owner, repo, sha),
   ]);
 
   const allStatuses = [...statuses, ...checkRuns];
@@ -49,18 +57,20 @@ export const checkPendingRelease = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
-  const { files, commits } = await compareCommits(
+  const { baseSha, headSha, files, commits } = await compareCommits(
     owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
   );
-  if (files.length === 0 && commits.length === 0) return { status: 'up-to-date' };
+  if (files.length === 0) return { status: 'up-to-date' };
 
   const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
 
-  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, types, getContents);
+  const changedDependencyTypes = getDependencyProjectTypes(files);
+  const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
+  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, dependencyTypes, getContents);
 
-  const compareUrl = `https://github.com/${owner}/${repo}/compare/${latestTag}...${defaultBranch}`;
+  const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
   return changedSources.length > 0 || dependencyUpdates.length > 0
     ? { status: 'pending', changedSources, dependencyUpdates, compareUrl }
     : { status: 'up-to-date' };
@@ -73,15 +83,37 @@ const findDependencyUpdates = async (
   types: ProjectType[],
   getContents?: () => Promise<string[]>
 ): Promise<DependencyUpdate[]> => {
-  if (types.every((type) => type === 'unknown')) return [];
+  if (types.length === 0) return [];
   const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents)]));
-  const updates: DependencyUpdate[] = [];
-  for (const { sha, message } of commits) {
+  const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);
-    if (!bump) continue;
-    const affected = getDependencyProjectTypes(await getCommitFiles(owner, repo, sha));
+    return bump ? [{ sha, bump }] : [];
+  });
+  const lookups = await Promise.all(bumps.map(async ({ sha, bump }) => ({
+    bump,
+    affected: getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha)),
+  })));
+
+  const updates: DependencyUpdate[] = [];
+  for (const { bump, affected } of lookups) {
     if (affected.length !== 1) continue;
     if (await checkers.get(affected[0])?.(bump.pkg)) updates.push(bump);
   }
   return updates;
+};
+
+const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {
+  if (activeLookups >= COMMIT_FILE_CONCURRENCY) {
+    await new Promise<void>((resolve) => waitingLookups.push(resolve));
+  } else {
+    activeLookups++;
+  }
+
+  try {
+    return await getCommitFiles(owner, repo, sha);
+  } finally {
+    const next = waitingLookups.shift();
+    if (next) next();
+    else activeLookups--;
+  }
 };
