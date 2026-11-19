@@ -186,6 +186,38 @@ suffix!x
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['/prefix\nclass FakeScope\nsuffix/', '%r{prefix\nclass FakeScope\nsuffix}'].forEach((literal) => {
+  test(`ignores scope tokens inside a negated ${literal.startsWith('/') ? 'slash' : 'percent'} regexp`, () => {
+    const gemfile = `group :test do
+  matcher = !${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['receiver.value!', 'receiver.if', '?!'].forEach((operand) => {
+  test(`preserves a gem declaration after division with ${operand}`, () => {
+    const gemfile = `ratio = ${operand} / 2\ngem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('ignores scope tokens inside a regexp used as an if condition', () => {
+  const gemfile = `group :test do
+  if /prefix
+class FakeScope
+suffix/
+    gem 'rspec'
+  end
+end
+gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 const interpolations = ['{ path: "/}" }.fetch(:path)', '%q!}/!', '8 / 2'];
 
 interpolations.forEach((expression) => {
