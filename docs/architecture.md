@@ -53,10 +53,17 @@ notifications already collected, then throws an `AggregateError` if operations
 failed. Batch creation similarly attempts remaining issues after a creation
 failure and reports the failures together.
 
-Some GitHub read helpers return empty results or `null` on API errors; these can
-produce outcomes such as `no-ci` or `no-tag` rather than a recorded failure.
-Comparison errors, including incomplete recursive trees, propagate to the runner.
-When changing error handling, inspect both the API helper and its caller.
+Errors reading commit statuses, check runs, releases, tags, or comparisons
+propagate to the runner as investigation failures. This includes incomplete
+recursive trees during a comparison. A successful CI read with no results after
+filtering yields `no-ci`. Successful release and tag reads without a baseline
+yield `no-tag`.
+
+The root listing and file content helpers still fall back to an empty list or
+empty string on read errors, which can affect ecosystem detection and dependency
+checks. If the runner needs a separate default-branch lookup and that lookup
+fails, the helper returns `null`. CI then reports `no-branch`, and the release
+check reports `up-to-date` if it already found a release or tag.
 
 ## Where to start a change
 
