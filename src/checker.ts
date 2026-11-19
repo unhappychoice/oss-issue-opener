@@ -4,6 +4,11 @@ import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
+// Share the lookup budget across repository scans, including paginated lookups.
+const COMMIT_FILE_CONCURRENCY = 16;
+const waitingLookups: (() => void)[] = [];
+let activeLookups = 0;
+
 export const checkCIStatus = async (
   owner: string,
   repo: string,
@@ -80,13 +85,35 @@ const findDependencyUpdates = async (
 ): Promise<DependencyUpdate[]> => {
   if (types.length === 0) return [];
   const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents)]));
-  const updates: DependencyUpdate[] = [];
-  for (const { sha, message } of commits) {
+  const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);
-    if (!bump) continue;
-    const affected = getDependencyProjectTypes(await getCommitFiles(owner, repo, sha));
+    return bump ? [{ sha, bump }] : [];
+  });
+  const lookups = await Promise.all(bumps.map(async ({ sha, bump }) => ({
+    bump,
+    affected: getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha)),
+  })));
+
+  const updates: DependencyUpdate[] = [];
+  for (const { bump, affected } of lookups) {
     if (affected.length !== 1) continue;
     if (await checkers.get(affected[0])?.(bump.pkg)) updates.push(bump);
   }
   return updates;
+};
+
+const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {
+  if (activeLookups >= COMMIT_FILE_CONCURRENCY) {
+    await new Promise<void>((resolve) => waitingLookups.push(resolve));
+  } else {
+    activeLookups++;
+  }
+
+  try {
+    return await getCommitFiles(owner, repo, sha);
+  } finally {
+    const next = waitingLookups.shift();
+    if (next) next();
+    else activeLookups--;
+  }
 };
