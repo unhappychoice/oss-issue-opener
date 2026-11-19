@@ -83,3 +83,17 @@ test('action_required includes the failed check name and URL in the notification
     });
   });
 });
+
+test('reports incomplete CI and preserves both errors when neither endpoint responds', async () => {
+  const client = getOctokit();
+  const statusesError = new Error('Commit statuses HTTP 503');
+  const checksError = new Error('Check runs HTTP 503');
+  mock.method(client.repos, 'getCombinedStatusForRef', async () => { throw statusesError; });
+  mock.method(client, 'paginate', async () => { throw checksError; });
+
+  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+    status: 'incomplete',
+    failedChecks: [],
+    endpointErrors: [statusesError, checksError],
+  });
+});

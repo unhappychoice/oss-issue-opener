@@ -12,22 +12,25 @@ export const checkCIStatus = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
 
-  const [statuses, checkRuns] = await Promise.all([
+  const results = await Promise.allSettled([
     getCommitStatus(owner, repo, defaultBranch),
     getCheckRuns(owner, repo, defaultBranch),
   ]);
 
-  const allStatuses = [...statuses, ...checkRuns];
+  const allStatuses = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+  const endpointErrors = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
   const filtered = allStatuses.filter((s) => !/codecov/i.test(s.context));
-  if (filtered.length === 0) return { status: 'no-ci', failedChecks: [] };
 
   const failedChecks = filtered
     .filter((s) => s.state === 'failure' || s.state === 'error')
     .map((s) => ({ name: s.context, url: s.url }));
   const hasPending = filtered.some((s) => s.state === 'pending');
 
-  const status = failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success';
-  return { status, failedChecks };
+  if (endpointErrors.length > 0) {
+    return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
+  }
+  if (filtered.length === 0) return { status: 'no-ci', failedChecks };
+  return { status: failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success', failedChecks };
 };
 
 const parseBumpCommit = (msg: string): DependencyUpdate | null => {

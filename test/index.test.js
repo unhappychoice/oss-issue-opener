@@ -58,3 +58,45 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
   assert.match(result.stderr, /Repository lookup denied/);
   assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
 });
+
+test('CLI submits confirmed CI failures before exiting with status 1 for an endpoint error', () => {
+  const preload = `
+    globalThis.fetch = async (url, options) => {
+      const { origin, pathname } = new URL(url);
+      if (origin !== 'https://api.github.com') throw new Error('Unexpected origin: ' + origin);
+      if (options.method === 'POST' && pathname === '/repos/unhappychoice/oss-issue-opener/issues') {
+        const issue = JSON.parse(options.body);
+        if (issue.title === '[CI Failure] unhappychoice/example' && issue.body.includes('- build')) {
+          return Response.json({ number: 532, labels: ['ci-failure'] }, { status: 201 });
+        }
+      }
+      if (options.method === 'GET') {
+        if (pathname === '/users/unhappychoice/repos') {
+          return Response.json([{ full_name: 'unhappychoice/example', default_branch: 'main' }]);
+        }
+        if (pathname.startsWith('/users/')) {
+          return Response.json(pathname.endsWith('/repos') ? [] : { type: 'User' });
+        }
+        if (pathname.endsWith('/commits/main/status')) {
+          return Response.json({ statuses: [{ state: 'failure', context: 'build' }] });
+        }
+        if (pathname.endsWith('/commits/main/check-runs')) {
+          return Response.json({ message: 'Check runs unavailable' }, { status: 503 });
+        }
+        if (['/releases', '/tags', '/issues'].some((suffix) => pathname.endsWith(suffix))) {
+          return Response.json([]);
+        }
+      }
+      throw new Error('Unexpected GitHub request: ' + options.method + ' ' + url);
+    };
+  `;
+  const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, entryPoint], {
+    env: { ...process.env, GH_TOKEN: 'test-token' }, encoding: 'utf8',
+  });
+
+  assert.ifError(result.error);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
+  assert.match(result.stderr, /Check runs unavailable/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+});
