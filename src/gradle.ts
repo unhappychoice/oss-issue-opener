@@ -2,6 +2,8 @@ import { scanBlockComments } from './block-comments.js';
 
 // Match expression starts and the bare because argument so division stays visible as code.
 const groovySlashyString = /(?<=[(=,:;{~]\s*|\bbecause[ \t]+)\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
+const groovyDollarSlashyString = /\$\/(?:\$[/$]|\$(?![/$])|\/(?!\$)|[^/$])*\/\$/;
+const groovySlashyStrings = `${groovyDollarSlashyString.source}|${groovySlashyString.source}`;
 
 export const gradleDependencies = (content: string): string[] => {
   const code = gradleDeclarations(stripGradleComments(content));
@@ -22,7 +24,7 @@ export const gradleDependencies = (content: string): string[] => {
 export const stripGradleComments = (content: string): string => {
   const code = new RegExp(
     /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
-    + '|' + groovySlashyString.source + '|' + /[\s\S]/.source,
+    + '|' + groovySlashyStrings + '|' + /[\s\S]/.source,
     'gy'
   );
   let result = '';
@@ -36,7 +38,7 @@ export const stripGradleComments = (content: string): string => {
 const gradleDeclarations = (content: string): string[] => {
   const tokens = new RegExp(
     /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
-    + '|' + groovySlashyString.source + '|' + /(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
+    + '|' + groovySlashyStrings + '|' + /(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
     'gm'
   );
   const declarations: string[] = [];
