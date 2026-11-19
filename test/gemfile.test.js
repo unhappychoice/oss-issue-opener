@@ -169,6 +169,8 @@ test('recognizes a heredoc argument after a method named class', () => {
   ['case expression', 'case /\nclass Fake\n/\nwhen nil\nend'],
   ['when condition', 'case value\nwhen %r{\nmodule Fake\n}\nend'],
   ['negated literal', 'pattern = !/\nclass Fake\n/'],
+  ['keyword disjunction', 'pattern = nil or /\nclass Fake\n/'],
+  ['keyword conjunction', 'pattern = true and %r{\nmodule Fake\n}'],
   ['ternary branches', 'pattern = flag ? /a\\/b\nclass Fake\n/ : /\nmodule Fake\n/'],
   ['percent literal', 'pattern = %r{outer{inner}\nclass Fake\n}x'],
   ['unpaired delimiter', 'pattern = %r!\nclass Fake\n!'],
