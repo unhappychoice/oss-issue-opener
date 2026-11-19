@@ -5,16 +5,16 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let expressionExpected = true;
   let classHeader = false;
+  let bareCommand = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#')) continue;
-    if (expressionExpected) {
-      const end = expressionLiteralEnd(content, match);
-      if (end !== undefined) {
-        token = content.slice(match.index, end);
-        pattern.lastIndex = end;
-      }
+    const end = expressionExpected ? expressionLiteralEnd(content, match) :
+      bareCommand ? commandRegexpEnd(content, match) : undefined;
+    if (end !== undefined) {
+      token = content.slice(match.index, end);
+      pattern.lastIndex = end;
     }
     // In a singleton class header, << opens the scope without starting a heredoc.
     if (token.startsWith('<<') && classHeader) {
@@ -26,6 +26,7 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
+      bareCommand = /^(?:\n|;|do)$/.test(previous) && /^[a-z_]\w*[!?]?$/.test(token);
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       expressionExpected = expectsExpression(token, previous);
       previous = token;
@@ -55,6 +56,17 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 const expectsExpression = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
   (previous !== '.' && /^(?:do|if|elsif|else|unless|case|when|then|return|and|or|not)$/.test(token));
+
+const commandRegexpEnd = (content: string, match: RegExpExecArray): number | undefined => {
+  const start = match.index;
+  if (match[0] !== '/' || !/[^\S\r\n]/.test(content[start - 1] ?? '') ||
+    !/[^\s=]/.test(content[start + 1] ?? '')) return undefined;
+  const end = literalEnd(content, start, regexpOpening);
+  // Only shield multiline arguments here, where literal text can look like a new statement.
+  if (end !== undefined && content.slice(start, end).includes('\n') &&
+    !/[\w'"]/.test(content[end] ?? '')) return end;
+  return undefined;
+};
 
 const expressionLiteralEnd = (content: string, match: RegExpExecArray): number | undefined => {
   if (match[0] === '/' || match[0] === '%') {

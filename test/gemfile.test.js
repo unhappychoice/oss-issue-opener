@@ -151,6 +151,8 @@ test('ignores heredoc openers in strings and comments', () => {
   'ratio = receiver.then / 2',
   'ratio = receiver.return / 2',
   'ratio = ?/.ord / 2',
+  'ratio = 4\nratio / 2',
+  'ratio = 4\nratio /2',
 ].forEach((division) => {
   test('recognizes a production gem after division in ' + division, () => {
     const gemfile = division + "\ngem 'rack', path: '/rack'";
@@ -166,6 +168,7 @@ test('recognizes a heredoc argument after a method named class', () => {
 
 [
   ['slash literal', 'pattern = /\nclass Fake\n/'],
+  ['bare command argument', 'p /prefix\nclass Fake\n/'],
   ['method return', 'def pattern\n  return /\nclass Fake\n/\nend'],
   ['conditional', 'if /\nclass Fake\n/\nend'],
   ['then branch', 'if flag then /\nclass Fake\n/\nend'],
