@@ -149,7 +149,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', '!', 'and', 'or', 'then'].forEach((method) => {
+['if', '!', 'and', 'or', 'then', 'return'].forEach((method) => {
   test(`preserves production gems between divisions after receiver.${method}`, () => {
     const gemfile = `result = receiver.${method} / 2\ngem 'rack'\nresult / 2`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -207,6 +207,7 @@ test('recognizes a heredoc argument after a method named class', () => {
     'unless /prefix\nclass RegexText\nsuffix/\n  true\nend',
     'ratio = 8 / 2\nclass TestHelper\nend\nratio / 2',
     'def test_helper\n  true\nend',
+    'def test_helper\n  return /prefix\nclass RegexText\nsuffix/\nend',
     'def test_helper = true',
     'def self.test_helper = true',
     'def test_helper(value = true) = value',
