@@ -2,6 +2,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const assignedLocals = new Set<string>();
   let previous = '\n';
   let expressionExpected = true;
   let classHeader = false;
@@ -11,7 +12,7 @@ export const gemfileTokens = (content: string): string[] => {
     let token = match[0];
     if (token.startsWith('#')) continue;
     const end = expressionExpected ? expressionLiteralEnd(content, match) :
-      bareCommand ? commandRegexpEnd(content, match) : undefined;
+      bareCommand && !assignedLocals.has(previous) ? commandRegexpEnd(content, match) : undefined;
     if (end !== undefined) {
       token = content.slice(match.index, end);
       pattern.lastIndex = end;
@@ -26,6 +27,11 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
+      if (/^(?:class|module|def|do|end|\{|\})$/.test(token)) assignedLocals.clear();
+      // A simple local assignment disambiguates a later slash at statement start.
+      if (bareCommand && token === '=' && !/[=>~]/.test(content[pattern.lastIndex] ?? '')) {
+        assignedLocals.add(previous);
+      }
       bareCommand = /^(?:\n|;|do)$/.test(previous) && /^[a-z_]\w*[!?]?$/.test(token);
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       expressionExpected = expectsExpression(token, previous);

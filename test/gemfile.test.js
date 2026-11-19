@@ -160,6 +160,11 @@ test('ignores heredoc openers in strings and comments', () => {
   });
 });
 
+test('preserves a gem declaration between local variable division and a slash comment', () => {
+  const gemfile = 'ratio = 4\nratio /2\ngem "rack"\n# /';
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
@@ -169,6 +174,8 @@ test('recognizes a heredoc argument after a method named class', () => {
 [
   ['slash literal', 'pattern = /\nclass Fake\n/'],
   ['bare command argument', 'p /prefix\nclass Fake\n/'],
+  ['bare command argument starting with a digit', 'p /2\nclass Fake\n/'],
+  ['bare command argument after a method-local assignment', 'def helper\n  p = 4\nend\np /2\nclass Fake\n/'],
   ['bare command percent regexp with an unpaired delimiter', 'p %r!prefix\\!\nclass Fake\n!x'],
   ['bare command percent regexp with a paired delimiter', 'p %r{outer{inner}\nmodule Fake\n}'],
   ['method return', 'def pattern\n  return /\nclass Fake\n/\nend'],
