@@ -1,13 +1,22 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
+  const regexp = /\/(?:\\[\s\S]|[^/\\])*\/[imxounes]*/y;
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
-    const token = match[0];
+    let token = match[0];
     if (token.startsWith('#')) continue;
+    if (token === '/' && /^(?:\n|;|=|=>|~|\(|\[|,|\?|:)$/.test(previous)) {
+      regexp.lastIndex = match.index;
+      const literal = regexp.exec(content);
+      if (literal) {
+        token = literal[0];
+        pattern.lastIndex = regexp.lastIndex;
+      }
+    }
     if (token.startsWith('<<') && classHeader) {
       // In a singleton class header, << introduces the receiver.
       pattern.lastIndex = match.index + 2;

@@ -160,6 +160,20 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores class and end lines inside a multiline regexp in an excluded group', () => {
+  const gemfile = String.raw`group :test do
+    pattern = /prefix\/
+class FakeScope
+end
+class AnotherFakeScope
+suffix/x
+    gem 'rspec'
+  end
+  gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [':test', ':development', ':development, :test'].forEach((group) => {
   ['class TestHelper\nend',
     'module TestHelpers\n  class TestHelper\n  end\nend',
