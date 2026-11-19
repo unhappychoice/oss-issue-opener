@@ -292,3 +292,55 @@ test('detects source changes without dependency updates', async (t) => {
     assert.ok(repos.getContent.mock.calls.every(({ arguments: [params] }) => params.path === 'package.json'));
   });
 });
+
+test('shares the bump lookup limit across scans and keeps comparison order', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 21 to 22');
+  const repos = getOctokit().repos;
+  const versions = Array.from({ length: 10 }, (_, index) => String(index));
+  repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+    commits: versions.map((version) => ({
+      sha: version,
+      commit: { message: `Bump @octokit/rest from ${version} to 22` },
+    })),
+  } }));
+
+  const started = [];
+  const first = Promise.withResolvers();
+  const rest = Promise.withResolvers();
+  t.mock.method(repos, 'getCommit', async ({ repo, ref, page }) => {
+    if (page === undefined) return { data: { sha: ref } };
+    const lookup = `${repo}/${ref}`;
+    started.push(lookup);
+    await (lookup === 'first/0' ? first.promise : rest.promise);
+    return { data: { files: [{ filename: 'package-lock.json' }] } };
+  });
+
+  const scans = Promise.all(['first', 'second'].map((repo) => checkPendingRelease('owner', repo, 'node')));
+  try {
+    await new Promise(setImmediate);
+    assert.equal(started.length, 16);
+    assert.equal(new Set(started.map((lookup) => lookup.split('/')[0])).size, 2);
+    rest.resolve();
+    await new Promise(setImmediate);
+    assert.equal(started.length, 20);
+  } finally {
+    first.resolve();
+    rest.resolve();
+    const results = await scans;
+    for (const result of results) {
+      assert.equal(result.status, 'pending');
+      assert.deepEqual(result.dependencyUpdates, versions.map((from) => ({ pkg: '@octokit/rest', from, to: '22' })));
+    }
+  }
+});
+
+test('propagates bump lookup failures to the release investigation', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 21 to 22');
+  const failure = new Error('Commit files unavailable');
+  t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
+    if (page !== undefined) throw failure;
+    return { data: { sha: ref } };
+  });
+
+  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), (error) => error === failure);
+});
