@@ -19,7 +19,7 @@ const stubRepository = (manifests, commitMessages = []) => {
     listReleases: async () => ({ data: [{ tag_name: 'v1' }] }),
     get: async () => ({ data: { default_branch: 'main' } }),
     compareCommits: async ({ page, per_page }) => ({ data: {
-      files: [{ filename: 'src/main.ts' }],
+      files: [{ filename: 'src/main.ts' }, { filename: 'package-lock.json' }],
       commits: commitMessages.slice((page - 1) * per_page, page * per_page)
         .map((message) => ({ sha: message, commit: { message } })),
     } }),
