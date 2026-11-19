@@ -60,6 +60,16 @@ export const getDefaultBranch = async (owner: string, repo: string): Promise<str
   }
 };
 
+export const getBranchHead = async (owner: string, repo: string, branch: string): Promise<string | null> => {
+  try {
+    const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
+    return data.commit.sha;
+  } catch (error) {
+    if (error instanceof Error && 'status' in error && error.status === 404) return null;
+    throw error;
+  }
+};
+
 export const getCommitStatus = async (
   owner: string,
   repo: string,
@@ -146,14 +156,14 @@ export const compareCommits = async (
   repo: string,
   base: string,
   head: string
-): Promise<{ files: string[]; commits: ComparedCommit[]; headSha: string }> => {
+): Promise<{ baseSha: string; headSha: string; files: string[]; commits: ComparedCommit[] }> => {
   const { repos } = getOctokit();
   const [{ data: baseCommit }, { data: headCommit }] = await Promise.all([
     repos.getCommit({ owner, repo, ref: base }),
     repos.getCommit({ owner, repo, ref: head }),
   ]);
   const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
-  const result = { headSha: headCommit.sha, files: [] as string[], commits: [] as ComparedCommit[] };
+  const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
 
   for (let page = 1; ; page++) {
     const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });

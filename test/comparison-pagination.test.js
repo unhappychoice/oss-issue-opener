@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { compareCommits, getCommitFiles, getOctokit } from '../dist/github.js';
+import { buildPendingReleaseIssue } from '../dist/issue.js';
 import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
@@ -36,13 +37,13 @@ test('detects a production bump after the first 250 commits', async (t) => {
     status: 'pending',
     changedSources: [],
     dependencyUpdates: [{ pkg: 'example', from: '1.0.0', to: '2.0.0' }],
-    compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
   });
   assert.deepEqual(compare.mock.calls.map(({ arguments: [params] }) => params),
     [1, 2, 3].map((page) => ({ owner: 'owner', repo: 'repo', base: commitSha('tags/v1'), head: commitSha('heads/main'), per_page: 100, page })));
 });
 
-test('detects the original final production bump after the tag and branch move between pages', async (t) => {
+test('detects the original final production bump and links to the scanned commits after the tag and branch move between pages', async (t) => {
   const repos = stubRelease(t);
   const originalHead = commitSha('heads/main');
   const baseSha = commitSha('tags/v1');
@@ -64,7 +65,7 @@ test('detects the original final production bump after the tag and branch move b
       ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
-  t.mock.method(repos, 'getContent', async () => ({
+  const manifest = t.mock.method(repos, 'getContent', async () => ({
     data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
   }));
 
@@ -72,9 +73,14 @@ test('detects the original final production bump after the tag and branch move b
   assert.equal(result.status, 'pending');
   assert.deepEqual(result.changedSources, []);
   assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example', from: '1.0.0', to: '2.0.0' }]);
+  const issue = buildPendingReleaseIssue('owner/repo', result.changedSources, result.dependencyUpdates, result.compareUrl);
+  assert.equal(issue.body.split('\n').find((line) => line.startsWith('**Diff**:')),
+    `**Diff**: https://github.com/owner/repo/compare/${baseSha}...${originalHead}`);
   assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
+  assert.deepEqual(manifest.mock.calls.map(({ arguments: [params] }) => params),
+    [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
 });
 
 test('preserves source changes when later pages omit files', async (t) => {
@@ -89,7 +95,7 @@ test('preserves source changes when later pages omit files', async (t) => {
     status: 'pending',
     changedSources: ['src/index.ts'],
     dependencyUpdates: [],
-    compareUrl: 'https://github.com/owner/repo/compare/v1...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -99,6 +105,7 @@ test('finishes on an empty page after an exactly full page', async (t) => {
   }));
 
   assert.deepEqual(await compareCommits('owner', 'repo', 'v1', 'main'), {
+    baseSha: commitSha('v1'),
     headSha: commitSha('main'),
     files: [],
     commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),

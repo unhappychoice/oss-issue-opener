@@ -45,6 +45,7 @@ test('preserves GitHub read failures and waits for the remaining notifications',
   const releasesFailure = new Error('Releases HTTP 503');
   initMockOctokit('test-token');
   const client = getOctokit();
+  mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo) } } }));
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => ({ data: { statuses: [
     { state: repo === 'broken' ? 'success' : 'failure', context: 'build' },
@@ -231,10 +232,13 @@ test('reports failures even when there are no notifications to create', async ()
   assert.equal(create.mock.callCount(), 0);
 });
 
+const headSha = (repo) => Buffer.from(repo).toString('hex').padEnd(40, '0');
+
 const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   initMockOctokit('test-token');
   const client = getOctokit();
   mock.method(client.repos, 'listReleases', async () => ({ data: releases }));
+  mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo) } } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
@@ -266,7 +270,7 @@ test('shares default branches per repository and refreshes them on each scan', a
     });
     issues.filter(({ type }) => type === 'pending-release').forEach(({ body }) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`v1...${scan === 0 ? 'main' : 'next'}`));
+      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${commitSha(scan === 0 ? 'heads/main' : 'heads/next')}`));
     });
   });
 });
@@ -467,8 +471,11 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params.repo),
       ['fallback-0', 'fallback-1', 'fallback-2']);
     const branches = [...listed.map(({ default_branch }) => default_branch), ...Array(3).fill('fallback')];
-    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), branches);
-    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), branches);
+    const heads = repos.getBranch.mock.calls.map(({ arguments: [params] }) => params);
+    assert.deepEqual(heads.map(({ branch }) => branch), branches);
+    const shas = heads.map(({ repo }) => headSha(repo));
+    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), shas);
+    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), shas);
     assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
       branches.map((branch) => commitSha(`heads/${branch}`)));
     assert.equal(batches[0].length, 206);
@@ -477,7 +484,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     });
     batches[0].filter(({ type }) => type === 'pending-release').forEach(({ body }, index) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`v1...${branches[index]}`));
+      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${commitSha(`heads/${branches[index]}`)}`));
     });
   });
 });

@@ -31,7 +31,7 @@ export const mockRubyRepository = (gemspec, gemfile = '') => {
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mockCommitFiles(mock, ['Gemfile.lock']);
   mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
-    files: [],
+    files: [{ filename: 'Gemfile.lock' }],
     commits: [{ sha: 'bump', commit: { message: repo === 'malicious'
       ? 'Bump (a+)+$ from 1 to 2' : 'Bump rake from 1 to 2' } }],
   } }));
