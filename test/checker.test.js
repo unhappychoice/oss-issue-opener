@@ -73,7 +73,7 @@ test('ignores bump text outside a dependency update subject', async (t) => {
       status: 'pending',
       changedSources,
       dependencyUpdates: [],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
