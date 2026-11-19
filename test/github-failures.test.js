@@ -59,6 +59,7 @@ test('preserves the request error when check runs retrieval fails', async () => 
 
 test('reports no-ci and no-tag after successful empty reads', async () => {
   const client = getOctokit();
+  mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha: 'a'.repeat(40) } } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
   mock.method(client, 'paginate', async () => []);
   mock.method(client.repos, 'listReleases', async () => ({ data: [] }));

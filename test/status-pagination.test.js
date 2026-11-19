@@ -3,10 +3,13 @@ import { test } from 'node:test';
 import { checkCIStatus } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
+const sha = 'a'.repeat(40);
+
 ['failure', 'success', 'pending'].forEach((state) => {
   test(`reads all commit status pages when the last status is ${state}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
+    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
     t.mock.method(octokit, 'paginate', async () => []);
     const requests = [];
     const status = (index, result) => ({
@@ -19,14 +22,14 @@ import { getOctokit, initOctokit } from '../dist/github.js';
       const secondPage = options.page === 2;
       return {
         status: 200,
-        url: 'https://api.github.com/repos/owner/repo/commits/main/status',
+        url: `https://api.github.com/repos/owner/repo/commits/${sha}/status`,
         headers: secondPage ? {} : {
-          link: '<https://api.github.com/repos/owner/repo/commits/main/status?per_page=100&page=2>; rel="next"',
+          link: `<https://api.github.com/repos/owner/repo/commits/${sha}/status?per_page=100&page=2>; rel="next"`,
         },
         data: {
           state,
           total_count: 101,
-          url: 'https://api.github.com/repos/owner/repo/commits/main/status',
+          url: `https://api.github.com/repos/owner/repo/commits/${sha}/status`,
           statuses: secondPage ? [status(101, state)]
             : Array.from({ length: 100 }, (_, i) => status(i + 1, 'success')),
         },
@@ -44,6 +47,9 @@ import { getOctokit, initOctokit } from '../dist/github.js';
       { page: 1, per_page: 100 },
       { page: 2, per_page: 100 },
     ]);
-    requests.forEach(({ url }) => assert.equal(url, '/repos/{owner}/{repo}/commits/{ref}/status'));
+    requests.forEach(({ url, ref }) => {
+      assert.equal(url, '/repos/{owner}/{repo}/commits/{ref}/status');
+      assert.equal(ref, sha);
+    });
   });
 });
