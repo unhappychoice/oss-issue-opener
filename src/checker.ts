@@ -52,7 +52,7 @@ export const checkPendingRelease = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
-  const { files, commits } = await compareCommits(
+  const { baseSha, headSha, files, commits } = await compareCommits(
     owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
   );
   if (files.length === 0) return { status: 'up-to-date' };
@@ -65,7 +65,7 @@ export const checkPendingRelease = async (
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
   const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, dependencyTypes, getContents);
 
-  const compareUrl = `https://github.com/${owner}/${repo}/compare/${latestTag}...${defaultBranch}`;
+  const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
   return changedSources.length > 0 || dependencyUpdates.length > 0
     ? { status: 'pending', changedSources, dependencyUpdates, compareUrl }
     : { status: 'up-to-date' };

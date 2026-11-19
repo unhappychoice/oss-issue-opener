@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 initMockOctokit('test-token');
 
@@ -35,7 +35,7 @@ prefixes.forEach((prefix) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: '@octokit/rest', from: '21.1.1', to: '22.0.1' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     });
   });
 
@@ -102,7 +102,7 @@ test('ignores bump text outside a dependency update subject', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'serde', from: '1.0.218', to: '1.0.219' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' };
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'rust'), expected);
   });
@@ -127,7 +127,7 @@ test('ignores bump text outside a dependency update subject', async (t) => {
       status: 'pending',
       changedSources: files,
       dependencyUpdates: [],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -146,7 +146,7 @@ test('passes through Markdown-significant characters in changed filenames unesca
     status: 'pending',
     changedSources: [malicious],
     dependencyUpdates: [],
-    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -163,7 +163,7 @@ test('detects source changes without dependency updates', async (t) => {
     status: 'pending',
     changedSources: ['src/index.ts'],
     dependencyUpdates: [],
-    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -189,7 +189,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: sources,
       dependencyUpdates: [],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -224,7 +224,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg, from: '3.1.0', to: '3.1.1' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -250,7 +250,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'org.example:bom', from: '1.0', to: '1.1' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     });
   });
 });
