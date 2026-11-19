@@ -4,18 +4,22 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let operandExpected = true;
+  let raiseArgumentExpected = false;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, operandExpected);
     if (token.startsWith('#')) continue;
-    if ((token === '/' || token === '%') && operandExpected) {
+    const raiseRegexp = token === '/' && raiseArgumentExpected &&
+      /[^\S\n]/.test(content.charAt(match.index - 1)) && /\S/.test(content.charAt(pattern.lastIndex));
+    if (((token === '/' || token === '%') && operandExpected) || raiseRegexp) {
       const literal = readLiteral(content, match.index);
       if (literal) {
         pattern.lastIndex = match.index + literal.length;
         tokens.push(literal);
         previous = literal;
         operandExpected = false;
+        raiseArgumentExpected = false;
         classHeader = false;
         continue;
       }
@@ -30,6 +34,7 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
+      raiseArgumentExpected = token === 'raise' && operandExpected;
       operandExpected = expectsOperand(token, previous);
       previous = token;
     }

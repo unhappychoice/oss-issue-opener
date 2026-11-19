@@ -175,6 +175,8 @@ test('recognizes a heredoc argument after a method named class', () => {
     'description = %q!prefix\nmodule StringText\nsuffix!',
     'description = %{prefix\nclass StringText\nsuffix}',
     'matcher = /prefix\nclass RegexText\nend\\/suffix/',
+    'raise /prefix\nclass RegexText\nsuffix/.source if false',
+    "raise = 8\nraise / 2\nclass TestHelper\nend\nraise / 2",
     'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
     '/prefix\nclass RegexText\nsuffix/',
     '! /prefix\nclass RegexText\nsuffix/',
