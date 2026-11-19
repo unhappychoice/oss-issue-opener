@@ -71,7 +71,7 @@ const expectsOperand = (token: string, previous: string): boolean =>
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([rqQ]?)([^a-zA-Z0-9\u0080-\uffff])/y;
+  const opening = /\/|%([iIqQrswWx]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -81,7 +81,7 @@ const literalFrame = (content: string, start: number) => {
     delimiter,
     closing: pairedDelimiters.get(delimiter) ?? delimiter,
     regexp,
-    interpolated: match[1] !== 'q',
+    interpolated: !/^[iqsw]$/.test(match[1] ?? ''),
     start: opening.lastIndex,
     delimiters: 1,
     braces: 0,
@@ -95,6 +95,7 @@ const readLiteral = (content: string, start: number): string | undefined => {
   if (!initial) return undefined;
   const frames = [initial];
   const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const plainLiteralPart = /\\[\s\S]|[\s\S]/y;
   const expressionPart = new RegExp(tokenPattern, 'gy');
   const options = /[imxounes]*/y;
   let offset = initial.start;
@@ -112,7 +113,7 @@ const readLiteral = (content: string, start: number): string | undefined => {
       if (frames.length === 0) return content.slice(start, offset);
       continue;
     }
-    const part = frame.braces === 0 ? literalPart : expressionPart;
+    const part = frame.braces > 0 ? expressionPart : frame.interpolated ? literalPart : plainLiteralPart;
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;
