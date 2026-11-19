@@ -5,7 +5,7 @@ export interface Repository {
 
 export type ProjectType = 'ruby' | 'node' | 'rust' | 'kotlin' | 'go' | 'swift' | 'unknown';
 
-export type CIStatusType = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-branch';
+export type CIStatusType = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-branch' | 'incomplete';
 
 export interface FailedCheck {
   name: string;
@@ -15,6 +15,7 @@ export interface FailedCheck {
 export interface CIStatus {
   status: CIStatusType;
   failedChecks: FailedCheck[];
+  endpointErrors?: unknown[];
 }
 
 export type IssueType = 'ci-failure' | 'pending-release';

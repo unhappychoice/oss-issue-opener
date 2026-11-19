@@ -30,18 +30,18 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
   return repos;
 };
 
-export const getRepoContents = async (owner: string, repo: string, path = ''): Promise<string[]> => {
+export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
   try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path });
+    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
     return Array.isArray(data) ? data.map((f) => f.name) : [];
   } catch {
     return [];
   }
 };
 
-export const getFileContent = async (owner: string, repo: string, path: string): Promise<string> => {
+export const getFileContent = async (owner: string, repo: string, path: string, ref?: string): Promise<string> => {
   try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path });
+    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
     if ('content' in data && data.content) {
       return Buffer.from(data.content, 'base64').toString('utf-8');
     }
@@ -163,7 +163,7 @@ export const compareCommits = async (
     repos.getCommit({ owner, repo, ref: head }),
   ]);
   const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
-  const result = { files: [] as string[], commits: [] as ComparedCommit[] };
+  const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
 
   for (let page = 1; ; page++) {
     const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
@@ -175,7 +175,7 @@ export const compareCommits = async (
         ) ?? [])];
     }
     result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-    if (data.commits.length < 100) return { baseSha: endpoints.base, headSha: endpoints.head, ...result };
+    if (data.commits.length < 100) return result;
   }
 };
 
