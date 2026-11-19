@@ -187,6 +187,7 @@ test('recognizes a heredoc argument after a method named class', () => {
     '! /prefix\nclass RegexText\nsuffix/',
     'not /prefix\nclass RegexText\nsuffix/',
     'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
+    'message = "invalid: " + /prefix\nclass RegexText\nsuffix/.source',
     'matcher = enabled and /prefix\nclass RegexText\nsuffix/',
     'matcher = cached or /prefix\nclass RegexText\nsuffix/',
     'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
