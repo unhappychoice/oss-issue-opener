@@ -143,9 +143,23 @@ test('ignores heredoc openers in strings and comments', () => {
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
 
+test('recognizes a heredoc argument after a method named class', () => {
+  const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [':test', ':development', ':development, :test'].forEach((group) => {
   ['class TestHelper\nend',
     'module TestHelpers\n  class TestHelper\n  end\nend',
+    'result = class TestHelper\nend',
+    'result = module TestHelpers\nend',
+    'class <<self\nend',
+    'class << self\nend',
+    'result = class <<self\nend',
+    'matcher = /prefix\nclass RegexText\nend\\/suffix/',
+    '/prefix\nclass RegexText\nsuffix/',
+    'ratio = 8 / 2\nclass TestHelper\nend\nratio / 2',
     'def test_helper\n  true\nend',
     'def test_helper = true',
     'def self.test_helper = true',

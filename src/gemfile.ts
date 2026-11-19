@@ -9,6 +9,7 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
     if (tokens[0] === 'end') blocks.pop();
     const excluded = blocks.includes(true);
     if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+      tokens.some((token, index) => (token === 'class' || token === 'module') && tokens[index - 1] === '=') ||
       /^(if|unless|case|begin|while|until|for|class|module)$/.test(tokens[0] ?? '')) {
       blocks.push(tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1)));
     }

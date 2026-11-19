@@ -1,11 +1,36 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const regexpLiteral = /\/(?:\\[\s\S]|[^/\\])*\/[imxounes]*/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let previous = '\n';
+  let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
+    if (token === '/' && /^(?:\n|;|=|=>|~|\(|\[|,|do)$/.test(previous)) {
+      regexpLiteral.lastIndex = match.index;
+      const literal = regexpLiteral.exec(content);
+      if (literal) {
+        pattern.lastIndex = regexpLiteral.lastIndex;
+        tokens.push(literal[0]);
+        previous = literal[0];
+        classHeader = false;
+        continue;
+      }
+    }
+    if (token.startsWith('<<') && classHeader) {
+      pattern.lastIndex = match.index + 2;
+      tokens.push('<<');
+      previous = '<<';
+      classHeader = false;
+      continue;
+    }
+    if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
+      classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
+      previous = token;
+    }
     if (token.startsWith('<<')) {
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
