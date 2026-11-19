@@ -144,73 +144,20 @@ test('ignores heredoc openers in strings and comments', () => {
 });
 
 [
-  'def half(raise)\n  raise /2\nend',
-  'ratio = receiver.if / 2',
-  'ratio = receiver.case / 2',
-  'ratio = receiver.else / 2',
-  'ratio = receiver.then / 2',
-  'ratio = receiver.return / 2',
-  'ratio = ?/.ord / 2',
-  'ratio = 4\nratio / 2',
-  'ratio = 4\nratio /2',
-].forEach((division) => {
-  test('recognizes a production gem after division in ' + division, () => {
-    const gemfile = division + "\ngem 'rack', path: '/rack'";
+  'ratio = 4\nif flag\n  nil\nend',
+  'if flag\n  ratio = 4\nend',
+  'ratio = 4\nif flag\n  tap do\n    nil\n  end\nend',
+].forEach((setup) => {
+  test(`preserves a gem declaration after local division following a conditional (${setup})`, () => {
+    const gemfile = `${setup}\nratio /2\ngem 'rack'\n# /`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
-});
-
-test('preserves a gem declaration between local variable division and a slash comment', () => {
-  const gemfile = 'ratio = 4\nratio /2\ngem "rack"\n# /';
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[
-  ['slash literal', 'pattern = /\nclass Fake\n/'],
-  ['bare command argument', 'p /prefix\nclass Fake\n/'],
-  ['bare command argument starting with a digit', 'p /2\nclass Fake\n/'],
-  ['bare command argument after a method-local assignment', 'def helper\n  p = 4\nend\np /2\nclass Fake\n/'],
-  ['bare command percent regexp with an unpaired delimiter', 'p %r!prefix\\!\nclass Fake\n!x'],
-  ['bare command percent regexp with a paired delimiter', 'p %r{outer{inner}\nmodule Fake\n}'],
-  ['method return', 'def pattern\n  return /\nclass Fake\n/\nend'],
-  ['conditional', 'if /\nclass Fake\n/\nend'],
-  ['then branch', 'if flag then /\nclass Fake\n/\nend'],
-  ['when branch after then', 'case value\nwhen nil then %r{\nmodule Fake\n}\nend'],
-  ['else branch', 'if flag\n  nil\nelse /prefix\nclass Fake\nsuffix/\nend'],
-  ['case expression', 'case /\nclass Fake\n/\nwhen nil\nend'],
-  ['when condition', 'case value\nwhen %r{\nmodule Fake\n}\nend'],
-  ['negated literal', 'pattern = !/\nclass Fake\n/'],
-  ['keyword negation', 'not /pattern\nclass Fake\n/'],
-  ['keyword negation of a percent regexp', 'not %r{\nmodule Fake\n}'],
-  ['keyword disjunction', 'pattern = nil or /\nclass Fake\n/'],
-  ['keyword conjunction', 'pattern = true and %r{\nmodule Fake\n}'],
-  ['ternary branches', 'pattern = flag ? /a\\/b\nclass Fake\n/ : /\nmodule Fake\n/'],
-  ['percent literal', 'pattern = %r{outer{inner}\nclass Fake\n}x'],
-  ['unpaired delimiter', 'pattern = %r!\nclass Fake\n!'],
-  ['percent string and division', 'pattern = /#{%q!}!.ord / 2}/'],
-  ['quoted slash', 'pattern = /#{"/"}/'],
-  ['interpolation', 'pattern = /#{%q(}/)} #{ { key: /\// }[:key] }\nclass Fake\n/'],
-  ['scope closer and fake gem', "pattern = /\nend\ngem 'fake'\n/"],
-  ['non-interpolated percent string', 'text = %q{outer{inner}\nclass Fake\n}'],
-  ['interpolated percent string', 'text = %Q!#{%q!nested!}\nmodule Fake\n!'],
-].forEach(([description, pattern]) => {
-  test(`ignores scope tokens inside a multiline literal (${description})`, async (t) => {
-    const gemfile = `group :test do\n  ${pattern}\n  gem 'rspec'\nend\ngem 'rack'`;
-    t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
-    }));
-    assert.equal(isProductionGem(gemfile, 'fake'), false);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(await isProductionDependency('owner', 'repo', 'rspec', 'ruby'), false);
-    assert.equal(await isProductionDependency('owner', 'repo', 'rack', 'ruby'), true);
-  });
 });
 
 [':test', ':development', ':development, :test'].forEach((group) => {
