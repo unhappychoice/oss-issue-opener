@@ -144,7 +144,9 @@ test('ignores heredoc openers in strings and comments', () => {
 });
 
 [':test', ':development', ':development, :test'].forEach((group) => {
-  ['def test_helper\n  true\nend',
+  ['class TestHelper\nend',
+    'module TestHelpers\n  class TestHelper\n  end\nend',
+    'def test_helper\n  true\nend',
     'def test_helper = true',
     'def self.test_helper = true',
     'def test_helper(value = true) = value',
