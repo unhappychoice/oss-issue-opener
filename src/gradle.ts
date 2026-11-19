@@ -1,7 +1,7 @@
 import { scanBlockComments } from './block-comments.js';
 
 // Match expression starts and the bare because argument so division stays visible as code.
-const groovySlashyString = /(?<=[(=,:;{~]\s*|\bbecause[ \t]+)\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
+const groovySlashyString = /(?<=[(\[=,:;{~]\s*|\bbecause[ \t]+)\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
 const groovyDollarSlashyString = /\$\/(?:\$[/$]|\$(?![/$])|\/(?!\$)|[^/$])*\/\$/;
 const groovySlashyStrings = `${groovyDollarSlashyString.source}|${groovySlashyString.source}`;
 

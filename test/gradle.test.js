@@ -94,6 +94,17 @@ test('Gradle keeps constraint scope across Groovy dollar slashy strings', () => 
   assert.equal(stripGradleComments(content), content);
 });
 
+test('Gradle keeps constraint scope across slashy strings at the start of Groovy lists', () => {
+  const content = `dependencies {
+    constraints {
+      def reasons = [/reason }/, /another reason/]
+      api('org.example:constraint:1.0')
+    }
+    api('org.example:runtime:1.0')
+  }`;
+  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+});
+
 ['implementation', 'api'].forEach((configuration) => {
   ['platform', 'enforcedPlatform'].forEach((wrapper) => {
     [

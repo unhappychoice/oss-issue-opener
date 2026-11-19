@@ -298,6 +298,7 @@ test('shares the bump lookup limit across scans and keeps comparison order', asy
   const repos = getOctokit().repos;
   const versions = Array.from({ length: 10 }, (_, index) => String(index));
   repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+    files: [{ filename: 'package-lock.json' }],
     commits: versions.map((version) => ({
       sha: version,
       commit: { message: `Bump @octokit/rest from ${version} to 22` },
