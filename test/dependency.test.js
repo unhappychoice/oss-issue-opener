@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
-import { mockCommitFiles } from './helpers/github.mjs';
+import { getOctokit } from '../dist/github.js';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const stubRepository = (manifests, commitMessages = []) => {
-  initOctokit('test');
+  initMockOctokit('test');
   const calls = [];
   Object.assign(getOctokit().repos, {
     getContent: async ({ owner, repo, path }) => {
@@ -18,13 +18,13 @@ const stubRepository = (manifests, commitMessages = []) => {
     },
     listReleases: async () => ({ data: [{ tag_name: 'v1' }] }),
     get: async () => ({ data: { default_branch: 'main' } }),
-    getCommit: async () => ({ data: { files: [{ filename: 'package-lock.json' }] } }),
     compareCommits: async ({ page, per_page }) => ({ data: {
       files: [{ filename: 'src/main.ts' }],
       commits: commitMessages.slice((page - 1) * per_page, page * per_page)
         .map((message) => ({ sha: message, commit: { message } })),
     } }),
   });
+  mockCommitFiles(mock, ['package-lock.json']);
   return calls;
 };
 

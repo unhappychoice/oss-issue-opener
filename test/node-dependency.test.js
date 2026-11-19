@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
-import { mockCommitFiles } from './helpers/github.mjs';
+import { getOctokit } from '../dist/github.js';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
-initOctokit('test-token');
+initMockOctokit('test-token');
 
 const cases = [
   ...['constructor', 'toString', 'hasOwnProperty'].flatMap((pkg) => [

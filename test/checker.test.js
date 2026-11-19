@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
-import { mockCommitFiles } from './helpers/github.mjs';
+import { getOctokit } from '../dist/github.js';
+import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
-initOctokit('test-token');
+initMockOctokit('test-token');
 
 const prefixes = ['Bump', 'chore(deps): bump', 'fix(deps): bump', 'chore: bump', 'chore(deps)!: bump'];
 
@@ -248,10 +248,7 @@ test('detects source changes without dependency updates', async (t) => {
         { sha: 'bump', commit: { message } },
       ],
     } }));
-    repos.getCommit.mock.mockImplementation(async ({ ref }) => {
-      assert.equal(ref, 'bump');
-      return { data: { files: paths?.map((filename) => ({ filename })) } };
-    });
+    mockCommitFiles(t.mock, paths);
     repos.getContent.mock.mockImplementation(async ({ path }) => {
       const content = path === 'Gemfile' ? "gem 'dotenv'" : JSON.stringify({
         [production ? 'dependencies' : 'devDependencies']: { dotenv: '16.4.7' },
@@ -264,7 +261,8 @@ test('detects source changes without dependency updates', async (t) => {
     if (status === 'pending') {
       assert.deepEqual(result.dependencyUpdates, [{ pkg: 'dotenv', from: '16.4.5', to: '16.4.7' }]);
     }
-    assert.equal(repos.getCommit.mock.callCount(), 1);
+    assert.deepEqual(repos.getCommit.mock.calls.flatMap(({ arguments: [{ ref, page }] }) =>
+      page === undefined ? [] : [ref]), ['bump']);
     assert.ok(repos.getContent.mock.calls.every(({ arguments: [params] }) => params.path === 'package.json'));
   });
 });
