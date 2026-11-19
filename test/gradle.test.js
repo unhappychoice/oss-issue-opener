@@ -51,6 +51,18 @@ test('Gradle statement boundaries exclude comments, strings, and test configurat
   assert.deepEqual(gradleDependencies(content), []);
 });
 
+test('Gradle keeps constraint scope across nested blocks, strings, and comments', () => {
+  const content = `dependencies {
+    api("org.example:before:1.0")
+    constraints() /* { */ {
+      implementation("org.example:before-nested:1.0") { because("}") }
+      constraints { api("org.example:nested:1.0") }
+      api(group = "org.example", name = "after-nested")
+    }; implementation("org.example:after:1.0")
+  }`;
+  assert.deepEqual(gradleDependencies(content), ['org.example:before:1.0', 'org.example:after:1.0']);
+});
+
 ['implementation', 'api'].forEach((configuration) => {
   ['platform', 'enforcedPlatform'].forEach((wrapper) => {
     [

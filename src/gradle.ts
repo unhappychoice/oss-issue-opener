@@ -27,8 +27,15 @@ export const stripGradleComments = (content: string): string => {
 };
 
 const gradleDeclarations = (content: string): string[] => {
-  const tokens = /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|(?:^|[;{])\s*((?:implementation|api)\b)/gm;
-  return Array.from(content.matchAll(tokens)).flatMap((match) =>
-    match[1] ? [content.slice(match.index + match[0].length - match[1].length)] : []
-  );
+  const tokens = /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/gm;
+  const declarations: string[] = [];
+  let constraintDepth = 0;
+  for (const { 0: token, 1: constraint, 2: configuration, index } of content.matchAll(tokens)) {
+    if (constraint || (token === '{' && constraintDepth > 0)) constraintDepth++;
+    else if (token === '}') constraintDepth = Math.max(0, constraintDepth - 1);
+    else if (configuration && constraintDepth === 0) {
+      declarations.push(content.slice(index + token.length - configuration.length));
+    }
+  }
+  return declarations;
 };
