@@ -65,7 +65,7 @@ test('detects the original final production bump and links to the scanned commit
       ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
-  t.mock.method(repos, 'getContent', async () => ({
+  const manifest = t.mock.method(repos, 'getContent', async () => ({
     data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
   }));
 
@@ -79,6 +79,8 @@ test('detects the original final production bump and links to the scanned commit
   assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
+  assert.deepEqual(manifest.mock.calls.map(({ arguments: [params] }) => params),
+    [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
 });
 
 test('preserves source changes when later pages omit files', async (t) => {
