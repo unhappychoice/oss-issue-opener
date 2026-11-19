@@ -42,17 +42,19 @@ const expectFailures = async (deps, expected) => {
 
 test('preserves GitHub read failures and waits for the remaining notifications', async () => {
   const checksFailure = new Error('Check runs HTTP 503');
+  const statusesFailure = new Error('Commit statuses HTTP 503');
   const releasesFailure = new Error('Releases HTTP 503');
   initMockOctokit('test-token');
   const client = getOctokit();
   mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo) } } }));
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => ({ data: { statuses: [
-    { state: repo === 'broken' ? 'success' : 'failure', context: 'build' },
-  ] } }));
+  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => {
+    if (repo === 'last') throw statusesFailure;
+    return { data: { statuses: [{ state: 'failure', context: 'build' }] } };
+  });
   mock.method(client, 'paginate', async (_route, { repo }) => {
     if (repo === 'broken') throw checksFailure;
-    return [];
+    return repo === 'last' ? [{ status: 'completed', conclusion: 'failure', name: 'test suite' }] : [];
   });
   mock.method(client.repos, 'listReleases', async ({ repo }) => {
     if (repo === 'first') throw releasesFailure;
@@ -71,14 +73,17 @@ test('preserves GitHub read failures and waits for the remaining notifications',
   await assert.rejects(runChecks(deps), (error) => {
     assert.ok(error instanceof AggregateError);
     const causes = new Map(error.errors.map(({ message, cause }) => [message, cause]));
-    assert.equal(error.errors.length, 2);
+    assert.equal(error.errors.length, 3);
     assert.equal(causes.get('Failed owner/broken: CI investigation'), checksFailure);
+    assert.equal(causes.get('Failed owner/last: CI investigation'), statusesFailure);
     assert.equal(causes.get('Failed owner/first: release investigation'), releasesFailure);
     assert.deepEqual(batches.map((issues) => issues.map(({ repo, type }) => [repo, type])), [[
       ['owner/first', 'ci-failure'],
-      ['owner/broken', 'pending-release'],
+      ['owner/broken', 'ci-failure'], ['owner/broken', 'pending-release'],
       ['owner/last', 'ci-failure'], ['owner/last', 'pending-release'],
     ]]);
+    assert.match(batches[0].find(({ repo, type }) => repo === 'owner/broken' && type === 'ci-failure').body, /build/);
+    assert.match(batches[0].find(({ repo, type }) => repo === 'owner/last' && type === 'ci-failure').body, /test suite/);
     return true;
   });
 });
