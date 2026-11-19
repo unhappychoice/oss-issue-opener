@@ -1,4 +1,4 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
 import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
@@ -30,6 +30,8 @@ export const checkCIStatus = async (
   return { status, failedChecks };
 };
 
+type GetContents = () => Promise<string[]>;
+
 const parseBumpCommit = (msg: string): DependencyUpdate | null => {
   const match = msg.match(/^(?:[a-z]+(?:\([^\r\n)]+\))?!?: )?bump (\S+) from (\S+) to (\S+)/i);
   return match ? { pkg: match[1], from: match[2], to: match[3] } : null;
@@ -38,27 +40,29 @@ const parseBumpCommit = (msg: string): DependencyUpdate | null => {
 export const checkPendingRelease = async (
   owner: string,
   repo: string,
-  projectTypes: ProjectType | ProjectType[] | (() => Promise<ProjectType[]>),
+  projectTypes: ProjectType | ProjectType[] | ((getContents: GetContents) => Promise<ProjectType[]>),
   getBranch = () => getDefaultBranch(owner, repo),
-  getContents?: () => Promise<string[]>
+  getContents?: GetContents
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes() : projectTypes;
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
-  const { files, commits } = await compareCommits(
+  const { files, commits, headSha } = await compareCommits(
     owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
   );
   if (files.length === 0 && commits.length === 0) return { status: 'up-to-date' };
 
+  let rootContents: Promise<string[]> | undefined;
+  const getPinnedContents = getContents ?? (() => rootContents ??= getRepoContents(owner, repo, '', headSha));
+  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes(getPinnedContents) : projectTypes;
   const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
 
-  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, types, getContents);
+  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, types, headSha, typeof projectTypes === 'function' ? getPinnedContents : getContents);
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${latestTag}...${defaultBranch}`;
   return changedSources.length > 0 || dependencyUpdates.length > 0
@@ -71,10 +75,11 @@ const findDependencyUpdates = async (
   repo: string,
   commits: ComparedCommit[],
   types: ProjectType[],
-  getContents?: () => Promise<string[]>
+  headSha: string,
+  getContents?: GetContents
 ): Promise<DependencyUpdate[]> => {
   if (types.every((type) => type === 'unknown')) return [];
-  const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents)]));
+  const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents, headSha)]));
   const updates: DependencyUpdate[] = [];
   for (const { sha, message } of commits) {
     const bump = parseBumpCommit(message);

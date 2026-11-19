@@ -145,7 +145,10 @@ test('still checks releases when CI investigation fails', async () => {
 test('preserves CI notifications when project detection fails', async () => {
   const cause = new Error('Project detection unavailable');
   const repos = stubInvestigations();
-  const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Project detection failed'));
+  mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'src/example.ts' }], commits: [],
+  } }));
   const { deps, batches, checked } = setup({
     detectProjectTypes: async () => { throw cause; },
     checkPendingRelease,
@@ -157,7 +160,6 @@ test('preserves CI notifications when project detection fails', async () => {
 
   assert.deepEqual(checked, ['first', 'broken', 'last']);
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
-  assert.equal(compare.mock.callCount(), 0);
 });
 
 test('continues other organizations and reports investigation and batch failures together', async () => {
@@ -325,6 +327,48 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   assert.equal(contents.mock.callCount(), 0);
   assert.equal(console.log.mock.calls.filter(({ arguments: [line] }) => line.includes('Release: no tags found')).length, 3);
   assert.deepEqual(batches, []);
+});
+
+test('notifies about a production bump at the compared head after the default branch advances', async () => {
+  const repos = stubInvestigations();
+  const pinnedHead = commitSha('heads/main');
+  let branchHead = pinnedHead;
+  mock.method(repos, 'getCommit', async ({ ref }) => ({
+    data: ref === 'bump'
+      ? { files: [{ filename: 'package.json' }] }
+      : { sha: ref === 'heads/main' ? branchHead : commitSha(ref) },
+  }));
+  mock.method(repos, 'compareCommits', async ({ head }) => {
+    assert.equal(head, pinnedHead);
+    branchHead = commitSha('advanced');
+    return { data: {
+      files: [{ filename: 'package.json' }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 1.1.0' } }],
+    } };
+  });
+  const content = mock.method(repos, 'getContent', async ({ path, ref = branchHead }) => {
+    const manifest = ref === pinnedHead
+      ? { dependencies: { runtime: '1.1.0' } }
+      : { devDependencies: { runtime: '1.1.0' } };
+    return { data: path === ''
+      ? [{ name: 'package.json' }]
+      : { content: Buffer.from(JSON.stringify(manifest)).toString('base64') } };
+  });
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await runChecks(deps);
+
+  const issues = batches.flat();
+  assert.deepEqual(issues.map(({ type }) => type), ['pending-release']);
+  assert.match(issues[0].body, /runtime.*1\.0\.0.*1\.1\.0/);
+  assert.deepEqual(content.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]), [
+    ['', pinnedHead], ['package.json', pinnedHead],
+  ]);
 });
 
 test('reuses one root listing per repository after finding a tag baseline', async () => {

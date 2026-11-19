@@ -99,6 +99,7 @@ test('finishes on an empty page after an exactly full page', async (t) => {
   }));
 
   assert.deepEqual(await compareCommits('owner', 'repo', 'v1', 'main'), {
+    headSha: commitSha('main'),
     files: [],
     commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
   });

@@ -16,18 +16,19 @@ export const createDependencyChecker = (
   owner: string,
   repo: string,
   type: ProjectType | ProjectType[],
-  getContents?: () => Promise<string[]>
+  getContents?: () => Promise<string[]>,
+  ref?: string
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file = (path: string): Promise<string> => {
-    if (!files.has(path)) files.set(path, getFileContent(owner, repo, path));
+    if (!files.has(path)) files.set(path, getFileContent(owner, repo, path, ref));
     return files.get(path)!;
   };
   const types = Array.isArray(type) ? type : [type];
   let checkers: Promise<DependencyChecker[]> | undefined;
   return async (pkg) => {
     checkers ??= Promise.all(types.map((type) => loaders[type](file,
-      getContents ?? (async () => type === 'ruby' ? getRepoContents(owner, repo) : [])
+      getContents ?? (async () => type === 'ruby' ? getRepoContents(owner, repo, '', ref) : [])
     )));
     const results = await Promise.all((await checkers).map((check) => check(pkg)));
     return results.some(Boolean);
