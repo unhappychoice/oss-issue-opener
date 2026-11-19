@@ -8,7 +8,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#')) continue;
-    const expectsExpression = /^(?:\n|;|=|=>|~|!|\(|\[|,|\?|:|if)$/.test(previous);
+    const expectsExpression = /^(?:\n|;|=|=>|~|!|\(|\[|,|\?|:|if|unless)$/.test(previous);
     if (token === '?' && expectsExpression && content[pattern.lastIndex] === '!') {
       token = '?!';
       pattern.lastIndex++;
@@ -30,7 +30,9 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
-      previous = token === 'if' && (previous === '.' || previous === ':') ? `${previous}if` : token;
+      previous = /^(?:if|unless)$/.test(token) && (previous === '.' || previous === ':')
+        ? `${previous}${token}`
+        : token;
     }
     if (token.startsWith('<<')) {
       const indented = /^<<[-~]/.test(token);
