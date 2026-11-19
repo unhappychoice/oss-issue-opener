@@ -9,7 +9,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
-    if (token === '/' && /^(?:\n|;|=|=>|~|\(|\[|,|do)$/.test(previous)) {
+    if (token === '/' && /^(?:\n|;|=|=>|~|\(|\[|,|do|if|elsif|unless)$/.test(previous)) {
       regexpLiteral.lastIndex = match.index;
       const literal = regexpLiteral.exec(content);
       if (literal) {
