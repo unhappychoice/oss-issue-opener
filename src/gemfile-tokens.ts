@@ -1,9 +1,11 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
+  const assignment = /(?:[^\S\n]|\\\r?\n)*=(?![=~>])/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
   let operandExpected = true;
+  let raiseAssigned = false;
   let raiseArgumentExpected = false;
   let classHeader = false;
   let match: RegExpExecArray | null;
@@ -34,7 +36,11 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
-      raiseArgumentExpected = token === 'raise' && operandExpected;
+      raiseArgumentExpected = token === 'raise' && operandExpected && !raiseAssigned;
+      if (raiseArgumentExpected) {
+        assignment.lastIndex = pattern.lastIndex;
+        raiseAssigned = assignment.test(content);
+      }
       operandExpected = expectsOperand(token, previous);
       previous = token;
     }

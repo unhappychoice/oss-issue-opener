@@ -143,6 +143,11 @@ test('ignores heredoc openers in strings and comments', () => {
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
 
+test('recognizes a production gem path after division by a raise local', () => {
+  const gemfile = "raise = 8\nraise /2\ngem 'rack', path: '/rack'";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
@@ -176,7 +181,7 @@ test('recognizes a heredoc argument after a method named class', () => {
     'description = %{prefix\nclass StringText\nsuffix}',
     'matcher = /prefix\nclass RegexText\nend\\/suffix/',
     'raise /prefix\nclass RegexText\nsuffix/.source if false',
-    "raise = 8\nraise / 2\nclass TestHelper\nend\nraise / 2",
+    "raise = 8\nraise /2\nclass TestHelper\nend\nraise /2",
     'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
     '/prefix\nclass RegexText\nsuffix/',
     '! /prefix\nclass RegexText\nsuffix/',
