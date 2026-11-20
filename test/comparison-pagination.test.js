@@ -222,18 +222,32 @@ test('does not fetch trees for file lists below the comparison limit', async (t)
   assert.equal(getTree.mock.callCount(), 0);
 });
 
-test('retrieves dependency paths from later commit file pages', async (t) => {
+test('retrieves both rename paths from later commit file pages', async (t) => {
   const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ page }) => ({
     headers: page === 1 ? { link: '<https://api.github.com/?page=2>; rel="next"' } : {},
     data: { files: page === 1
       ? Array.from({ length: 100 }, (_, i) => ({ filename: `docs/${i}.md` }))
-      : [{ filename: 'Gemfile.lock' }] },
+      : [{ filename: 'docs/old-gemfile.lock', status: 'renamed', previous_filename: 'Gemfile.lock' }] },
   }));
   const paths = await getCommitFiles('owner', 'repo', 'bump');
-  assert.equal(paths.length, 101);
-  assert.equal(paths.at(-1), 'Gemfile.lock');
+  assert.equal(paths.length, 102);
+  assert.deepEqual(paths.slice(-2), ['docs/old-gemfile.lock', 'Gemfile.lock']);
   assert.deepEqual(getCommit.mock.calls.map(({ arguments: [params] }) => params),
     [1, 2].map((page) => ({ owner: 'owner', repo: 'repo', ref: 'bump', per_page: 100, page })));
+});
+
+test('counts renamed files once against the commit API file limit', async (t) => {
+  const files = Array.from({ length: 100 }, (_, i) => ({
+    filename: `docs/new-${i}.md`,
+    status: 'renamed',
+    previous_filename: `docs/old-${i}.md`,
+  }));
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ page }) => ({
+    data: { files: page === 16 ? files.slice(0, 1) : files },
+    headers: page < 16 ? { link: '<https://api.github.com/>; rel="next"' } : {},
+  }));
+  assert.equal((await getCommitFiles('owner', 'repo', 'bump')).length, 3002);
+  assert.equal(getCommit.mock.callCount(), 16);
 });
 
 test('discards commit paths when the API file limit may hide changes', async (t) => {

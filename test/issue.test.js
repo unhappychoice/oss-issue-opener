@@ -35,6 +35,18 @@ test('escapes Markdown-significant characters in changed filenames', () => {
   assert.ok(!maliciousIssue.body.includes('`](https://evil.example/malware)'));
 });
 
+test('renders dependency names and ordinary versions in code spans', () => {
+  const issue = buildPendingReleaseIssue('owner/repo', [], [
+    { pkg: '@scope/example', from: '1.2.3', to: '2.0.0-beta.1+build' },
+    { pkg: 'name``with[brackets]', from: '1.0.0', to: '1.0.1' },
+  ], 'https://example.com/compare');
+
+  assert.deepEqual(issue.body.split('\n').slice(3, 5), [
+    '- ` @scope/example ` ` 1.2.3 ` -> ` 2.0.0-beta.1+build `',
+    '- ``` name``with[brackets] ``` ` 1.0.0 ` -> ` 1.0.1 `',
+  ]);
+});
+
 test('lists up to five changed source files and reports the remaining count', () => {
   const sources = Array.from({ length: 7 }, (_, index) => `src/file-${index + 1}.ts`);
   const visibleFiles = sources.slice(0, 5).map((path) => `- \`${path}\``);

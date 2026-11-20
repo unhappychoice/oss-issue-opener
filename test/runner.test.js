@@ -52,6 +52,7 @@ test('preserves GitHub read failures and waits for the remaining notifications',
     if (repo === 'last') throw statusesFailure;
     return { data: { statuses: [{ state: 'failure', context: 'build' }] } };
   });
+  mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(client, 'paginate', async (_route, { repo }) => {
     if (repo === 'broken') throw checksFailure;
     return repo === 'last' ? [{ status: 'completed', conclusion: 'failure', name: 'test suite' }] : [];
@@ -247,6 +248,7 @@ const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
+  mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(client, 'paginate', async () => []);
   return client.repos;
 };
@@ -302,13 +304,37 @@ test('shares the default branch when release comparison is empty', async () => {
   const repos = stubInvestigations();
   const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(repos, 'compareCommits', async () => ({ data: { files: [], commits: [] } }));
-  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease, detectProjectTypes });
 
   await runChecks(deps);
 
   assert.equal(lookup.mock.callCount(), 3);
+  assert.equal(contents.mock.callCount(), 0);
   assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Types:')));
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
+});
+
+test('reports up to date without comparing or listing root contents when both refs resolve to the same commit', async () => {
+  const repos = stubInvestigations();
+  const resolve = mock.method(repos, 'getCommit', async () => ({ data: { sha: headSha('repo') } }));
+  const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    checkCIStatus,
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await runChecks(deps);
+
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1']);
+  assert.equal(repos.getBranch.mock.callCount(), 1);
+  assert.equal(compare.mock.callCount(), 0);
+  assert.equal(contents.mock.callCount(), 0);
+  assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Release: up to date')));
+  assert.deepEqual(batches[0].map(({ type }) => type), ['ci-failure']);
 });
 
 test('shares failed branch lookups without retrying or creating notifications', async () => {
@@ -406,6 +432,52 @@ test('skips root listings when neither releases nor tags provide a baseline', as
     if (failedPath !== null) assert.equal(paths.at(-1), failedPath);
     assert.equal(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Release: up to date')), !fails);
     assert.deepEqual(batches, []);
+  });
+});
+
+test('submits confirmed release notifications before rejecting failed bump lookups', async () => {
+  const repos = stubInvestigations();
+  const failure = Object.assign(new Error('Commit files HTTP 503'), { status: 503 });
+  mock.method(repos, 'getCommit', async ({ ref, page }) => {
+    if (page === undefined) return { data: { sha: commitSha(ref) } };
+    if (ref === 'failed') throw failure;
+    return { data: { files: [{ filename: 'package-lock.json' }] } };
+  });
+  mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
+    files: [
+      { filename: 'package-lock.json' },
+      ...(repo === 'source' ? [{ filename: 'src/index.ts' }] : []),
+    ],
+    commits: [
+      { sha: 'failed', commit: { message: 'Bump unavailable from 1 to 2' } },
+      ...(repo === 'dependency' ? [{ sha: 'bump', commit: { message: 'Bump runtime from 1 to 2' } }] : []),
+    ],
+  } }));
+  mock.method(repos, 'getContent', async ({ path }) => ({ data: path === ''
+    ? [{ name: 'package.json' }]
+    : { content: Buffer.from('{"dependencies":{"runtime":"2","unavailable":"2"}}').toString('base64') },
+  }));
+  const repoNames = ['source', 'dependency', 'unconfirmed'];
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice'
+      ? repoNames.map((repo) => ({ fullName: `owner/${repo}`, defaultBranch: 'main' })) : [],
+    checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await assert.rejects(runChecks(deps), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors.map(({ message }) => message).sort(),
+      repoNames.map((repo) => `Failed owner/${repo}: release investigation`).sort());
+    assert.ok(error.errors.every(({ cause }) => cause === failure));
+    assert.equal(batches.length, 1);
+    assert.deepEqual(batches[0].map(({ repo, type }) => [repo, type]), [
+      ['owner/source', 'pending-release'], ['owner/dependency', 'pending-release'],
+    ]);
+    assert.match(batches[0][0].body, /src\/index\.ts/);
+    assert.match(batches[0][1].body, /runtime.*1.*2/);
+    return true;
   });
 });
 

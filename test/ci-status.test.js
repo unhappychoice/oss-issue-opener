@@ -11,6 +11,7 @@ beforeEach(() => {
   const { repos } = getOctokit();
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
+  mock.method(getOctokit().checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
 });
 afterEach(() => mock.restoreAll());
 
