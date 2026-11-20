@@ -6,8 +6,11 @@ export const commitSha = (ref) => createHash('sha1').update(ref).digest('hex');
 
 export const initMockOctokit = (token) => {
   initOctokit(token);
+  mock.method(getOctokit().repos, 'getBranch', async ({ branch }) => ({
+    data: { commit: { sha: commitSha(`heads/${branch}`), commit: { tree: { sha: 'head-tree' } } } },
+  }));
   mock.method(getOctokit().repos, 'getCommit', async ({ ref }) => ({
-    data: { sha: commitSha(ref), commit: { tree: { sha: 'head-tree' } } },
+    data: { sha: commitSha(ref) },
   }));
 };
 

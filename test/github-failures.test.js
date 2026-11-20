@@ -60,13 +60,14 @@ test('preserves the request error when check runs retrieval fails', async () => 
 
 test('reports no-ci and no-tag after successful empty reads', async () => {
   const client = getOctokit();
-  mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha: 'a'.repeat(40) } } }));
+  mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha: 'a'.repeat(40), commit: { tree: { sha: 'head-tree' } } } } }));
+  mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
   mock.method(client, 'paginate', async () => []);
   mock.method(client.repos, 'listReleases', async () => ({ data: [] }));
   mock.method(client.repos, 'listTags', async () => ({ data: [] }));
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+  assert.deepEqual(await checkCIStatus('owner', 'repo'), {
     status: 'no-ci', failedChecks: [],
   });
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'no-tag' });

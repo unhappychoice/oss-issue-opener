@@ -10,6 +10,19 @@ afterEach(() => mock.restoreAll());
 
 const check = (pkg) => isProductionDependency('owner', 'repo', pkg, 'ruby');
 
+test('skips gemspec directories when loading Ruby dependencies', async () => {
+  mockRubyRepository('');
+  const content = mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+    data: path === '' ? [
+      { name: 'examples.gemspec', type: 'dir' },
+      { name: 'runtime.gemspec', type: 'file' },
+    ] : { content: Buffer.from("spec.add_runtime_dependency 'rack'").toString('base64') },
+  }));
+
+  assert.equal(await check('rack'), true);
+  assert.deepEqual(content.mock.calls.map(({ arguments: [{ path }] }) => path), ['', 'runtime.gemspec']);
+});
+
 [
   ["spec.add_dependency 'rake', '~> 13'", 'rake', true],
   ["# spec.add_dependency 'rack', '~> 3.0'", 'rack', false],

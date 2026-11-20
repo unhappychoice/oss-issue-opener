@@ -17,17 +17,25 @@ const swiftTokens = (content: string): string[] => {
   return tokens;
 };
 
+type StringFrame = { opening: number; start: number; closing: string; escape: string };
+
+const stringFrame = (opening: number, start: number, hashes: string, quotes: string): StringFrame => ({
+  opening, start, closing: quotes + hashes, escape: '\\' + hashes,
+});
+
 const swiftTokenReader = (content: string): ((index: number) => string) => {
   const code = /\s+|\/\/[^\r\n]*|\/\*|(#*)("""|")|[A-Za-z_]\w*|[^\s]/gy;
   const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
+
+  const unterminated = new Set<number>();
 
   const readToken = (index: number): string => {
     code.lastIndex = index;
     const [token, hashes, quotes] = code.exec(content)!;
     const start = code.lastIndex;
     if (token === '/*') return content.slice(index, blockCommentEnd(start));
-    if (quotes === undefined) return token;
-    const end = stringEnd(start, hashes, quotes);
+    if (quotes === undefined || unterminated.has(index)) return token;
+    const end = stringEnd(stringFrame(index, start, hashes, quotes));
     return end === undefined ? token : content.slice(index, end);
   };
 
@@ -41,30 +49,45 @@ const swiftTokenReader = (content: string): ((index: number) => string) => {
     return content.length;
   };
 
-  const stringEnd = (start: number, hashes: string, quotes: string): number | undefined => {
-    const closing = quotes + hashes;
-    const escape = '\\' + hashes;
-    for (let index = start; index < content.length;) {
-      if (content.startsWith(closing, index)) return index + closing.length;
-      if (!content.startsWith(escape, index)) {
+  const stringEnd = (opening: StringFrame): number | undefined => {
+    const stack: (StringFrame | number)[] = [opening];
+    let index = opening.start;
+    while (stack.length > 0) {
+      const top = stack.length - 1;
+      const frame = stack[top];
+      if (index >= content.length) {
+        stack.pop();
+        if (typeof frame === 'number') continue;
+        // An unterminated string contributes only its opening delimiter as a token.
+        unterminated.add(frame.opening);
+        index = frame.start;
+      } else if (typeof frame === 'number') {
+        const tokenStart = index;
+        code.lastIndex = tokenStart;
+        const [token, hashes, quotes] = code.exec(content)!;
+        index = code.lastIndex;
+        if (token === '/*') index = blockCommentEnd(index);
+        if (token === '(') stack[top] = frame + 1;
+        if (token === ')') {
+          if (frame === 1) stack.pop();
+          else stack[top] = frame - 1;
+        }
+        if (quotes !== undefined && !unterminated.has(tokenStart)) {
+          stack.push(stringFrame(tokenStart, index, hashes, quotes));
+        }
+      } else if (content.startsWith(frame.closing, index)) {
+        index += frame.closing.length;
+        stack.pop();
+        if (stack.length === 0) return index;
+      } else if (content.startsWith(frame.escape, index)) {
+        index += frame.escape.length;
+        if (content[index] === '(') stack.push(1);
         index++;
-        continue;
+      } else {
+        index++;
       }
-      index += escape.length;
-      index = content[index] === '(' ? interpolationEnd(index + 1) : index + 1;
     }
     return undefined;
-  };
-
-  const interpolationEnd = (start: number): number => {
-    let depth = 1;
-    for (let index = start; index < content.length;) {
-      const token = readToken(index);
-      index += token.length;
-      if (token === '(') depth++;
-      if (token === ')' && --depth === 0) return index;
-    }
-    return content.length;
   };
 
   return readToken;

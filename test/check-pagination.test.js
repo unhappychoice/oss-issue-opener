@@ -14,7 +14,7 @@ const sha = 'a'.repeat(40);
   test(`reads ${total} checks with ${requestCount} API call(s) when the last check is ${conclusion}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
-    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
+    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
     t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
     t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
     t.mock.method(octokit.checks, 'listSuitesForRef', async () => ({ data: { total_count: 1000 } }));
@@ -64,7 +64,6 @@ const sha = 'a'.repeat(40);
 test('reports a failed check on the oldest of 1,001 check suites', async (t) => {
   initOctokit('test-token');
   const octokit = getOctokit();
-  t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
   t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
   const suites = Array.from({ length: 1001 }, (_, i) => ({ id: 1001 - i }));
   const success = { name: 'build', status: 'completed', conclusion: 'success' };
@@ -97,7 +96,7 @@ test('reports a failed check on the oldest of 1,001 check suites', async (t) => 
     return respond('check_runs', suiteId === 1 ? [...Array(100).fill(success), failure] : [success]);
   });
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => ({ sha, treeSha: 'head-tree' })), {
     status: 'failure',
     failedChecks: [{ name: failure.name, url: failure.html_url }],
   });

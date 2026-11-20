@@ -1,5 +1,10 @@
 import { scanBlockComments } from './block-comments.js';
 
+// Match expression starts and the bare because argument so division stays visible as code.
+const groovySlashyString = /(?<=[(\[=,:;{~]\s*|\bbecause[ \t]+)\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
+const groovyDollarSlashyString = /\$\/(?:\$[/$]|\$(?![/$])|\/(?!\$)|[^/$])*\/\$/;
+const groovySlashyStrings = `${groovyDollarSlashyString.source}|${groovySlashyString.source}`;
+
 export const gradleDependencies = (content: string): string[] => {
   const code = gradleDeclarations(stripGradleComments(content));
   const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?(['"])([^'"\r\n]+)\1/g)));
@@ -16,8 +21,18 @@ export const gradleDependencies = (content: string): string[] => {
   ];
 };
 
+export const gradleCatalogAliases = (content: string): string[] =>
+  gradleDeclarations(stripGradleComments(content)).flatMap((declaration) => {
+    const match = declaration.match(/^(?:implementation|api)(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?libs\.([\w]+(?:\.[\w]+)*)(?:\.get\(\s*\))?(?=[ \t]*(?:\)|[;{}\r\n]|$))/);
+    return match ? [match[1]] : [];
+  });
+
 export const stripGradleComments = (content: string): string => {
-  const code = /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[\s\S]/gy;
+  const code = new RegExp(
+    /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
+    + '|' + groovySlashyStrings + '|' + /[\s\S]/.source,
+    'gy'
+  );
   let result = '';
   scanBlockComments(content, code, (token, depth) => {
     const hidden = depth > 0 || token === '/*' || token.startsWith('//');
@@ -27,8 +42,19 @@ export const stripGradleComments = (content: string): string => {
 };
 
 const gradleDeclarations = (content: string): string[] => {
-  const tokens = /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|(?:^|[;{])\s*((?:implementation|api)\b)/gm;
-  return Array.from(content.matchAll(tokens)).flatMap((match) =>
-    match[1] ? [content.slice(match.index + match[0].length - match[1].length)] : []
+  const tokens = new RegExp(
+    /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
+    + '|' + groovySlashyStrings + '|' + /(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
+    'gm'
   );
+  const declarations: string[] = [];
+  let constraintDepth = 0;
+  for (const { 0: token, 1: constraint, 2: configuration, index } of content.matchAll(tokens)) {
+    if (constraint || (token === '{' && constraintDepth > 0)) constraintDepth++;
+    else if (token === '}') constraintDepth = Math.max(0, constraintDepth - 1);
+    else if (configuration && constraintDepth === 0) {
+      declarations.push(content.slice(index + token.length - configuration.length));
+    }
+  }
+  return declarations;
 };
