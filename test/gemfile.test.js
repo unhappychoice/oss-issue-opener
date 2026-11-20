@@ -161,6 +161,8 @@ module FakeScope/`],
 class FakeScope/`],
   ['logical AND', `enabled && /prefix
 class FakeScope/`],
+  ['logical OR', `enabled || /prefix
+class FakeScope/`],
   ['quoted interpolation', `/#{"a/b"}
 end
 suffix/`],
