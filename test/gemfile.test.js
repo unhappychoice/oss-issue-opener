@@ -219,3 +219,17 @@ gem 'rack', path: '/x'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('ignores class and module text in a multiline regexp inside an excluded group', () => {
+  const gemfile = String.raw`group :test do
+  pattern = /prefix\/
+class FakeClass
+module FakeModule
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
