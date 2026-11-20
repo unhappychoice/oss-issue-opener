@@ -60,14 +60,16 @@ export const getDefaultBranch = async (owner: string, repo: string): Promise<str
   }
 };
 
-export const getBranchHead = async (owner: string, repo: string, branch: string): Promise<string | null> => {
-  try {
-    const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
-    return data.commit.sha;
-  } catch (error) {
-    if (error instanceof Error && 'status' in error && error.status === 404) return null;
-    throw error;
-  }
+export type BranchHead = { sha: string; treeSha: string };
+
+export const getDefaultBranchHead = async (
+  owner: string, repo: string, listedBranch?: string | null
+): Promise<BranchHead | undefined> => {
+  const branch = listedBranch || await getDefaultBranch(owner, repo);
+  if (!branch) return undefined;
+
+  const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
+  return { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha };
 };
 
 export const getCommitStatus = async (
@@ -155,21 +157,18 @@ export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
-  head: string
+  head: BranchHead
 ): Promise<{ baseSha: string; headSha: string; files: string[]; commits: ComparedCommit[] }> => {
   const { repos } = getOctokit();
-  const [{ data: baseCommit }, { data: headCommit }] = await Promise.all([
-    repos.getCommit({ owner, repo, ref: base }),
-    repos.getCommit({ owner, repo, ref: head }),
-  ]);
-  const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
+  const { data: baseCommit } = await repos.getCommit({ owner, repo, ref: base });
+  const endpoints = { owner, repo, base: baseCommit.sha, head: head.sha };
   const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
 
   for (let page = 1; ; page++) {
     const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
     if (page === 1) {
       result.files = (data.files?.length ?? 0) >= 300
-        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, headCommit.commit?.tree?.sha)
+        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
         : [...new Set(data.files?.flatMap((f) =>
           f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
         ) ?? [])];

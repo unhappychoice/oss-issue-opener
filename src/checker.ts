@@ -1,4 +1,4 @@
-import { getCommitStatus, getCheckRuns, getBranchHead, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
 import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
@@ -12,14 +12,16 @@ let activeLookups = 0;
 export const checkCIStatus = async (
   owner: string,
   repo: string,
-  getBranch = () => getDefaultBranch(owner, repo)
+  getHead = () => getDefaultBranchHead(owner, repo)
 ): Promise<CIStatus> => {
-  const defaultBranch = await getBranch();
-  if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
+  const head = await getHead().catch((error: unknown) => {
+    if (error instanceof Error && 'status' in error && error.status === 404) return null;
+    throw error;
+  });
+  if (head === undefined) return { status: 'no-branch', failedChecks: [] };
+  if (head === null) return { status: 'no-ci', failedChecks: [] };
 
-  const sha = await getBranchHead(owner, repo, defaultBranch);
-  if (!sha) return { status: 'no-ci', failedChecks: [] };
-
+  const { sha } = head;
   const results = await Promise.allSettled([
     getCommitStatus(owner, repo, sha),
     getCheckRuns(owner, repo, sha),
@@ -52,17 +54,17 @@ export const checkPendingRelease = async (
   owner: string,
   repo: string,
   projectTypes: ProjectType | ProjectType[] | ((getContents: GetContents) => Promise<ProjectType[]>),
-  getBranch = () => getDefaultBranch(owner, repo),
+  getHead = () => getDefaultBranchHead(owner, repo),
   getContents?: GetContents
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const defaultBranch = await getBranch();
-  if (!defaultBranch) return { status: 'up-to-date' };
+  const head = await getHead();
+  if (!head) return { status: 'up-to-date' };
 
   const { baseSha, headSha, files, commits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
+    owner, repo, `tags/${latestTag}`, head
   );
   if (files.length === 0) return { status: 'up-to-date' };
 

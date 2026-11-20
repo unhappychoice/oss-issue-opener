@@ -1,4 +1,4 @@
-import { getDefaultBranch, listOrgRepos } from './github.js';
+import { getDefaultBranchHead, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from './issue.js';
@@ -86,15 +86,14 @@ const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 
 const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
   const [owner, repo] = fullName.split('/') as [string, string];
-  let defaultBranch: Promise<string | null> | undefined;
-  const getBranch = () => defaultBranch ??= listedBranch
-    ? Promise.resolve(listedBranch) : getDefaultBranch(owner, repo);
+  let head: ReturnType<typeof getDefaultBranchHead> | undefined;
+  const getHead = () => head ??= getDefaultBranchHead(owner, repo, listedBranch);
 
   console.log(`\n📦 ${repo}`);
 
   const [ciIssues, releaseIssues] = await Promise.all([
     attempt<PendingIssue[]>(`${fullName}: CI investigation`, failures, async () => {
-      const ciResult = await deps.checkCIStatus(owner, repo, getBranch);
+      const ciResult = await deps.checkCIStatus(owner, repo, getHead);
       ciResult.endpointErrors?.forEach((cause) => recordFailure(`${fullName}: CI investigation`, failures, cause));
       const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪', incomplete: '⚠️' };
       log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
@@ -108,7 +107,7 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
         log('📋', `Types: ${types.join(', ')}`);
         return types;
       };
-      const releaseStatus = await deps.checkPendingRelease(owner, repo, getProjectTypes, getBranch);
+      const releaseStatus = await deps.checkPendingRelease(owner, repo, getProjectTypes, getHead);
       if (releaseStatus.status === 'no-tag') {
         log('⚪', 'Release: no tags found');
         return [];
