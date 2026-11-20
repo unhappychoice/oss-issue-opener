@@ -22,6 +22,7 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
 
 const opensNamespace = (tokens: string[]): boolean =>
   tokens.some((token, index) => (token === 'class' || token === 'module') &&
+    index + 1 < tokens.length &&
     (index === 0 || tokens[index - 1] === '='));
 
 const isEndlessMethod = (tokens: string[]): boolean => {

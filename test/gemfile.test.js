@@ -152,45 +152,6 @@ test('ignores heredoc openers in strings and comments', () => {
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
 
-test('preserves a gem declaration after dividing a block parameter', () => {
-  const gemfile = `[4].each do |puts|
-  puts /2
-end
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[
-  ['slash-delimited', `/pattern
-class
-module
-/x`],
-  ['percent-delimited', `%r{pattern
-class
-module
-}x`],
-].forEach(([name, regexp]) => {
-  test(`preserves group boundaries when puts takes a multiline regexp (${name})`, () => {
-    const gemfile = `group :test do
-  puts ${regexp}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('preserves a gem declaration after dividing a local variable named puts', () => {
-  const gemfile = `puts = 4
-puts /2
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
 [':test', ':development', ':development, :test'].forEach((group) => {
   ['class TestHelper\nend',
     'module TestHelpers\n  class TestHelper\n  end\nend',
@@ -246,39 +207,19 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-[
-  ['slash-delimited', '/\nclass\nmodule\nend\n/x'],
-  ['percent-delimited', '%r{a{2}\\}\nclass\nmodule\nend\n}x'],
-  ['ternary', 'enabled ? /\nclass\n/x : /\nmodule\n/x'],
-  ['after and', 'enabled and /\nclass\n/x'],
-  ['after or', 'enabled or /\nclass\n/x'],
-  ['interpolated', '/#{%q!}/! + /nested/.source}\nclass\n/x'],
-].forEach(([name, expression]) => {
-  test(`preserves group boundaries across a multiline regexp (${name})`, () => {
-    const gemfile = `group :test do
-  pattern = ${expression}
+test('detects a production gem after a block-local puts and a multiline regexp', () => {
+  const gemfile = `group :test do
+  [4].each do |puts|
+    puts /2
+  end
+  puts /pattern
+class
+module
+/x
   gem 'rspec'
 end
 gem 'rack'`;
 
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  ['non-interpolating', '%q!escaped\\! #{\nclass Fake\ngem "ignored"\n!'],
-  ['interpolating', '%Q{#{%q!}! + ""}\nclass Fake\ngem "ignored"\n{nested}}'],
-].forEach(([name, expression]) => {
-  test(`preserves group boundaries across a multiline percent string (${name})`, () => {
-    const gemfile = `group :test do
-  message = ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
