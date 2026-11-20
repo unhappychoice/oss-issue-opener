@@ -284,8 +284,7 @@ test('shares default branch heads per repository and refreshes them on each scan
   assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
   assert.deepEqual(getOctokit().paginate.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
   const pages = compared.mock.calls.map(({ arguments: [{ head, page }] }) => [head, page]);
-  assert.deepEqual(pages.filter(([, page]) => page === 1), expectedHeads.map((head) => [head, 1]));
-  assert.deepEqual(pages.filter(([, page]) => page === 2), expectedHeads.map((head) => [head, 2]));
+  assert.deepEqual(pages, expectedHeads.map((head) => [head, 1]));
   assert.deepEqual(trees.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha),
     expectedHeads.flatMap((head) => ['merge-base-tree', `${head}-tree`]));
   batches.forEach((issues, scan) => {
@@ -391,8 +390,9 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   ['unavailable Node manifest', 'package.json', 'package.json', ['package.json'], 503, true],
   ['missing required Node manifest', 'package.json', 'package.json', ['package.json'], 404, true],
   ['listed Ruby manifest', 'Gemfile', 'Gemfile.lock', ['Gemfile'], 404, true],
-  ['optional Ruby manifest', 'Gemfile', 'Gemfile.lock', ['example.gemspec'], 503, true],
-  ['absent optional Ruby manifest', 'Gemfile', 'Gemfile.lock', ['example.gemspec'], 404, false],
+  ['unavailable listed Ruby manifest', 'Gemfile', 'Gemfile.lock', ['Gemfile'], 503, true],
+  ['absent Ruby Gemfile', null, 'Gemfile.lock', ['example.gemspec'], 0, false],
+  ['absent optional Gradle catalog', 'gradle/libs.versions.toml', 'build.gradle', ['build.gradle'], 404, false],
   ['unavailable Gradle catalog', 'gradle/libs.versions.toml', 'build.gradle', ['build.gradle'], 503, true],
   ['unsupported root listing', null, 'Sources/Client.swift', ['README.md'], 0, false],
 ].forEach(([name, failedPath, filename, manifests, status, fails]) => {

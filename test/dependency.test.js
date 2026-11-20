@@ -102,19 +102,33 @@ test('Ruby reuses the root listing, gemspec and fallback Gemfile', async () => {
   assert.deepEqual(calls.map(({ path }) => path), ['', 'example.gemspec', 'Gemfile']);
 });
 
-test('Ruby loads the fallback only when needed and caches missing files and listings', async () => {
+test('Ruby skips the Gemfile fallback when the root listing omits it', async () => {
   const calls = stubRepository({ '': ['example.gemspec'], 'example.gemspec': 'add_dependency "first"' });
   const check = createDependencyChecker('owner', 'repo', 'ruby');
   assert.equal(await check('first'), true);
   assert.equal(calls.length, 2);
   assert.equal(await check('missing'), false);
   assert.equal(await check('another'), false);
-  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map(({ path }) => path), ['', 'example.gemspec']);
   const missingCalls = stubRepository({});
   const missing = createDependencyChecker('owner', 'repo', 'ruby');
   assert.equal(await missing('first'), false);
   assert.equal(await missing('second'), false);
-  assert.deepEqual(missingCalls.map(({ path }) => path), ['', 'Gemfile']);
+  assert.deepEqual(missingCalls.map(({ path }) => path), ['']);
+});
+
+test('Ruby excludes a development bump without requesting a Gemfile in a gemspec-only repository', async (t) => {
+  const calls = stubRepository({
+    '': ['example.gemspec'],
+    'example.gemspec': 'spec.add_development_dependency "rake"',
+  });
+  mockCommitFiles(t.mock, ['example.gemspec']);
+  t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'example.gemspec' }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump rake from 1 to 2' } }],
+  } }));
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), { status: 'up-to-date' });
+  assert.deepEqual(calls.map(({ path }) => path), ['', 'example.gemspec']);
 });
 
 test('overlapping Ruby release scans share a gemspec download limit', async (t) => {
