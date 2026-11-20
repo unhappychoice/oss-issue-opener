@@ -280,6 +280,35 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
+  ['build.gradle.kts', 'implementation(libs.guava)', true],
+  ['build.gradle.kts', 'implementation(libs.guava.get())', true],
+  ['build.gradle', 'implementation libs.guava', true],
+  ['build.gradle', 'testImplementation(libs.guava)', false],
+].forEach(([manifest, declaration, production]) => {
+  test(`checks catalog-only Guava updates with ${declaration}`, async (t) => {
+    const catalog = 'gradle/libs.versions.toml';
+    const pkg = 'com.google.guava:guava';
+    const from = '33.4.0-jre';
+    const to = '33.5.0-jre';
+    stubRepository(t, `Bump ${pkg} from ${from} to ${to}`, [catalog]);
+    const files = {
+      [manifest]: `dependencies { ${declaration} }`,
+      [catalog]: `[libraries]\nguava = "${pkg}:${to}"`,
+    };
+    t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+      data: { content: Buffer.from(files[path] ?? '').toString('base64') },
+    }));
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), production ? {
+      status: 'pending',
+      changedSources: [],
+      dependencyUpdates: [{ pkg, from, to }],
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+    } : { status: 'up-to-date' });
+  });
+});
+
+[
   ['npm development dependency', ['package-lock.json'], false, 'up-to-date'],
   ['npm production dependency', ['package-lock.json'], true, 'pending'],
   ['no dependency paths', ['README.md'], true, 'up-to-date'],
