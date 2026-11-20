@@ -212,19 +212,19 @@ gem 'rack'`;
   });
 });
 
-['receiver.value!', 'receiver.if', 'receiver.unless', '?!'].forEach((operand) => {
+['receiver.value!', 'receiver.if', 'receiver.unless', 'receiver.case', '?!'].forEach((operand) => {
   test(`preserves a gem declaration after division with ${operand}`, () => {
     const gemfile = `ratio = ${operand} / 2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
 
-['if', 'unless'].forEach((keyword) => {
-  test(`ignores scope tokens inside a regexp used as an ${keyword} condition`, () => {
+['if', 'unless', 'case'].forEach((keyword) => {
+  test(`ignores scope tokens inside a regexp following ${keyword}`, () => {
     const gemfile = `group :test do
   ${keyword} /prefix
 class FakeScope
-suffix/
+suffix/${keyword === 'case' ? '\n  when Regexp' : ''}
     gem 'rspec'
   end
 end
