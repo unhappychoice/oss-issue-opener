@@ -148,6 +148,21 @@ test('Gemfile fallback preserves group exclusions for literal package names', as
   assert.equal(await check('runtimeXtest'), false);
 });
 
+test('Gemfile fallback preserves group exclusions around a class and a percent regexp', async () => {
+  mockRubyRepository('', `group :test do
+    class TestHelper
+    end
+    pattern = %r!prefix
+class RegexText
+suffix!
+    gem 'rspec'
+  end
+  gem 'rack'`);
+
+  assert.equal(await check('rspec'), false);
+  assert.equal(await check('rack'), true);
+});
+
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
