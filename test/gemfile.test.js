@@ -233,3 +233,21 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  ['a percent string and division', '/prefix#{%q!}!; 4 / 2}suffix/'],
+  ['a non-interpolated paired percent string', '/prefix#{%q{#{}}; 4 / 2}suffix/'],
+  ['an interpolated paired percent string containing a regexp', '/prefix#{%Q{#{/a.b/i}}; 4 / 2}suffix/'],
+  ['a regexp in a ternary branch', 'true ? /prefix#{%q!}!; 4 / 2}suffix/ : /fallback/'],
+].forEach(([description, expression]) => {
+  test(`preserves group exclusions after ${description}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
