@@ -250,6 +250,21 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['&&', '||'].forEach((operator) => {
+  test(`ignores class text in a multiline regexp after ${operator}`, () => {
+    const gemfile = `group :test do
+  pattern = ENV['FEATURE'] ${operator} /prefix
+class FakeClass
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('recognizes division after a method named if', () => {
   const gemfile = `group :test do
   result = settings.if / 2
