@@ -47,6 +47,20 @@ test('renders dependency names and ordinary versions in code spans', () => {
   ]);
 });
 
+test('lists up to five changed source files and reports the remaining count', () => {
+  const sources = Array.from({ length: 7 }, (_, index) => `src/file-${index + 1}.ts`);
+  const visibleFiles = sources.slice(0, 5).map((path) => `- \`${path}\``);
+
+  const sourceSection = (paths) => {
+    const { body } = buildPendingReleaseIssue('owner/repo', paths, [], 'https://good.example/compare');
+    return body.split('\n\n').find((section) => section.startsWith('**Source code changes:**'));
+  };
+
+  const expected = ['**Source code changes:**', ...visibleFiles].join('\n');
+  assert.equal(sourceSection(sources.slice(0, 5)), expected);
+  assert.equal(sourceSection(sources), `${expected}\n- ... and 2 more files`);
+});
+
 test('continues after a failed creation and reports successes and failures', async (t) => {
   const cause = new Error('HTTP 503');
   const { attempts, logs, errors } = setup(t, async ({ title }) => {

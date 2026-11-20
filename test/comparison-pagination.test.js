@@ -48,6 +48,9 @@ test('detects the original final production bump and links to the scanned commit
   const originalHead = commitSha('heads/main');
   const baseSha = commitSha('tags/v1');
   const refs = new Map([['tags/v1', baseSha], ['heads/main', originalHead]]);
+  t.mock.method(repos, 'getBranch', async ({ branch }) => ({
+    data: { commit: { sha: refs.get(`heads/${branch}`), commit: { tree: { sha: 'head-tree' } } } },
+  }));
   const resolve = t.mock.method(repos, 'getCommit', async ({ ref }) => ({
     data: ref === 'bump'
       ? { files: [{ filename: 'package-lock.json' }] }
@@ -65,7 +68,7 @@ test('detects the original final production bump and links to the scanned commit
       ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
-  t.mock.method(repos, 'getContent', async () => ({
+  const manifest = t.mock.method(repos, 'getContent', async () => ({
     data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
   }));
 
@@ -76,9 +79,11 @@ test('detects the original final production bump and links to the scanned commit
   const issue = buildPendingReleaseIssue('owner/repo', result.changedSources, result.dependencyUpdates, result.compareUrl);
   assert.equal(issue.body.split('\n').find((line) => line.startsWith('**Diff**:')),
     `**Diff**: https://github.com/owner/repo/compare/${baseSha}...${originalHead}`);
-  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main', 'bump']);
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
+  assert.deepEqual(manifest.mock.calls.map(({ arguments: [params] }) => params),
+    [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
 });
 
 test('preserves source changes when later pages omit files', async (t) => {
@@ -102,7 +107,7 @@ test('finishes on an empty page after an exactly full page', async (t) => {
     data: { commits: page === 1 ? commits(100) : [] },
   }));
 
-  assert.deepEqual(await compareCommits('owner', 'repo', 'v1', 'main'), {
+  assert.deepEqual(await compareCommits('owner', 'repo', 'v1', { sha: commitSha('main'), treeSha: 'head-tree' }), {
     baseSha: commitSha('v1'),
     headSha: commitSha('main'),
     files: [],

@@ -42,3 +42,21 @@ test('Swift parsing avoids token array copies and scales linearly with declarati
     }
   });
 });
+
+test('Swift finds a dependency after deeply nested string interpolation', () => {
+  const depth = 20_000;
+  const opening = String.raw`"\(`.repeat(depth);
+  const closing = ')"'.repeat(depth);
+  const content = `let label = ${opening}0${closing}
+let package = Package(dependencies: [.package(url: "https://example.com/swift-log.git", from: "1.0.0")])`;
+  assert.deepEqual(swiftDependencies(content), new Set(['swift-log']));
+});
+
+test('Swift recovers from unterminated strings inside interpolation', () => {
+  const content = String.raw`
+let label = "\(#"unfinished)"
+let package = Package(dependencies: [.package(url: "https://example.com/swift-log.git")])
+let unfinished = "\(#"unfinished
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['swift-log']));
+});
