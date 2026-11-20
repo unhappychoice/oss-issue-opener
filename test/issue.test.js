@@ -35,6 +35,20 @@ test('escapes Markdown-significant characters in changed filenames', () => {
   assert.ok(!maliciousIssue.body.includes('`](https://evil.example/malware)'));
 });
 
+test('lists up to five changed source files and reports the remaining count', () => {
+  const sources = Array.from({ length: 7 }, (_, index) => `src/file-${index + 1}.ts`);
+  const visibleFiles = sources.slice(0, 5).map((path) => `- \`${path}\``);
+
+  const sourceSection = (paths) => {
+    const { body } = buildPendingReleaseIssue('owner/repo', paths, [], 'https://good.example/compare');
+    return body.split('\n\n').find((section) => section.startsWith('**Source code changes:**'));
+  };
+
+  const expected = ['**Source code changes:**', ...visibleFiles].join('\n');
+  assert.equal(sourceSection(sources.slice(0, 5)), expected);
+  assert.equal(sourceSection(sources), `${expected}\n- ... and 2 more files`);
+});
+
 test('continues after a failed creation and reports successes and failures', async (t) => {
   const cause = new Error('HTTP 503');
   const { attempts, logs, errors } = setup(t, async ({ title }) => {
@@ -95,6 +109,34 @@ test('resolves when creation succeeds and skips existing issues', async (t) => {
   assert.equal(attempts.mock.calls[0].arguments[0].title, issue('b').title);
   assert.ok(logs.mock.calls.some(({ arguments: [message] }) => message.includes('[skip]')));
   assert.equal(errors.mock.callCount(), 0);
+});
+
+test('skips a duplicate after creating its title and type in the same batch', async (t) => {
+  const notification = issue('owner/repo');
+  const { attempts, logs } = setup(t, async ({ labels }) => ({ data: { number: 42, labels } }));
+  await createIssuesInBatch([notification, notification, { ...notification, type: 'pending-release' }]);
+
+  assert.deepEqual(attempts.mock.calls.map(({ arguments: [input] }) => input.labels), [
+    ['ci-failure'],
+    ['pending-release'],
+  ]);
+  assert.deepEqual(logs.mock.calls.map(({ arguments: [message] }) => message)
+    .filter((message) => message.includes('[skip]')), [`  [skip] ${notification.title} (already exists)`]);
+});
+
+test('retries a duplicate after a failed creation and skips it after success', async (t) => {
+  const notification = issue('owner/repo');
+  const cause = new Error('HTTP 503');
+  const { attempts, logs } = setup(t, async ({ labels }) => ({ data: { number: 42, labels } }));
+  attempts.mock.mockImplementationOnce(async () => { throw cause; });
+
+  await assert.rejects(createIssuesInBatch([notification, notification, notification]), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors.map((failure) => failure.cause), [cause]);
+    return true;
+  });
+  assert.equal(attempts.mock.callCount(), 2);
+  assert.equal(logs.mock.calls.filter(({ arguments: [message] }) => message.includes('[skip]')).length, 1);
 });
 
 test('a subsequent batch skips notifications created by the preceding batch', async (t) => {

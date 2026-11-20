@@ -4,7 +4,7 @@ import { checkPendingRelease } from '../dist/checker.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, getRepoContents } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 const owner = 'example';
 const repo = 'gemfile-only';
@@ -44,6 +44,21 @@ const mockReleaseComparison = (files, commitMessages = [], bumpPaths = files) =>
     },
   }));
 };
+
+['Gemfile', 'example.gemspec'].forEach((name) => {
+  test(`counts src changes with a root directory named ${name}`, async () => {
+    mock.method(getOctokit().repos, 'getContent', async () => ({
+      data: [{ name, type: 'dir' }],
+    }));
+    mockReleaseComparison(['src/index.ts']);
+
+    const types = await detectProjectTypes(owner, repo);
+    assert.deepEqual(types, ['unknown']);
+    const release = await checkPendingRelease(owner, repo, types);
+    assert.equal(release.status, 'pending');
+    assert.deepEqual(release.changedSources, ['src/index.ts']);
+  });
+});
 
 test('detects lib changes as pending releases for a Gemfile-only repository', async () => {
   mockReleaseComparison(['lib/example.rb']);
@@ -170,7 +185,7 @@ test('shares the root listing between project detection and the Ruby dependency 
         status: 'pending',
         changedSources: ['src/main.py'],
         dependencyUpdates: [],
-        compareUrl: `https://github.com/${owner}/${repo}/compare/v1.0.0...main`,
+        compareUrl: `https://github.com/${owner}/${repo}/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
       } : { status: 'up-to-date' });
     });
   });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 initMockOctokit('test-token');
 
@@ -35,7 +35,7 @@ prefixes.forEach((prefix) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: '@octokit/rest', from: '21.1.1', to: '22.0.1' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     });
   });
 
@@ -50,6 +50,54 @@ test('ignores bump text outside a dependency update subject', async (t) => {
   stubRepository(t, 'docs: explain how to Bump @octokit/rest from 21.1.1 to 22.0.1');
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
+});
+
+test('skips commit file requests for 40 Node development dependency bumps', async (t) => {
+  stubRepository(t, 'Bump typescript from 7.0.1 to 7.0.2');
+  const repos = getOctokit().repos;
+  const packages = Array.from({ length: 40 }, (_, index) => `dev-package-${index}`);
+  repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+    files: [{ filename: 'package-lock.json' }],
+    commits: packages.map((pkg) => ({
+      sha: pkg,
+      commit: { message: `Bump ${pkg} from 1.0.0 to 1.1.0` },
+    })),
+  } }));
+  repos.getContent.mock.mockImplementation(async () => ({
+    data: { content: Buffer.from(JSON.stringify({
+      devDependencies: Object.fromEntries(packages.map((pkg) => [pkg, '1.1.0'])),
+    })).toString('base64') },
+  }));
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
+  assert.equal(repos.getCommit.mock.calls.filter(({ arguments: [{ page }] }) => page !== undefined).length, 0);
+  assert.equal(repos.getContent.mock.callCount(), 1);
+});
+
+[
+  ['no net changes', [], []],
+  ['a source change', ['src/index.ts'], ['src/index.ts']],
+  ['a Ruby dependency change', ['src/index.ts', 'Gemfile.lock'], ['src/index.ts']],
+].forEach(([scenario, files, changedSources]) => {
+  test(`ignores a reverted production dependency bump with ${scenario}`, async (t) => {
+    const message = 'Bump @octokit/rest from 22.0.1 to 22.1.0';
+    stubRepository(t, message);
+    const repos = getOctokit().repos;
+    repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+      files: files.map((filename) => ({ filename })),
+      commits: [
+        { sha: 'bump', commit: { message } },
+        { sha: 'revert', commit: { message: `Revert "${message}"` } },
+      ],
+    } }));
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', ['node', 'ruby']), changedSources.length > 0 ? {
+      status: 'pending',
+      changedSources,
+      dependencyUpdates: [],
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+    } : { status: 'up-to-date' });
+  });
 });
 
 [
@@ -76,7 +124,7 @@ test('ignores bump text outside a dependency update subject', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'serde', from: '1.0.218', to: '1.0.219' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' };
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'rust'), expected);
   });
@@ -101,7 +149,7 @@ test('ignores bump text outside a dependency update subject', async (t) => {
       status: 'pending',
       changedSources: files,
       dependencyUpdates: [],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -120,7 +168,7 @@ test('passes through Markdown-significant characters in changed filenames unesca
     status: 'pending',
     changedSources: [malicious],
     dependencyUpdates: [],
-    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -137,7 +185,7 @@ test('detects source changes without dependency updates', async (t) => {
     status: 'pending',
     changedSources: ['src/index.ts'],
     dependencyUpdates: [],
-    compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -163,12 +211,14 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: sources,
       dependencyUpdates: [],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
 
 [
+  ["gem 'rack'", true],
+  ["gem 'rack', group: :test", false],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :development do\n  def test_helper\n    def nested_helper\n      true\n    end\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", true],
@@ -191,14 +241,14 @@ test('detects source changes without dependency updates', async (t) => {
     const message = `Bump ${pkg} from 3.1.0 to 3.1.1`;
     stubRepository(t, message, ['Gemfile.lock']);
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [{ name: 'Gemfile' }] : { content: Buffer.from(gemfile).toString('base64') },
+      data: path === '' ? [{ name: 'Gemfile', type: 'file' }] : { content: Buffer.from(gemfile).toString('base64') },
     }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), production ? {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg, from: '3.1.0', to: '3.1.1' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -224,8 +274,37 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'org.example:bom', from: '1.0', to: '1.1' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     });
+  });
+});
+
+[
+  ['build.gradle.kts', 'implementation(libs.guava)', true],
+  ['build.gradle.kts', 'implementation(libs.guava.get())', true],
+  ['build.gradle', 'implementation libs.guava', true],
+  ['build.gradle', 'testImplementation(libs.guava)', false],
+].forEach(([manifest, declaration, production]) => {
+  test(`checks catalog-only Guava updates with ${declaration}`, async (t) => {
+    const catalog = 'gradle/libs.versions.toml';
+    const pkg = 'com.google.guava:guava';
+    const from = '33.4.0-jre';
+    const to = '33.5.0-jre';
+    stubRepository(t, `Bump ${pkg} from ${from} to ${to}`, [catalog]);
+    const files = {
+      [manifest]: `dependencies { ${declaration} }`,
+      [catalog]: `[libraries]\nguava = "${pkg}:${to}"`,
+    };
+    t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+      data: { content: Buffer.from(files[path] ?? '').toString('base64') },
+    }));
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), production ? {
+      status: 'pending',
+      changedSources: [],
+      dependencyUpdates: [{ pkg, from, to }],
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+    } : { status: 'up-to-date' });
   });
 });
 
@@ -234,7 +313,8 @@ test('detects source changes without dependency updates', async (t) => {
   ['npm production dependency', ['package-lock.json'], true, 'pending'],
   ['no dependency paths', ['README.md'], true, 'up-to-date'],
   ['unavailable paths', undefined, true, 'up-to-date'],
-  ['multiple ecosystems in the bump', ['package-lock.json', 'Gemfile.lock'], true, 'up-to-date'],
+  ['multiple production ecosystems in the bump', ['package-lock.json', 'Gemfile.lock'], true, 'up-to-date'],
+  ['multiple ecosystems in the bump with only one production match', ['package-lock.json', 'Cargo.lock'], true, 'up-to-date'],
   ['an undetected ecosystem', ['Cargo.lock'], true, 'up-to-date'],
 ].forEach(([scenario, paths, production, status]) => {
   test(`attributes a bump using its own paths with ${scenario}`, async (t) => {
@@ -250,6 +330,7 @@ test('detects source changes without dependency updates', async (t) => {
     } }));
     mockCommitFiles(t.mock, paths);
     repos.getContent.mock.mockImplementation(async ({ path }) => {
+      if (path === '') return { data: [{ name: 'Gemfile', type: 'file' }] };
       const content = path === 'Gemfile' ? "gem 'dotenv'" : JSON.stringify({
         [production ? 'dependencies' : 'devDependencies']: { dotenv: '16.4.7' },
       });
@@ -263,6 +344,61 @@ test('detects source changes without dependency updates', async (t) => {
     }
     assert.deepEqual(repos.getCommit.mock.calls.flatMap(({ arguments: [{ ref, page }] }) =>
       page === undefined ? [] : [ref]), ['bump']);
-    assert.ok(repos.getContent.mock.calls.every(({ arguments: [params] }) => params.path === 'package.json'));
+    assert.deepEqual(repos.getContent.mock.calls
+      .filter(({ arguments: [{ path }] }) => path)
+      .map(({ arguments: [{ path }] }) => path).sort(), ['Gemfile', 'package.json']);
   });
+});
+
+test('shares the bump lookup limit across scans and keeps comparison order', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 21 to 22');
+  const repos = getOctokit().repos;
+  const versions = Array.from({ length: 10 }, (_, index) => String(index));
+  repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+    files: [{ filename: 'package-lock.json' }],
+    commits: versions.map((version) => ({
+      sha: version,
+      commit: { message: `Bump @octokit/rest from ${version} to 22` },
+    })),
+  } }));
+
+  const started = [];
+  const first = Promise.withResolvers();
+  const rest = Promise.withResolvers();
+  t.mock.method(repos, 'getCommit', async ({ repo, ref, page }) => {
+    if (page === undefined) return { data: { sha: ref } };
+    const lookup = `${repo}/${ref}`;
+    started.push(lookup);
+    await (lookup === 'first/0' ? first.promise : rest.promise);
+    return { data: { files: [{ filename: 'package-lock.json' }] } };
+  });
+
+  const scans = Promise.all(['first', 'second'].map((repo) => checkPendingRelease('owner', repo, 'node')));
+  try {
+    await new Promise(setImmediate);
+    assert.equal(started.length, 16);
+    assert.equal(new Set(started.map((lookup) => lookup.split('/')[0])).size, 2);
+    rest.resolve();
+    await new Promise(setImmediate);
+    assert.equal(started.length, 20);
+  } finally {
+    first.resolve();
+    rest.resolve();
+    const results = await scans;
+    for (const result of results) {
+      assert.equal(result.status, 'pending');
+      assert.deepEqual(result.dependencyUpdates, versions.map((from) => ({ pkg: '@octokit/rest', from, to: '22' })));
+    }
+  }
+});
+
+test('propagates bump lookup failures to the release investigation', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 21 to 22');
+  const failure = new Error('Commit files unavailable');
+  t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
+    if (page !== undefined) throw failure;
+    return { data: { sha: ref } };
+  });
+
+  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), (error) => error === failure);
 });

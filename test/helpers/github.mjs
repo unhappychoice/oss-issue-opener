@@ -6,8 +6,11 @@ export const commitSha = (ref) => createHash('sha1').update(ref).digest('hex');
 
 export const initMockOctokit = (token) => {
   initOctokit(token);
+  mock.method(getOctokit().repos, 'getBranch', async ({ branch }) => ({
+    data: { commit: { sha: commitSha(`heads/${branch}`), commit: { tree: { sha: 'head-tree' } } } },
+  }));
   mock.method(getOctokit().repos, 'getCommit', async ({ ref }) => ({
-    data: { sha: commitSha(ref), commit: { tree: { sha: 'head-tree' } } },
+    data: { sha: commitSha(ref) },
   }));
 };
 
@@ -31,7 +34,7 @@ export const mockRubyRepository = (gemspec, gemfile = '') => {
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mockCommitFiles(mock, ['Gemfile.lock']);
   mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
-    files: [],
+    files: [{ filename: 'Gemfile.lock' }],
     commits: [{ sha: 'bump', commit: { message: repo === 'malicious'
       ? 'Bump (a+)+$ from 1 to 2' : 'Bump rake from 1 to 2' } }],
   } }));

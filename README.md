@@ -12,7 +12,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 | Language | Dependency File | Production Detection |
 |----------|----------------|---------------------|
-| Ruby | `*.gemspec`, `Gemfile` | `add_dependency`, `add_runtime_dependency` |
+| Ruby | `*.gemspec`, `Gemfile` | Gemspec `add_dependency` or `add_runtime_dependency`. If the gem is absent from the runtime dependencies in the root gemspecs, the scanner checks `gem` declarations in the root `Gemfile`, excluding declarations scoped exclusively to `:development`, `:test`, or both. For example, ungrouped `gem 'rack'` can qualify a `Gemfile.lock`-only bump for a pending-release notification, while `gem 'rack', group: :test` is excluded. |
 | Node/TypeScript | `package.json` | `dependencies` |
 | Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
 | Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
@@ -93,11 +93,16 @@ creates an issue, even when other results succeeded or are pending. Otherwise, t
 is pending if any result is pending, successful if all results succeeded, or `no-ci` if no
 results remain. The decision does not depend on workflow execution order.
 
+If either GitHub API lookup fails, the scanner still queues a notification for
+failures found by the other lookup. When the available results contain no
+failure, the scanner reports `CI: incomplete`. In both cases it logs the
+lookup error and exits with a nonzero status after processing the batch.
+
 ### Pending Release Check
 1. Gets the latest non-draft release tag (falling back to the latest repository tag when no published release exists); skips repositories without a tag
 2. Compares that tag with the default branch
 3. Detects all ecosystems with root manifests and checks source file changes using each ecosystem's source paths (`src/` or `lib/` for Node/TypeScript). When no recognized manifest (`Cargo.toml`, `package.json`, `*.gemspec`/`Gemfile`, `build.gradle(.kts)`, `go.mod`, `Package.swift`) is found, the repository is treated as an unrecognized ecosystem: any change under `src/` counts as a source change
-4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`). The commit's changed manifest and lockfile paths must identify exactly one detected ecosystem. The scanner then checks whether the bumped package is a production dependency in that ecosystem. Bumps with missing paths or paths identifying multiple ecosystems are skipped
+4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`). The commit's changed manifest and lockfile paths must identify exactly one detected ecosystem, and the release comparison must include a changed dependency file for that ecosystem. The scanner then checks whether the bumped package is a production dependency in that ecosystem. Bumps with missing paths or paths identifying multiple ecosystems are skipped
 5. Creates an issue if source files changed or production dependencies were updated, including both reasons when applicable
 
 Source changes alone qualify: for example, a change to `src/index.ts` with the commit

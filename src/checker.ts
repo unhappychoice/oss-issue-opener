@@ -1,34 +1,49 @@
-import { getCommitStatus, getCheckRuns, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
 import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
+// Share the lookup budget across repository scans, including paginated lookups.
+const COMMIT_FILE_CONCURRENCY = 16;
+const waitingLookups: (() => void)[] = [];
+let activeLookups = 0;
+
 export const checkCIStatus = async (
   owner: string,
   repo: string,
-  getBranch = () => getDefaultBranch(owner, repo)
+  getHead = () => getDefaultBranchHead(owner, repo)
 ): Promise<CIStatus> => {
-  const defaultBranch = await getBranch();
-  if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
+  const head = await getHead().catch((error: unknown) => {
+    if (error instanceof Error && 'status' in error && error.status === 404) return null;
+    throw error;
+  });
+  if (head === undefined) return { status: 'no-branch', failedChecks: [] };
+  if (head === null) return { status: 'no-ci', failedChecks: [] };
 
-  const [statuses, checkRuns] = await Promise.all([
-    getCommitStatus(owner, repo, defaultBranch),
-    getCheckRuns(owner, repo, defaultBranch),
+  const { sha } = head;
+  const results = await Promise.allSettled([
+    getCommitStatus(owner, repo, sha),
+    getCheckRuns(owner, repo, sha),
   ]);
 
-  const allStatuses = [...statuses, ...checkRuns];
+  const allStatuses = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+  const endpointErrors = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
   const filtered = allStatuses.filter((s) => !/codecov/i.test(s.context));
-  if (filtered.length === 0) return { status: 'no-ci', failedChecks: [] };
 
   const failedChecks = filtered
     .filter((s) => s.state === 'failure' || s.state === 'error')
     .map((s) => ({ name: s.context, url: s.url }));
   const hasPending = filtered.some((s) => s.state === 'pending');
 
-  const status = failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success';
-  return { status, failedChecks };
+  if (endpointErrors.length > 0) {
+    return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
+  }
+  if (filtered.length === 0) return { status: 'no-ci', failedChecks };
+  return { status: failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success', failedChecks };
 };
+
+type GetContents = () => Promise<string[]>;
 
 const parseBumpCommit = (msg: string): DependencyUpdate | null => {
   const match = msg.match(/^(?:[a-z]+(?:\([^\r\n)]+\))?!?: )?bump (\S+) from (\S+) to (\S+)/i);
@@ -38,29 +53,33 @@ const parseBumpCommit = (msg: string): DependencyUpdate | null => {
 export const checkPendingRelease = async (
   owner: string,
   repo: string,
-  projectTypes: ProjectType | ProjectType[] | (() => Promise<ProjectType[]>),
-  getBranch = () => getDefaultBranch(owner, repo),
-  getContents?: () => Promise<string[]>
+  projectTypes: ProjectType | ProjectType[] | ((getContents: GetContents) => Promise<ProjectType[]>),
+  getHead = () => getDefaultBranchHead(owner, repo),
+  getContents?: GetContents
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes() : projectTypes;
-  const defaultBranch = await getBranch();
-  if (!defaultBranch) return { status: 'up-to-date' };
+  const head = await getHead();
+  if (!head) return { status: 'up-to-date' };
 
-  const { files, commits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
+  const { baseSha, headSha, files, commits } = await compareCommits(
+    owner, repo, `tags/${latestTag}`, head
   );
-  if (files.length === 0 && commits.length === 0) return { status: 'up-to-date' };
+  if (files.length === 0) return { status: 'up-to-date' };
 
+  let rootContents: Promise<string[]> | undefined;
+  const getPinnedContents = getContents ?? (() => rootContents ??= getRepoContents(owner, repo, '', headSha));
+  const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes(getPinnedContents) : projectTypes;
   const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
   const changedSources = files.filter((f) => sourcePatterns.some((pattern) => pattern.test(f)));
 
-  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, types, getContents);
+  const changedDependencyTypes = getDependencyProjectTypes(files);
+  const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
+  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, dependencyTypes, headSha, getPinnedContents);
 
-  const compareUrl = `https://github.com/${owner}/${repo}/compare/${latestTag}...${defaultBranch}`;
+  const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
   return changedSources.length > 0 || dependencyUpdates.length > 0
     ? { status: 'pending', changedSources, dependencyUpdates, compareUrl }
     : { status: 'up-to-date' };
@@ -71,17 +90,42 @@ const findDependencyUpdates = async (
   repo: string,
   commits: ComparedCommit[],
   types: ProjectType[],
-  getContents?: () => Promise<string[]>
+  headSha: string,
+  getContents: GetContents
 ): Promise<DependencyUpdate[]> => {
-  if (types.every((type) => type === 'unknown')) return [];
-  const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents)]));
-  const updates: DependencyUpdate[] = [];
-  for (const { sha, message } of commits) {
+  if (types.length === 0) return [];
+  const checkers = types.map((type) => ({
+    type,
+    check: createDependencyChecker(owner, repo, type, getContents, headSha),
+  }));
+  const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);
-    if (!bump) continue;
-    const affected = getDependencyProjectTypes(await getCommitFiles(owner, repo, sha));
-    if (affected.length !== 1) continue;
-    if (await checkers.get(affected[0])?.(bump.pkg)) updates.push(bump);
+    return bump ? [{ sha, bump }] : [];
+  });
+  const updates = await Promise.all(bumps.map(async ({ sha, bump }) => {
+    const productionTypes = (await Promise.all(checkers.map(async ({ type, check }) =>
+      await check(bump.pkg) ? [type] : []
+    ))).flat();
+    if (productionTypes.length === 0) return [];
+
+    const affected = getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha));
+    return affected.length === 1 && productionTypes.includes(affected[0]) ? [bump] : [];
+  }));
+  return updates.flat();
+};
+
+const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {
+  if (activeLookups >= COMMIT_FILE_CONCURRENCY) {
+    await new Promise<void>((resolve) => waitingLookups.push(resolve));
+  } else {
+    activeLookups++;
   }
-  return updates;
+
+  try {
+    return await getCommitFiles(owner, repo, sha);
+  } finally {
+    const next = waitingLookups.shift();
+    if (next) next();
+    else activeLookups--;
+  }
 };

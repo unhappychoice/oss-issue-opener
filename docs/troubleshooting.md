@@ -16,6 +16,12 @@ Results with `codecov` in their names are excluded, regardless of case.
 If every remaining result is pending or successful, the scan creates no CI
 failure notification.
 
+If the log says `CI: incomplete`, check the corresponding `[failed]` entry for
+the GitHub API error. The scanner could not read commit statuses, check runs,
+or both, and found no failure in the results it could read. Resolve the reported
+error and retry the scan. If one lookup found a failure, the scanner can still
+create a notification even when the other lookup failed.
+
 ## Why is there no pending release notification?
 
 Check the repository's log entry. If it says `Release: no tags found`, verify
