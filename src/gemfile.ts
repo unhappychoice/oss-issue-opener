@@ -1,4 +1,5 @@
 import { gemfileTokens } from './gemfile-tokens.js';
+import { rubyDependencyName } from './ruby.js';
 
 export const isProductionGem = (content: string, pkg: string): boolean =>
   isProductionGemIn(gemfileStatements(content), pkg);
@@ -15,7 +16,7 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
     }
     if (tokens[0] !== 'gem') return false;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
-    return unquote(tokens[nameIndex] ?? '') === pkg && !excluded &&
+    return rubyDependencyName(tokens[nameIndex]) === pkg && !excluded &&
       !hasInlineExcludedGroup(tokens.slice(nameIndex + 1));
   });
 };
@@ -29,8 +30,6 @@ const isEndlessMethod = (tokens: string[]): boolean => {
     return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };
-
-const unquote = (token: string): string => token.replace(/^['"]|['"]$/g, '');
 
 const hasExcludedGroup = (tokens: string[]): boolean => {
   const groups = tokens.filter((token) => /^:\w+$|^['"]/.test(token));

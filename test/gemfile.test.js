@@ -56,6 +56,9 @@ const cases = [
   ['multiple declarations', "gem 'rake', group: :test\ngem 'rake', group: :production", true],
   ['unrelated group', "gem 'other', group: :test\ngem 'rake'", true],
   ['commented declaration', "# gem 'rake'", false],
+  ['block-commented declaration with an active test declaration', "=begin\ngem 'rake'\n=end\ngroup :test do\n  gem 'rake'\nend", false],
+  ['production declaration after a tagged block comment', "=begin disabled\r\n=endless\r\ngem(\r\n=end disabled\r\ngem 'rake'", true],
+  ['block markers inside a multiline string', "description = 'first line\n=begin\nlast line'\ngem 'rake'", true],
   ['commented group', "gem 'rake' # group: :test", true],
   ['group name in string option', "gem 'rake', require: ':test'", true],
   ['exact package name', "gem 'rake-extra'", false],
@@ -93,6 +96,12 @@ test('gemspec runtime dependencies take precedence over Gemfile groups', async (
     },
   }));
   assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), true);
+});
+
+test('ignores bare dependency names in Gemfile declarations', () => {
+  const gemfile = "rack = 'puma'\ngem rack\ngem(rack)";
+  assert.equal(isProductionGem(gemfile, 'rack'), false);
+  assert.equal(isProductionGem(gemfile, 'puma'), false);
 });
 
 ["'", '"'].forEach((quote) => {
@@ -271,4 +280,21 @@ gem 'rack'`;
       assert.equal(await isProductionDependency('owner', 'repo', 'rack', 'ruby'), true);
     });
   });
+});
+
+test('preserves group boundaries across a singleton class with a Ruby block comment', () => {
+  const gemfile = `group :test do
+  class <<self
+=begin
+end
+gem 'ignored'
+=end
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });

@@ -14,7 +14,7 @@ const sha = 'a'.repeat(40);
   test(`reads ${total} checks with ${requestCount} API call(s) when the last check is ${conclusion}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
-    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
+    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
     t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
     t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
     const requests = [];

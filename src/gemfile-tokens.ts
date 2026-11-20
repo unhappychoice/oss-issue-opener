@@ -1,5 +1,5 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
@@ -8,7 +8,7 @@ export const gemfileTokens = (content: string): string[] => {
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
-    if (token.startsWith('#')) continue;
+    if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (expressionExpected && (token === '?' || token === '/' || token === '%')) {
       const end = token === '?' ? characterEnd(content, match.index) : delimitedLiteralEnd(content, match.index);
       if (end !== undefined) {
