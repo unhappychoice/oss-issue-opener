@@ -136,6 +136,18 @@ gem 'rack'`);
   });
 });
 
+test('Gemfile fallback preserves exclusions around a multiline regexp passed to warn', async () => {
+  mockRubyRepository('', `group :test do
+  warn /prefix
+class FakeScope
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`);
+  assert.equal(await check('rspec'), false);
+  assert.equal(await check('rack'), true);
+});
+
 test('Gemfile fallback preserves group exclusions for literal package names', async () => {
   mockRubyRepository('', `group :test do
     gem '(a+)+$'

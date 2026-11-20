@@ -2,11 +2,11 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const putsAssignment = /[^\S\n]*=(?!=|>)/y;
+  const assignment = /[^\S\n]*=(?!=|>)/y;
+  const localCommands = new Set<string>();
   let previous = '\n';
   let classHeader = false;
-  let localPuts = false;
-  let putsArgument = false;
+  let commandArgument = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
@@ -17,7 +17,7 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex++;
     }
     if (((token === '/' || token === '%') && expectsExpression) ||
-      (token === '/' && putsArgument && /\S/.test(content[pattern.lastIndex] ?? ''))) {
+      (token === '/' && commandArgument && /\S/.test(content[pattern.lastIndex] ?? ''))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         token = content.slice(match.index, end);
@@ -33,11 +33,12 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
-      if (token === 'puts' || token === 'puts=') {
-        putsAssignment.lastIndex = pattern.lastIndex;
-        localPuts ||= previous !== '.' && (token === 'puts=' || putsAssignment.test(content));
+      if (/^(?:puts|warn)=?$/.test(token) && previous !== '.') {
+        assignment.lastIndex = pattern.lastIndex;
+        if (token.endsWith('=') || assignment.test(content)) localCommands.add(token.replace(/=$/, ''));
       }
-      putsArgument = !localPuts && token === 'puts' && /^(?:\n|;|do)$/.test(previous) &&
+      commandArgument = /^(?:puts|warn)$/.test(token) && !localCommands.has(token) &&
+        /^(?:\n|;|do)$/.test(previous) &&
         /[^\S\n]/.test(content[pattern.lastIndex] ?? '');
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       previous = expressionKeywords.test(token) && (previous === '.' || previous === ':')
