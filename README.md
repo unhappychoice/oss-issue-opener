@@ -12,7 +12,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 | Language | Dependency File | Production Detection |
 |----------|----------------|---------------------|
-| Ruby | `*.gemspec`, `Gemfile` | `add_dependency`, `add_runtime_dependency` |
+| Ruby | `*.gemspec`, `Gemfile` | Gemspec `add_dependency` or `add_runtime_dependency`. If the gem is absent from the runtime dependencies in the root gemspecs, the scanner checks `gem` declarations in the root `Gemfile`, excluding declarations scoped exclusively to `:development`, `:test`, or both. For example, ungrouped `gem 'rack'` can qualify a `Gemfile.lock`-only bump for a pending-release notification, while `gem 'rack', group: :test` is excluded. |
 | Node/TypeScript | `package.json` | `dependencies` |
 | Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
 | Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
@@ -92,6 +92,11 @@ contain `codecov` (case-insensitive). If any remaining result has a failure or e
 creates an issue, even when other results succeeded or are pending. Otherwise, the CI status
 is pending if any result is pending, successful if all results succeeded, or `no-ci` if no
 results remain. The decision does not depend on workflow execution order.
+
+If either GitHub API lookup fails, the scanner still queues a notification for
+failures found by the other lookup. When the available results contain no
+failure, the scanner reports `CI: incomplete`. In both cases it logs the
+lookup error and exits with a nonzero status after processing the batch.
 
 ### Pending Release Check
 1. Gets the latest non-draft release tag (falling back to the latest repository tag when no published release exists); skips repositories without a tag

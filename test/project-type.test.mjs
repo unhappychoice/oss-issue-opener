@@ -45,6 +45,21 @@ const mockReleaseComparison = (files, commitMessages = [], bumpPaths = files) =>
   }));
 };
 
+['Gemfile', 'example.gemspec'].forEach((name) => {
+  test(`counts src changes with a root directory named ${name}`, async () => {
+    mock.method(getOctokit().repos, 'getContent', async () => ({
+      data: [{ name, type: 'dir' }],
+    }));
+    mockReleaseComparison(['src/index.ts']);
+
+    const types = await detectProjectTypes(owner, repo);
+    assert.deepEqual(types, ['unknown']);
+    const release = await checkPendingRelease(owner, repo, types);
+    assert.equal(release.status, 'pending');
+    assert.deepEqual(release.changedSources, ['src/index.ts']);
+  });
+});
+
 test('detects lib changes as pending releases for a Gemfile-only repository', async () => {
   mockReleaseComparison(['lib/example.rb']);
   const type = await detectProjectTypes(owner, repo);
