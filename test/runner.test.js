@@ -302,13 +302,37 @@ test('shares the default branch when release comparison is empty', async () => {
   const repos = stubInvestigations();
   const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(repos, 'compareCommits', async () => ({ data: { files: [], commits: [] } }));
-  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({ checkCIStatus, checkPendingRelease, detectProjectTypes });
 
   await runChecks(deps);
 
   assert.equal(lookup.mock.callCount(), 3);
+  assert.equal(contents.mock.callCount(), 0);
   assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Types:')));
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
+});
+
+test('reports up to date without comparing or listing root contents when both refs resolve to the same commit', async () => {
+  const repos = stubInvestigations();
+  const resolve = mock.method(repos, 'getCommit', async () => ({ data: { sha: headSha('repo') } }));
+  const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
+  const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    checkCIStatus,
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await runChecks(deps);
+
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1']);
+  assert.equal(repos.getBranch.mock.callCount(), 1);
+  assert.equal(compare.mock.callCount(), 0);
+  assert.equal(contents.mock.callCount(), 0);
+  assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Release: up to date')));
+  assert.deepEqual(batches[0].map(({ type }) => type), ['ci-failure']);
 });
 
 test('shares failed branch lookups without retrying or creating notifications', async () => {
