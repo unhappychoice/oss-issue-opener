@@ -157,6 +157,8 @@ module FakeNamespace!ix`],
 class FakeScope/ : nil`],
   ['false ternary branch', `condition ? nil : /prefix
 module FakeScope/`],
+  ['unary negation', `!/prefix
+class FakeScope/`],
   ['quoted interpolation', `/#{"a/b"}
 end
 suffix/`],
@@ -173,6 +175,14 @@ suffix/`],
 end
 gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['receiver.if', 'receiver&.unless', 'receiver::elsif'].forEach((call) => {
+  test(`preserves a gem declaration after dividing the result of ${call}`, () => {
+    const gemfile = `${call} / 2
+gem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });

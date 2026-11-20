@@ -1,19 +1,21 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
+  let regexpExpected = true;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
-    if ((token === '/' || token === '%') && /^(?:\n|;|=|=>|~|\(|\[|,|\?|:|if|elsif|unless)$/.test(previous)) {
+    if ((token === '/' || token === '%') && regexpExpected) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
         previous = token;
+        regexpExpected = false;
         classHeader = false;
         continue;
       }
@@ -22,11 +24,14 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex = match.index + 2;
       tokens.push('<<');
       previous = '<<';
+      regexpExpected = false;
       classHeader = false;
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
+      regexpExpected = /^(?:\n|;|=|=>|!|~|\(|\[|,|\?|:)$/.test(token)
+        || (/^(?:if|elsif|unless)$/.test(token) && previous !== '.' && previous !== '::');
       previous = token;
     }
     if (token.startsWith('<<')) {
