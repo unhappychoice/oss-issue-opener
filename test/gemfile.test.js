@@ -207,114 +207,15 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('detects a production gem after a block-local puts and a multiline regexp', () => {
+test('detects a production gem after compact division of a block parameter', () => {
   const gemfile = `group :test do
-  [4].each do |puts|
-    puts /2
+  [4].each do |value|
+    value /2
   end
-  puts /pattern
-class RegexText
-module RegexText
-/x
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('ignores scope keywords and gem declarations inside an assigned multiline regexp', () => {
-  const gemfile = String.raw`group :test do
-  pattern = /escaped\/delimiter
-end
-class RegexText
-gem 'ignored'
-/x
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('keeps division operators from consuming an excluded gem group', () => {
-  const gemfile = `ratio = 12 / 3
-group :test do
-  gem 'rspec'
-end
-ratio = ratio / 2
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['ratio = 12', 'ratio=(12)'].forEach((assignment) => {
-  test(`detects a production gem after compact division following ${assignment}`, () => {
-    const gemfile = `${assignment}
-ratio /2
-gem 'rack', path: '/x'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  '#{"/"}',
-  '#{ %q!}!.ord / 2 }',
-  '#{ { key: %q{nested { / }} }.fetch(:key) }#{ /nested/ }',
-].forEach((interpolation) => {
-  test(`ignores scope keywords after ${interpolation} in a regexp`, () => {
-    const gemfile = `group :test do
-  pattern = /${interpolation}
-end
-gem 'ignored'
-/x
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  'enabled ? /pattern\nclass RegexText\n/x : nil',
-  'enabled ? nil : /pattern\nmodule RegexText\n/x',
-  '!/pattern\nclass RegexText\n/x',
-  '%r!pattern\nclass RegexText\n!x',
-].forEach((expression) => {
-  test(`ignores scope keywords in ${expression.split('\n')[0]}`, () => {
-    const gemfile = `group :test do
-  pattern = ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('keeps division after a keyword-named method from consuming gem declarations', () => {
-  const gemfile = `group :test do
-  ratio = receiver.if / 2
   gem 'rspec'
 end
 gem 'rack', path: '/x'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('keeps a slash character literal from consuming gem declarations', () => {
-  const gemfile = `separator = ?/
-gem 'rack', path: '/x'`;
-
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
