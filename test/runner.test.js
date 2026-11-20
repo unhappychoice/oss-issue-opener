@@ -383,6 +383,52 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   assert.deepEqual(batches, []);
 });
 
+test('submits confirmed release notifications before rejecting failed bump lookups', async () => {
+  const repos = stubInvestigations();
+  const failure = Object.assign(new Error('Commit files HTTP 503'), { status: 503 });
+  mock.method(repos, 'getCommit', async ({ ref, page }) => {
+    if (page === undefined) return { data: { sha: commitSha(ref) } };
+    if (ref === 'failed') throw failure;
+    return { data: { files: [{ filename: 'package-lock.json' }] } };
+  });
+  mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
+    files: [
+      { filename: 'package-lock.json' },
+      ...(repo === 'source' ? [{ filename: 'src/index.ts' }] : []),
+    ],
+    commits: [
+      { sha: 'failed', commit: { message: 'Bump unavailable from 1 to 2' } },
+      ...(repo === 'dependency' ? [{ sha: 'bump', commit: { message: 'Bump runtime from 1 to 2' } }] : []),
+    ],
+  } }));
+  mock.method(repos, 'getContent', async ({ path }) => ({ data: path === ''
+    ? [{ name: 'package.json' }]
+    : { content: Buffer.from('{"dependencies":{"runtime":"2","unavailable":"2"}}').toString('base64') },
+  }));
+  const repoNames = ['source', 'dependency', 'unconfirmed'];
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice'
+      ? repoNames.map((repo) => ({ fullName: `owner/${repo}`, defaultBranch: 'main' })) : [],
+    checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await assert.rejects(runChecks(deps), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors.map(({ message }) => message).sort(),
+      repoNames.map((repo) => `Failed owner/${repo}: release investigation`).sort());
+    assert.ok(error.errors.every(({ cause }) => cause === failure));
+    assert.equal(batches.length, 1);
+    assert.deepEqual(batches[0].map(({ repo, type }) => [repo, type]), [
+      ['owner/source', 'pending-release'], ['owner/dependency', 'pending-release'],
+    ]);
+    assert.match(batches[0][0].body, /src\/index\.ts/);
+    assert.match(batches[0][1].body, /runtime.*1.*2/);
+    return true;
+  });
+});
+
 test('notifies about a production bump at the compared head after the default branch advances', async () => {
   const repos = stubInvestigations();
   const pinnedHead = commitSha('heads/main');

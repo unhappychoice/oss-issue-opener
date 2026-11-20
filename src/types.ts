@@ -40,10 +40,12 @@ export interface DependencyUpdate {
   to: string;
 }
 
-export type ReleaseStatus =
+export type ReleaseStatus = (
   | { status: 'no-tag' }
   | { status: 'up-to-date' }
-  | { status: 'pending'; changedSources: string[]; dependencyUpdates: DependencyUpdate[]; compareUrl: string };
+  | { status: 'incomplete'; lookupErrors: unknown[] }
+  | { status: 'pending'; changedSources: string[]; dependencyUpdates: DependencyUpdate[]; compareUrl: string }
+) & { lookupErrors?: unknown[] };
 
 export const ORGS = ['unhappychoice', 'irasutoya-tools', 'bitflyer-tools', 'circleci-tools'] as const;
 export const ISSUE_REPO = 'unhappychoice/oss-issue-opener';
