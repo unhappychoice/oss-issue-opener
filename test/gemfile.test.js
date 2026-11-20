@@ -234,11 +234,11 @@ gem 'rack', path: '/rack'`;
   });
 });
 
-test('ignores scope keywords inside a multiline regexp passed to puts', () => {
+test('ignores scope keywords inside a parenthesized multiline regexp argument', () => {
   const gemfile = `group :test do
-  puts /prefix
+  puts(/prefix
 class FakeScope
-module FakeNamespace/s
+module FakeNamespace/s)
   gem 'rspec'
 end
 gem 'rack'`;
@@ -246,11 +246,13 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('preserves a gem declaration after division with whitespace on both sides', () => {
-  const gemfile = `puts = 4
-puts / 2
+['puts / 2', 'puts /2'].forEach((division) => {
+  test(`preserves a gem declaration after ${division} divides a local variable`, () => {
+    const gemfile = `puts = 4
+${division}
 gem 'rack', path: '/rack'`;
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 ['def helper(ratio)', 'def helper ratio'].forEach((header) => {
