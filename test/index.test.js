@@ -84,6 +84,9 @@ test('CLI submits confirmed CI failures before exiting with status 1 for an endp
         if (pathname === '/repos/unhappychoice/example/commits/${sha}/status') {
           return Response.json({ statuses: [{ state: 'failure', context: 'build' }] });
         }
+        if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-suites') {
+          return Response.json({ total_count: 0, check_suites: [] });
+        }
         if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-runs') {
           return Response.json({ message: 'Check runs unavailable' }, { status: 503 });
         }

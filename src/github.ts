@@ -100,12 +100,29 @@ export const getCheckRuns = async (
     startup_failure: 'failure',
   };
 
-  const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref, per_page: 100 });
+  const checkRuns = await listCheckRuns(owner, repo, ref);
   return checkRuns.map((c) => ({
     state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
     context: c.name,
     url: c.html_url ?? '',
   }));
+};
+
+const listCheckRuns = async (owner: string, repo: string, ref: string) => {
+  const client = getOctokit();
+  const params = { owner, repo, ref, per_page: 100 };
+  const { data } = await client.checks.listSuitesForRef({ ...params, per_page: 1 });
+  if (data.total_count <= 1000) return client.paginate(client.checks.listForRef, params);
+
+  const runs: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'] = [];
+  for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
+    for (const suite of suites) {
+      runs.push(...await client.paginate(client.checks.listForSuite, {
+        owner, repo, check_suite_id: suite.id, per_page: 100,
+      }));
+    }
+  }
+  return runs;
 };
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {

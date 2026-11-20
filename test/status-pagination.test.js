@@ -10,6 +10,7 @@ const sha = 'a'.repeat(40);
     initOctokit('test-token');
     const octokit = getOctokit();
     t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
+    t.mock.method(octokit.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
     t.mock.method(octokit, 'paginate', async () => []);
     const requests = [];
     const status = (index, result) => ({

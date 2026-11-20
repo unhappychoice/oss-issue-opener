@@ -10,6 +10,7 @@ import { initMockOctokit } from './helpers/github.mjs';
 
 beforeEach(() => {
   initMockOctokit('test-token');
+  mock.method(getOctokit().checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(console, 'log', () => {});
   mock.method(console, 'error', () => {});
 });

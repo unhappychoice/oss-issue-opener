@@ -7,7 +7,10 @@ import { buildCIFailureIssue } from '../dist/issue.js';
 const sha = 'a'.repeat(40);
 
 initOctokit('test-token');
-beforeEach(() => mock.method(getOctokit().repos, 'getBranch', async () => ({ data: { commit: { sha } } })));
+beforeEach(() => {
+  mock.method(getOctokit().repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
+  mock.method(getOctokit().checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
+});
 afterEach(() => mock.restoreAll());
 
 const checkStatus = async (status, conclusion) => {
