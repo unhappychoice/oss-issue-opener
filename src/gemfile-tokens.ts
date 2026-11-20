@@ -3,17 +3,26 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
+  let command = false;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === '/' && (expectsRegexp(previous) || (command && isCommandArgument(content, match.index)))) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        token = '//';
+      }
+    }
     if (classHeader && token.startsWith('<<')) {
       // In a singleton class header, << introduces the receiver.
       pattern.lastIndex = match.index + 2;
       token = '<<';
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
+      command = /^(?:\n|;|do)$/.test(previous) && /^[a-z_]\w*[!?]?$/.test(token);
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       previous = token;
     }
@@ -32,6 +41,18 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const expectsRegexp = (token: string): boolean =>
+  /^(?:\n|;|=|=>|~|\(|\[|,|if|elsif|unless|when|return)$/.test(token);
+
+const isCommandArgument = (content: string, start: number): boolean =>
+  /[ \t]/.test(content[start - 1] ?? '') && /[^\s=]/.test(content[start + 1] ?? '');
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const literal = /\/(?:\\[\s\S]|[^/\\])*\/[imxounes]*(?!\w)/y;
+  literal.lastIndex = start;
+  return literal.test(content) ? literal.lastIndex : undefined;
 };
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {

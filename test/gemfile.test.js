@@ -213,11 +213,39 @@ test('detects a production gem after a block-local puts and a multiline regexp',
     puts /2
   end
   puts /pattern
-class
-module
+class RegexText
+module RegexText
 /x
   gem 'rspec'
 end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('ignores scope keywords and gem declarations inside an assigned multiline regexp', () => {
+  const gemfile = String.raw`group :test do
+  pattern = /escaped\/delimiter
+end
+class RegexText
+gem 'ignored'
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('keeps division operators from consuming an excluded gem group', () => {
+  const gemfile = `ratio = 12 / 3
+group :test do
+  gem 'rspec'
+end
+ratio = ratio / 2
 gem 'rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
