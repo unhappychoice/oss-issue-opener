@@ -102,12 +102,29 @@ export const getCheckRuns = async (
     startup_failure: 'failure',
   };
 
-  const checkRuns = await getOctokit().paginate(getOctokit().checks.listForRef, { owner, repo, ref, per_page: 100 });
+  const checkRuns = await listCheckRuns(owner, repo, ref);
   return checkRuns.map((c) => ({
     state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
     context: c.name,
     url: c.html_url ?? '',
   }));
+};
+
+const listCheckRuns = async (owner: string, repo: string, ref: string) => {
+  const client = getOctokit();
+  const params = { owner, repo, ref, per_page: 100 };
+  const { data } = await client.checks.listSuitesForRef({ ...params, per_page: 1 });
+  if (data.total_count <= 1000) return client.paginate(client.checks.listForRef, params);
+
+  const runs: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'] = [];
+  for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
+    for (const suite of suites) {
+      runs.push(...await client.paginate(client.checks.listForSuite, {
+        owner, repo, check_suite_id: suite.id, per_page: 100,
+      }));
+    }
+  }
+  return runs;
 };
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
@@ -142,11 +159,13 @@ export const getCommitFiles = async (owner: string, repo: string, ref: string): 
   const perPage = 100;
   const fileLimit = 3000;
   const paths: string[] = [];
+  let fileCount = 0;
   for (let page = 1; ; page++) {
     const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
     if (!data.files) return [];
-    paths.push(...data.files.map(({ filename }) => filename));
-    if (paths.length >= fileLimit) return [];
+    fileCount += data.files.length;
+    if (fileCount >= fileLimit) return [];
+    paths.push(...changedPaths(data.files));
     if (!headers?.link?.includes('rel="next"')) return paths;
   }
 };
@@ -163,15 +182,14 @@ export const compareCommits = async (
   const { data: baseCommit } = await repos.getCommit({ owner, repo, ref: base });
   const endpoints = { owner, repo, base: baseCommit.sha, head: head.sha };
   const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
+  if (result.baseSha === result.headSha) return result;
 
   for (let page = 1; ; page++) {
     const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
     if (page === 1) {
       result.files = (data.files?.length ?? 0) >= 300
         ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
-        : [...new Set(data.files?.flatMap((f) =>
-          f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
-        ) ?? [])];
+        : [...new Set(changedPaths(data.files ?? []))];
     }
     result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
     if (data.commits.length < 100) return result;
@@ -208,3 +226,8 @@ export const createIssue = async (
   }
   return data.number;
 };
+
+const changedPaths = (files: { filename: string; status: string; previous_filename?: string }[]): string[] =>
+  files.flatMap(({ filename, status, previous_filename }) =>
+    status === 'renamed' && previous_filename ? [filename, previous_filename] : [filename]
+  );

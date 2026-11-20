@@ -6,6 +6,13 @@ const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 
 const escapeMarkdown = (s: string): string => s.replace(/[`[\]()]/g, '\\$&');
 
+const formatCodeSpan = (text: string): string => {
+  const length = Array.from(text.matchAll(/`+/g))
+    .reduce((max, run) => Math.max(max, run[0].length + 1), 1);
+  const delimiter = '`'.repeat(length);
+  return `${delimiter} ${text} ${delimiter}`;
+};
+
 const parseHttpUrl = (url: string): string | null => {
   try {
     const parsed = new URL(url);
@@ -38,7 +45,9 @@ const formatPendingReleaseReasons = (changedSources: string[], dependencyUpdates
 
   if (dependencyUpdates.length > 0) {
     reasons.push('**Dependency updates:**');
-    dependencyUpdates.forEach(({ pkg, from, to }) => reasons.push(`- ${pkg} ${from} -> ${to}`));
+    dependencyUpdates.forEach(({ pkg, from, to }) => {
+      reasons.push(`- ${formatCodeSpan(pkg)} ${formatCodeSpan(from)} -> ${formatCodeSpan(to)}`);
+    });
   }
 
   return reasons.join('\n');
