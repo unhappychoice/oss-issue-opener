@@ -52,6 +52,7 @@ test('preserves GitHub read failures and waits for the remaining notifications',
     if (repo === 'last') throw statusesFailure;
     return { data: { statuses: [{ state: 'failure', context: 'build' }] } };
   });
+  mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(client, 'paginate', async (_route, { repo }) => {
     if (repo === 'broken') throw checksFailure;
     return repo === 'last' ? [{ status: 'completed', conclusion: 'failure', name: 'test suite' }] : [];
@@ -247,6 +248,7 @@ const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
+  mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(client, 'paginate', async () => []);
   return client.repos;
 };
