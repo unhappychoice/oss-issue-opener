@@ -52,6 +52,28 @@ test('ignores bump text outside a dependency update subject', async (t) => {
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
 });
 
+test('skips commit file requests for 40 Node development dependency bumps', async (t) => {
+  stubRepository(t, 'Bump typescript from 7.0.1 to 7.0.2');
+  const repos = getOctokit().repos;
+  const packages = Array.from({ length: 40 }, (_, index) => `dev-package-${index}`);
+  repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+    files: [{ filename: 'package-lock.json' }],
+    commits: packages.map((pkg) => ({
+      sha: pkg,
+      commit: { message: `Bump ${pkg} from 1.0.0 to 1.1.0` },
+    })),
+  } }));
+  repos.getContent.mock.mockImplementation(async () => ({
+    data: { content: Buffer.from(JSON.stringify({
+      devDependencies: Object.fromEntries(packages.map((pkg) => [pkg, '1.1.0'])),
+    })).toString('base64') },
+  }));
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
+  assert.equal(repos.getCommit.mock.calls.filter(({ arguments: [{ page }] }) => page !== undefined).length, 0);
+  assert.equal(repos.getContent.mock.callCount(), 1);
+});
+
 [
   ['no net changes', [], []],
   ['a source change', ['src/index.ts'], ['src/index.ts']],
@@ -260,7 +282,8 @@ test('detects source changes without dependency updates', async (t) => {
   ['npm production dependency', ['package-lock.json'], true, 'pending'],
   ['no dependency paths', ['README.md'], true, 'up-to-date'],
   ['unavailable paths', undefined, true, 'up-to-date'],
-  ['multiple ecosystems in the bump', ['package-lock.json', 'Gemfile.lock'], true, 'up-to-date'],
+  ['multiple production ecosystems in the bump', ['package-lock.json', 'Gemfile.lock'], true, 'up-to-date'],
+  ['multiple ecosystems in the bump with only one production match', ['package-lock.json', 'Cargo.lock'], true, 'up-to-date'],
   ['an undetected ecosystem', ['Cargo.lock'], true, 'up-to-date'],
 ].forEach(([scenario, paths, production, status]) => {
   test(`attributes a bump using its own paths with ${scenario}`, async (t) => {
@@ -289,7 +312,9 @@ test('detects source changes without dependency updates', async (t) => {
     }
     assert.deepEqual(repos.getCommit.mock.calls.flatMap(({ arguments: [{ ref, page }] }) =>
       page === undefined ? [] : [ref]), ['bump']);
-    assert.ok(repos.getContent.mock.calls.every(({ arguments: [params] }) => params.path === 'package.json'));
+    assert.deepEqual(repos.getContent.mock.calls
+      .filter(({ arguments: [{ path }] }) => path)
+      .map(({ arguments: [{ path }] }) => path).sort(), ['Gemfile', 'package.json']);
   });
 });
 

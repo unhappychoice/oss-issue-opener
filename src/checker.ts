@@ -92,22 +92,24 @@ const findDependencyUpdates = async (
   getContents: GetContents
 ): Promise<DependencyUpdate[]> => {
   if (types.length === 0) return [];
-  const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents, headSha)]));
+  const checkers = types.map((type) => ({
+    type,
+    check: createDependencyChecker(owner, repo, type, getContents, headSha),
+  }));
   const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);
     return bump ? [{ sha, bump }] : [];
   });
-  const lookups = await Promise.all(bumps.map(async ({ sha, bump }) => ({
-    bump,
-    affected: getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha)),
-  })));
+  const updates = await Promise.all(bumps.map(async ({ sha, bump }) => {
+    const productionTypes = (await Promise.all(checkers.map(async ({ type, check }) =>
+      await check(bump.pkg) ? [type] : []
+    ))).flat();
+    if (productionTypes.length === 0) return [];
 
-  const updates: DependencyUpdate[] = [];
-  for (const { bump, affected } of lookups) {
-    if (affected.length !== 1) continue;
-    if (await checkers.get(affected[0])?.(bump.pkg)) updates.push(bump);
-  }
-  return updates;
+    const affected = getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha));
+    return affected.length === 1 && productionTypes.includes(affected[0]) ? [bump] : [];
+  }));
+  return updates.flat();
 };
 
 const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {
