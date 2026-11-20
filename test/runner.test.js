@@ -289,6 +289,7 @@ test('shares the default branch when release comparison is empty', async () => {
   await runChecks(deps);
 
   assert.equal(lookup.mock.callCount(), 3);
+  assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Types:')));
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
 });
 
@@ -335,6 +336,7 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   assert.equal(tags.mock.callCount(), 3);
   assert.equal(contents.mock.callCount(), 0);
   assert.equal(console.log.mock.calls.filter(({ arguments: [line] }) => line.includes('Release: no tags found')).length, 3);
+  assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Types:')));
   assert.deepEqual(batches, []);
 });
 
@@ -375,6 +377,7 @@ test('notifies about a production bump at the compared head after the default br
   const issues = batches.flat();
   assert.deepEqual(issues.map(({ type }) => type), ['pending-release']);
   assert.match(issues[0].body, /runtime.*1\.0\.0.*1\.1\.0/);
+  assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Types: node')));
   assert.deepEqual(content.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]), [
     ['', pinnedHead], ['package.json', pinnedHead],
   ]);
