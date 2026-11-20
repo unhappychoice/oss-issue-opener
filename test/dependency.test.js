@@ -11,8 +11,8 @@ const stubRepository = (manifests, commitMessages = []) => {
   Object.assign(getOctokit().repos, {
     getContent: async ({ owner, repo, path }) => {
       calls.push({ owner, repo, path });
-      if (!(path in manifests)) throw new Error('Not found');
-      const content = manifests[path];
+      const content = path === '' ? manifests[''] ?? Object.keys(manifests) : manifests[path];
+      if (content === undefined) throw Object.assign(new Error('Not found'), { status: 404 });
       return { data: Array.isArray(content) ? content.map((name) => ({ name })) :
         { content: Buffer.from(content).toString('base64') } };
     },
@@ -202,7 +202,6 @@ dev = "3"` }, ['Cargo.toml']],
   ['go', { 'go.mod': 'require (\nfirst v1\nsecond v2\n)' }, ['go.mod']],
   ['swift', { 'Package.swift': '.package(url: "first"), .package(url: "second")' }, ['Package.swift']],
   ['node', { 'package.json': '{invalid' }, ['package.json']],
-  ['node', {}, ['package.json']],
   ['unknown', {}, []],
 ];
 

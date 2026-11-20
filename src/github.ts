@@ -31,25 +31,27 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
 };
 
 export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
-  try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
-    return Array.isArray(data) ? data.map((f) => f.name) : [];
-  } catch {
-    return [];
-  }
+  const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
+  return Array.isArray(data) ? data.map((f) => f.name) : [];
 };
 
-export const getFileContent = async (owner: string, repo: string, path: string, ref?: string): Promise<string> => {
+export const getFileContent = async (
+  owner: string, repo: string, path: string, ref?: string, optional = false
+): Promise<string> => {
   try {
     const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
     if ('content' in data && data.content) {
       return Buffer.from(data.content, 'base64').toString('utf-8');
     }
     return '';
-  } catch {
-    return '';
+  } catch (error) {
+    if (optional && isNotFound(error)) return '';
+    throw error;
   }
 };
+
+const isNotFound = (error: unknown): boolean =>
+  error instanceof Error && 'status' in error && error.status === 404;
 
 export const getDefaultBranch = async (owner: string, repo: string): Promise<string | null> => {
   try {
@@ -65,7 +67,7 @@ export const getBranchHead = async (owner: string, repo: string, branch: string)
     const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
     return data.commit.sha;
   } catch (error) {
-    if (error instanceof Error && 'status' in error && error.status === 404) return null;
+    if (isNotFound(error)) return null;
     throw error;
   }
 };

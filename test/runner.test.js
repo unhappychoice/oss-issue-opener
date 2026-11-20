@@ -338,6 +338,52 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   assert.deepEqual(batches, []);
 });
 
+[
+  ['unavailable root listing', '', 'Sources/Client.swift', [], 503, true],
+  ['missing root listing', '', 'Sources/Client.swift', [], 404, true],
+  ['unavailable Node manifest', 'package.json', 'package.json', ['package.json'], 503, true],
+  ['missing required Node manifest', 'package.json', 'package.json', ['package.json'], 404, true],
+  ['listed Ruby manifest', 'Gemfile', 'Gemfile.lock', ['Gemfile'], 404, true],
+  ['optional Ruby manifest', 'Gemfile', 'Gemfile.lock', ['example.gemspec'], 503, true],
+  ['absent optional Ruby manifest', 'Gemfile', 'Gemfile.lock', ['example.gemspec'], 404, false],
+  ['unsupported root listing', null, 'Sources/Client.swift', ['README.md'], 0, false],
+].forEach(([name, failedPath, filename, manifests, status, fails]) => {
+  test(`records the release result for a pinned ${name}`, async () => {
+    const repos = stubInvestigations();
+    const cause = Object.assign(new Error(`HTTP ${status}`), { status });
+    mockCommitFiles(mock, [filename]);
+    mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0 to 1.1' } }],
+    } }));
+    const content = mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(ref, commitSha('heads/main'));
+      if (path === failedPath) throw cause;
+      if (path === '') return { data: manifests.map((name) => ({ name })) };
+      assert.equal(path, 'example.gemspec');
+      return { data: { content: '' } };
+    });
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    if (fails) {
+      await expectFailures(deps, [['Failed owner/repo: release investigation', cause]]);
+    } else {
+      await runChecks(deps);
+    }
+
+    const paths = content.mock.calls.map(({ arguments: [{ path }] }) => path);
+    assert.equal(paths[0], '');
+    if (failedPath !== null) assert.equal(paths.at(-1), failedPath);
+    assert.equal(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Release: up to date')), !fails);
+    assert.deepEqual(batches, []);
+  });
+});
+
 test('notifies about a production bump at the compared head after the default branch advances', async () => {
   const repos = stubInvestigations();
   const pinnedHead = commitSha('heads/main');
