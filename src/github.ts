@@ -33,7 +33,7 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
 export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
   try {
     const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
-    return Array.isArray(data) ? data.map((f) => f.name) : [];
+    return Array.isArray(data) ? data.filter((entry) => entry.type !== 'dir').map((entry) => entry.name) : [];
   } catch {
     return [];
   }
