@@ -8,7 +8,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' && expectsRegexp(previous)) {
+    if ((token === '/' || token === '%') && expectsRegexp(previous)) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         token = content.slice(match.index, end);
@@ -47,18 +47,23 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const expectsRegexp = (token: string): boolean => /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:)$/.test(token);
+const expectsRegexp = (token: string): boolean => /^(?:\n|;|=|=>|!|~|\(|\[|\{|,|\?|:)$/.test(token);
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const regexpEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%[qQ]([^\w\s])/y;
+  const regexpOpening = /\/|%r([^\w\s])/y;
+  regexpOpening.lastIndex = start;
+  const root = regexpOpening.exec(content);
+  if (!root) return undefined;
+
+  const opening = /\/|%[rqQ]([^\w\s])/y;
   const expression = new RegExp(tokenPattern, 'y');
   const interpolated = /\\[\s\S]|#\{|[\s\S]/y;
   const plain = /\\[\s\S]|[\s\S]/y;
   const options = /[imxounes]*/y;
-  const frames = [literalFrame('/', '/')];
-  let offset = start + 1;
+  const frames = [literalFrame(root[1] ? '%r' : '/', root[1] ?? '/')];
+  let offset = regexpOpening.lastIndex;
 
   while (offset < content.length) {
     const frame = frames.at(-1)!;
@@ -71,7 +76,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     if (frame.braces === 0) {
       if (token === frame.closing && --frame.depth === 0) {
         frames.pop();
-        if (frame.kind === '/') {
+        if (frame.kind === '/' || frame.kind === '%r') {
           options.lastIndex = offset;
           options.exec(content);
           offset = options.lastIndex;
