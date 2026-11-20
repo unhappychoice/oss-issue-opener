@@ -215,3 +215,21 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  ['slash-delimited', '/\nclass\nmodule\nend\n/x'],
+  ['percent-delimited', '%r{a{2}\\}\nclass\nmodule\nend\n}x'],
+  ['ternary', 'enabled ? /\nclass\n/x : /\nmodule\n/x'],
+  ['interpolated', '/#{%q!}/! + /nested/.source}\nclass\n/x'],
+].forEach(([name, expression]) => {
+  test(`preserves group boundaries across a multiline ${name} regexp`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
