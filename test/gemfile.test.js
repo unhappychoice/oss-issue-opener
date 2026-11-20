@@ -234,16 +234,21 @@ gem 'rack', path: '/rack'`;
   });
 });
 
-test('ignores scope keywords inside a parenthesized multiline regexp argument', () => {
-  const gemfile = `group :test do
-  puts(/prefix
+[
+  ['parenthesized', 'puts(', ')'],
+  ['unparenthesized', 'puts ', ''],
+].forEach(([style, opening, closing]) => {
+  test(`ignores scope keywords inside a multiline ${style} puts regexp argument`, () => {
+    const gemfile = `group :test do
+  ${opening}/prefix
 class FakeScope
-module FakeNamespace/s)
+module FakeNamespace/i${closing}
   gem 'rspec'
 end
 gem 'rack'`;
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('preserves a gem declaration between puts division and a regexp on its own line', () => {
@@ -252,6 +257,12 @@ puts /2
 gem 'rack'
 /prefix
 suffix/`;
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves a gem declaration after dividing the result of a puts call', () => {
+  const gemfile = `puts / 2
+gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 

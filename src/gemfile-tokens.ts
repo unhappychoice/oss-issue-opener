@@ -5,11 +5,16 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let expressionExpected = true;
   let classHeader = false;
+  let putsArgument = false;
+  let putsLocal = false;
+  let statementStart = 0;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (expressionExpected && (token === '?' || token === '/' || token === '%')) {
+    const commandRegexp = token === '/' && putsArgument &&
+      /[ \t]/.test(content[match.index - 1] ?? '') && /[^\s=]/.test(content[pattern.lastIndex] ?? '');
+    if (commandRegexp || (expressionExpected && (token === '?' || token === '/' || token === '%'))) {
       const end = token === '?' ? characterEnd(content, match.index) : delimitedLiteralEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -17,6 +22,7 @@ export const gemfileTokens = (content: string): string[] => {
         previous = token;
         expressionExpected = false;
         classHeader = false;
+        putsArgument = false;
         continue;
       }
     }
@@ -29,6 +35,10 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
+      if (token === '=' && previous === 'puts' && putsArgument) putsLocal = true;
+      if (token === 'puts' && tokens[statementStart] === 'def' && previous !== 'def') putsLocal = true;
+      putsArgument = token === 'puts' && !putsLocal && (expressionExpected || previous === 'do');
+      if (token === '\n' || token === ';') statementStart = tokens.length + 1;
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       expressionExpected = /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|,|\?|:)$/.test(token)
         || (/^(?:if|elsif|unless)$/.test(token) && previous !== '.' && previous !== '::');
