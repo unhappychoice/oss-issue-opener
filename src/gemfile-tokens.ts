@@ -4,9 +4,11 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   const assignment = /[^\S\n]*=(?!=|>|~)/y;
   const localNames = new Set<string>();
+  const scopes: Scope[] = [];
   let previous = '\n';
   let classHeader = false;
   let commandArgument = false;
+  let loopHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
@@ -33,12 +35,15 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
+      updateScopes(scopes, token, previous, loopHeader, content, pattern.lastIndex);
+      if (/^(?:\n|;|do)$/.test(token)) loopHeader = false;
+      if (statementBoundary.test(previous) && /^(?:while|until|for)$/.test(token)) loopHeader = true;
       if (localName.test(token) && previous !== '.') {
         assignment.lastIndex = pattern.lastIndex;
         if (token.endsWith('=') || assignment.test(content)) localNames.add(token.replace(/=$/, ''));
       }
-      commandArgument = commandName.test(token) && !localNames.has(token) &&
-        /^(?:\n|;|do)$/.test(previous) &&
+      commandArgument = commandName.test(token) && statementBoundary.test(previous) &&
+        !localNames.has(token) && !scopes.some(({ names }) => names.includes(token)) &&
         /[^\S\n]/.test(content[pattern.lastIndex] ?? '');
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       previous = expressionKeywords.test(token) && (previous === '.' || previous === ':')
@@ -60,6 +65,24 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+type Scope = { close: 'end' | '}'; names: string[] };
+
+const statementBoundary = /^(?:\n|;|do)$/;
+const scopeKeyword = /^(?:if|unless|case|begin|while|until|for|def|class|module)$/;
+
+const updateScopes = (scopes: Scope[], token: string, previous: string, loopHeader: boolean, content: string, offset: number): void => {
+  if (token === scopes.at(-1)?.close && previous !== '.') {
+    scopes.pop();
+  } else if (token === '{' || (token === 'do' && !loopHeader && previous !== '.')) {
+    const parameters = /\s*\|\s*((?:[*&]{0,2}[a-z_]\w*\s*(?:[,;]\s*|(?=\|)))+)\|/y;
+    parameters.lastIndex = offset;
+    const names = parameters.exec(content)?.[1].match(/[a-z_]\w*/g) ?? [];
+    scopes.push({ close: token === '{' ? '}' : 'end', names });
+  } else if ((statementBoundary.test(previous) || previous === '=') && scopeKeyword.test(token)) {
+    scopes.push({ close: 'end', names: [] });
+  }
 };
 
 const expressionKeywords = /^(?:if|unless|case|when)$/;

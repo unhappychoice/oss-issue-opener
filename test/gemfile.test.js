@@ -154,6 +154,29 @@ test('ignores heredoc openers in strings and comments', () => {
   });
 });
 
+['tap do |value, ratio|', 'tap { |ratio; value|'].forEach((header) => {
+  test(`preserves a gem declaration after dividing a block parameter (${header})`, () => {
+    const closer = header.includes('{') ? '}' : 'end';
+    const gemfile = `${header}\nif flag\n  nil\nend\nratio /2\ngem 'rack', path: '/rack'\n${closer}`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('recognizes a regexp command after a block parameter goes out of scope', () => {
+  const gemfile = `tap do |log|
+  nil
+end
+group :test do
+  log /prefix
+class FakeScope
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
