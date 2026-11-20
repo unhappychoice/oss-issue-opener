@@ -212,7 +212,7 @@ gem 'rack'`;
   });
 });
 
-['receiver.value!', 'receiver.if', 'receiver.unless', 'receiver.case', '?!'].forEach((operand) => {
+['receiver.value!', 'receiver.if', 'receiver.unless', 'receiver.case', 'receiver.when', '?!'].forEach((operand) => {
   test(`preserves a gem declaration after division with ${operand}`, () => {
     const gemfile = `ratio = ${operand} / 2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -225,6 +225,20 @@ gem 'rack'`;
   ${keyword} /prefix
 class FakeScope
 suffix/${keyword === 'case' ? '\n  when Regexp' : ''}
+    gem 'rspec'
+  end
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['/prefix\nclass FakeScope\nsuffix/', '%r{prefix\nclass FakeScope\nsuffix}'].forEach((literal) => {
+  test(`ignores scope tokens inside a ${literal.startsWith('/') ? 'slash' : 'percent'} regexp after when`, () => {
+    const gemfile = `group :test do
+  case target
+  when ${literal}
     gem 'rspec'
   end
 end

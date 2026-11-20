@@ -51,7 +51,7 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const expressionKeywords = /^(?:if|unless|case)$/;
+const expressionKeywords = /^(?:if|unless|case|when)$/;
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const regexpEnd = (content: string, start: number): number | undefined => {
