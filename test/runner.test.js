@@ -284,8 +284,7 @@ test('shares default branch heads per repository and refreshes them on each scan
   assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
   assert.deepEqual(getOctokit().paginate.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
   const pages = compared.mock.calls.map(({ arguments: [{ head, page }] }) => [head, page]);
-  assert.deepEqual(pages.filter(([, page]) => page === 1), expectedHeads.map((head) => [head, 1]));
-  assert.deepEqual(pages.filter(([, page]) => page === 2), expectedHeads.map((head) => [head, 2]));
+  assert.deepEqual(pages, expectedHeads.map((head) => [head, 1]));
   assert.deepEqual(trees.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha),
     expectedHeads.flatMap((head) => ['merge-base-tree', `${head}-tree`]));
   batches.forEach((issues, scan) => {

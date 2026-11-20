@@ -63,7 +63,7 @@ export const checkPendingRelease = async (
   const head = await getHead();
   if (!head) return { status: 'up-to-date' };
 
-  const { baseSha, headSha, files, commits } = await compareCommits(
+  const { baseSha, headSha, files, getCommits } = await compareCommits(
     owner, repo, `tags/${latestTag}`, head
   );
   if (files.length === 0) return { status: 'up-to-date' };
@@ -78,7 +78,7 @@ export const checkPendingRelease = async (
   const changedDependencyTypes = getDependencyProjectTypes(files);
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
   const { dependencyUpdates, lookupErrors } = await findDependencyUpdates(
-    owner, repo, commits, dependencyTypes, headSha, getPinnedContents
+    owner, repo, getCommits, dependencyTypes, headSha, getPinnedContents
   );
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
@@ -94,12 +94,13 @@ export const checkPendingRelease = async (
 const findDependencyUpdates = async (
   owner: string,
   repo: string,
-  commits: ComparedCommit[],
+  getCommits: () => Promise<ComparedCommit[]>,
   types: ProjectType[],
   headSha: string,
   getContents: GetContents
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
+  const commits = await getCommits();
   const checkers = types.map((type) => ({
     type,
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
