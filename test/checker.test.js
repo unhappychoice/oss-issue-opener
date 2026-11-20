@@ -195,6 +195,8 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
+  ["gem 'rack'", true],
+  ["gem 'rack', group: :test", false],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :development do\n  def test_helper\n    def nested_helper\n      true\n    end\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", true],
@@ -217,7 +219,7 @@ test('detects source changes without dependency updates', async (t) => {
     const message = `Bump ${pkg} from 3.1.0 to 3.1.1`;
     stubRepository(t, message, ['Gemfile.lock']);
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [] : { content: Buffer.from(gemfile).toString('base64') },
+      data: path === '' ? [{ name: 'Gemfile', type: 'file' }] : { content: Buffer.from(gemfile).toString('base64') },
     }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), production ? {

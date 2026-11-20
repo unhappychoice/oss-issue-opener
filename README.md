@@ -12,7 +12,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 
 | Language | Dependency File | Production Detection |
 |----------|----------------|---------------------|
-| Ruby | `*.gemspec`, `Gemfile` | `add_dependency`, `add_runtime_dependency` |
+| Ruby | `*.gemspec`, `Gemfile` | Gemspec `add_dependency` or `add_runtime_dependency`. If the gem is absent from the runtime dependencies in the root gemspecs, the scanner checks `gem` declarations in the root `Gemfile`, excluding declarations scoped exclusively to `:development`, `:test`, or both. For example, ungrouped `gem 'rack'` can qualify a `Gemfile.lock`-only bump for a pending-release notification, while `gem 'rack', group: :test` is excluded. |
 | Node/TypeScript | `package.json` | `dependencies` |
 | Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
 | Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
