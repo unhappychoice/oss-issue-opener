@@ -9,8 +9,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(previous, beforePrevious)) {
-      const end = regexpEnd(content, match.index);
+    if ((token === '/' || token === '%') && expectsLiteral(previous, beforePrevious)) {
+      const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         token = content.slice(match.index, end);
@@ -48,16 +48,14 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const expectsRegexp = (token: string, previous: string): boolean =>
+const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|[?:+]|\(|\[|,|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|and|do|if|elsif|unless)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, inInterpolation = false) => {
-  const opening = inInterpolation
-    ? /\/|%([rqQ])([^\w\s\u0080-\uffff])/y
-    : /\/|%(r)([^\w\s\u0080-\uffff])/y;
+const literalFrame = (content: string, start: number) => {
+  const opening = /\/|%([rqQ])([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -71,11 +69,11 @@ const literalFrame = (content: string, start: number, inInterpolation = false) =
     delimiters: 1,
     braces: 0,
     previous: '{',
-    regexpExpected: true,
+    literalExpected: true,
   };
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
+const literalEnd = (content: string, start: number): number | undefined => {
   const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
@@ -109,22 +107,22 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       if (token === '#{' && frame.interpolates) {
         frame.braces++;
         frame.previous = '{';
-        frame.regexpExpected = true;
+        frame.literalExpected = true;
       }
     } else if (!token.startsWith('#') && !isSpacing(token)) {
-      if ((token === '/' || token === '%') && frame.regexpExpected) {
-        const nested = literalFrame(content, offset, true);
+      if ((token === '/' || token === '%') && frame.literalExpected) {
+        const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);
           frame.previous = token;
-          frame.regexpExpected = false;
+          frame.literalExpected = false;
           offset = nested.start;
           continue;
         }
       }
       if (token === '{') frame.braces++;
       if (token === '}') frame.braces--;
-      frame.regexpExpected = token === '{' || expectsRegexp(token, frame.previous);
+      frame.literalExpected = token === '{' || expectsLiteral(token, frame.previous);
       frame.previous = token;
     }
     offset = part.lastIndex;

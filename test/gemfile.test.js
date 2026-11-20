@@ -234,3 +234,20 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+[
+  ['non-interpolating', '%q!escaped\\! #{\nclass Fake\ngem "ignored"\n!'],
+  ['interpolating', '%Q{#{%q!}! + ""}\nclass Fake\ngem "ignored"\n{nested}}'],
+].forEach(([name, expression]) => {
+  test(`preserves group boundaries across a multiline percent string (${name})`, () => {
+    const gemfile = `group :test do
+  message = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
