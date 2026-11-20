@@ -9,7 +9,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (expressionExpected && (token === '?' || token === '/' || token === '%')) {
+    if ((expressionExpected && (token === '?' || token === '/' || token === '%')) ||
+      (token === '/' && followsPuts(content, match.index, previous))) {
       const end = token === '?' ? characterEnd(content, match.index) : delimitedLiteralEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -52,6 +53,9 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const followsPuts = (content: string, slash: number, previous: string): boolean =>
+  previous === 'puts' && /[ \t]\/[^\s=]/.test(content.slice(slash - 1, slash + 2));
 
 const characterEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\(?:u\{[\da-fA-F]+\}|u[\da-fA-F]{4}|x[\da-fA-F]{1,2}|[0-7]{1,3}|(?:[CM]-\\|c\\)*(?:[CM]-|c)?[^\r\n])|[^\s\\])/uy;
