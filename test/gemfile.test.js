@@ -183,6 +183,25 @@ gem 'rack'`;
   });
 });
 
+[
+  ['slash', '?/'],
+  ['escaped slash', String.raw`?\/`],
+  ['opening brace', '?{'],
+  ['slash in a ternary branch', 'condition ? ?/ : nil'],
+].forEach(([name, expression]) => {
+  test(`preserves group boundaries after a Ruby character literal (${name})`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    character = ${expression}
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['receiver.if', 'receiver&.unless', 'receiver::elsif'].forEach((call) => {
   test(`preserves a gem declaration after dividing the result of ${call}`, () => {
     const gemfile = `${call} / 2

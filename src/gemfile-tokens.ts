@@ -3,19 +3,19 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
-  let regexpExpected = true;
+  let expressionExpected = true;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
-    if ((token === '/' || token === '%') && regexpExpected) {
-      const end = regexpEnd(content, match.index);
+    if (expressionExpected && (token === '?' || token === '/' || token === '%')) {
+      const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
         previous = token;
-        regexpExpected = false;
+        expressionExpected = false;
         classHeader = false;
         continue;
       }
@@ -24,13 +24,13 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex = match.index + 2;
       tokens.push('<<');
       previous = '<<';
-      regexpExpected = false;
+      expressionExpected = false;
       classHeader = false;
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
-      regexpExpected = /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|,|\?|:)$/.test(token)
+      expressionExpected = /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|,|\?|:)$/.test(token)
         || (/^(?:if|elsif|unless)$/.test(token) && previous !== '.' && previous !== '::');
       previous = token;
     }
@@ -52,6 +52,12 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const characterEnd = (content: string, start: number): number | undefined => {
+  const character = /\?(?:\\(?:u\{[\da-fA-F]+\}|u[\da-fA-F]{4}|x[\da-fA-F]{1,2}|[0-7]{1,3}|(?:[CM]-\\|c\\)*(?:[CM]-|c)?[^\r\n])|[^\s\\])/uy;
+  character.lastIndex = start;
+  return character.test(content) ? character.lastIndex : undefined;
+};
 
 const regexpEnd = (content: string, start: number): number | undefined => {
   const opening = /\/|%r([^\w\s])/y;
