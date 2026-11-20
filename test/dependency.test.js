@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
@@ -75,6 +76,40 @@ test('Ruby loads the fallback only when needed and caches missing files and list
   assert.equal(await missing('first'), false);
   assert.equal(await missing('second'), false);
   assert.deepEqual(missingCalls.map(({ path }) => path), ['', 'Gemfile']);
+});
+
+test('overlapping Ruby release scans share a gemspec download limit', async (t) => {
+  const paths = Array.from({ length: 12 }, (_, index) => `gem-${index}.gemspec`);
+  const last = paths.at(-1);
+  const dependency = { pkg: 'rack', from: '3.0.0', to: '3.1.0' };
+  const repos = ['first', 'second'];
+  stubRepository({});
+  mockCommitFiles(t.mock, [last]);
+  t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: last }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+  } }));
+
+  let inFlight = 0;
+  let peak = 0;
+  const downloads = [];
+  t.mock.method(getOctokit().repos, 'getContent', async ({ repo, path }) => {
+    if (path === '') return { data: [...paths, last].map((name) => ({ name })) };
+    if (!path.endsWith('.gemspec')) throw new Error('Not found');
+    downloads.push(`${repo}/${path}`);
+    peak = Math.max(peak, ++inFlight);
+    await setImmediate();
+    inFlight--;
+    return { data: {
+      content: Buffer.from(path === last ? 'spec.add_runtime_dependency "rack"' : '').toString('base64'),
+    } };
+  });
+
+  const results = await Promise.all(repos.map((repo) => checkPendingRelease('owner', repo, 'ruby')));
+
+  assert.equal(peak, 8);
+  assert.deepEqual(downloads.sort(), repos.flatMap((repo) => paths.map((path) => `${repo}/${path}`)).sort());
+  assert.deepEqual(results.map(({ dependencyUpdates }) => dependencyUpdates), [[dependency], [dependency]]);
 });
 
 [['a.gemspec', 'b.gemspec', 'Gemfile'], ['Gemfile', 'b.gemspec', 'a.gemspec']].forEach((names) => {

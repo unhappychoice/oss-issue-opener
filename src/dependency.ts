@@ -21,7 +21,10 @@ export const createDependencyChecker = (
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file = (path: string): Promise<string> => {
-    if (!files.has(path)) files.set(path, getFileContent(owner, repo, path, ref));
+    if (!files.has(path)) {
+      const download = () => getFileContent(owner, repo, path, ref);
+      files.set(path, path.endsWith('.gemspec') ? queueGemspecDownload(download) : download());
+    }
     return files.get(path)!;
   };
   const types = Array.isArray(type) ? type : [type];
@@ -42,6 +45,25 @@ export const isProductionDependency = (
   type: ProjectType | ProjectType[],
   getContents?: () => Promise<string[]>
 ): Promise<boolean> => createDependencyChecker(owner, repo, type, getContents)(pkg);
+
+const GEMSPEC_CONCURRENCY = 8;
+const waitingGemspecDownloads: (() => void)[] = [];
+let activeGemspecDownloads = 0;
+
+const queueGemspecDownload = async (download: () => Promise<string>): Promise<string> => {
+  if (activeGemspecDownloads < GEMSPEC_CONCURRENCY) {
+    activeGemspecDownloads++;
+  } else {
+    await new Promise<void>((resolve) => waitingGemspecDownloads.push(resolve));
+  }
+  try {
+    return await download();
+  } finally {
+    const next = waitingGemspecDownloads.shift();
+    if (next) next(); // Hand the slot directly to the next queued download.
+    else activeGemspecDownloads--;
+  }
+};
 
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
