@@ -18,7 +18,7 @@ export const gradleDependencies = (content: string): string[] => {
 
 export const gradleCatalogAliases = (content: string): string[] =>
   gradleDeclarations(stripGradleComments(content)).flatMap((declaration) => {
-    const match = declaration.match(/^(?:implementation|api)(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?libs\.([\w]+(?:\.[\w]+)*)(?=[ \t]*(?:\)|[;{\r\n]|$))/);
+    const match = declaration.match(/^(?:implementation|api)(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?libs\.([\w]+(?:\.[\w]+)*)(?:\.get\(\s*\))?(?=[ \t]*(?:\)|[;{}\r\n]|$))/);
     return match ? [match[1]] : [];
   });
 

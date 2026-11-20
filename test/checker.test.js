@@ -257,6 +257,8 @@ test('detects source changes without dependency updates', async (t) => {
 
 [
   ['build.gradle.kts', 'implementation(libs.guava)', true],
+  ['build.gradle.kts', 'implementation(libs.guava.get())', true],
+  ['build.gradle', 'implementation libs.guava', true],
   ['build.gradle', 'testImplementation(libs.guava)', false],
 ].forEach(([manifest, declaration, production]) => {
   test(`checks catalog-only Guava updates with ${declaration}`, async (t) => {
