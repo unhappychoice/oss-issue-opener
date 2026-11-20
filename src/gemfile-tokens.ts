@@ -9,8 +9,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (expressionExpected && (token === '?' || token === '/' || token === '%')) {
-      const end = token === '?' ? characterEnd(content, match.index) : delimitedLiteralEnd(content, match.index);
+    if (token === '?' || token === '/' || token === '%') {
+      const end = literalTokenEnd(content, match.index, token, previous, expressionExpected);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
@@ -52,6 +52,27 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalTokenEnd = (content: string, start: number, token: string, previous: string,
+  expressionExpected: boolean): number | undefined => {
+  if (expressionExpected) return token === '?' ? characterEnd(content, start) : delimitedLiteralEnd(content, start);
+  return token === '/' ? commandRegexpEnd(content, start, previous) : undefined;
+};
+
+const commandRegexpEnd = (content: string, start: number, previous: string): number | undefined => {
+  if (!/^[a-z_]\w*[!?]?$/.test(previous) || !/[ \t]\/\S/.test(content.slice(start - 1, start + 2))) {
+    return undefined;
+  }
+
+  // A bare argument can look like division. Require a multiline body and a statement boundary.
+  const end = delimitedLiteralEnd(content, start);
+  const newline = content.indexOf('\n', start);
+  if (end === undefined || newline === -1 || newline >= end) return undefined;
+
+  const boundary = /[ \t\r]*(?:[\n;,#]|$)/y;
+  boundary.lastIndex = end;
+  return boundary.test(content) ? end : undefined;
+};
 
 const characterEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\(?:u\{[\da-fA-F]+\}|u[\da-fA-F]{4}|x[\da-fA-F]{1,2}|[0-7]{1,3}|(?:[CM]-\\|c\\)*(?:[CM]-|c)?[^\r\n])|[^\s\\])/uy;

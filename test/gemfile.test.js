@@ -246,6 +246,18 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores scope keywords inside a bare multiline regexp argument', () => {
+  const gemfile = `group :test do
+  puts /prefix
+class FakeScope
+module FakeNamespace/ix
+  gem 'rspec'
+end
+gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['puts / 2', 'puts /2'].forEach((division) => {
   test(`preserves a gem declaration after ${division} divides a local variable`, () => {
     const gemfile = `puts = 4
