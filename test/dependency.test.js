@@ -33,6 +33,43 @@ const bumps = Array.from({ length: 100 }, (_, index) => ({
 }));
 const messages = bumps.map(({ pkg, from, to }) => `Bump ${pkg} from ${from} to ${to}`);
 
+test('Gradle resolves production catalog accessors and reads the catalog once', async () => {
+  const calls = stubRepository({
+    'build.gradle': `dependencies {
+      api libs.example.core
+      implementation(platform(libs.example.bom))
+      testImplementation(libs.example.test)
+      api(libs.invalid)
+      implementation(libs.missing)
+    }`,
+    'gradle/libs.versions.toml': `[versions]
+      example = "1.0"
+      [libraries]
+      example-core = { module = "org.example:core", version.ref = "example" }
+      example_bom = { group = "org.example", name = "bom", version.ref = "example" }
+      example-test = "org.example:test:1.0"
+      invalid = { group = "org.example" }
+      [plugins]
+      missing = { id = "org.example.missing", version = "1.0" }
+    `,
+  });
+  const check = createDependencyChecker('owner', 'repo', 'kotlin');
+  assert.deepEqual(await Promise.all(['core', 'bom', 'test', 'invalid', 'missing'].map(
+    (name) => check(`org.example:${name}`)
+  )), [true, true, false, false, false]);
+  assert.deepEqual(calls.map(({ path }) => path), ['build.gradle', 'gradle/libs.versions.toml']);
+});
+
+test('Gradle keeps direct dependencies when the catalog is malformed', async () => {
+  stubRepository({
+    'build.gradle': 'implementation("org.example:direct:1.0"); api(libs.invalid)',
+    'gradle/libs.versions.toml': '[libraries',
+  });
+  const check = createDependencyChecker('owner', 'repo', 'kotlin');
+  assert.equal(await check('org.example:direct'), true);
+  assert.equal(await check('org.example:invalid'), false);
+});
+
 test('release checks reuse parsed Node dependencies and preserve every production update', async () => {
   const calls = stubRepository({ 'package.json': JSON.stringify({
     dependencies: { first: '*', second: '*' }, devDependencies: { dev: '*' },

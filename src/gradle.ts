@@ -16,6 +16,12 @@ export const gradleDependencies = (content: string): string[] => {
   ];
 };
 
+export const gradleCatalogAliases = (content: string): string[] =>
+  gradleDeclarations(stripGradleComments(content)).flatMap((declaration) => {
+    const match = declaration.match(/^(?:implementation|api)(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?libs\.([\w]+(?:\.[\w]+)*)(?=[ \t]*(?:\)|[;{\r\n]|$))/);
+    return match ? [match[1]] : [];
+  });
+
 export const stripGradleComments = (content: string): string => {
   const code = /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[\s\S]/gy;
   let result = '';
