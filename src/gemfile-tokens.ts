@@ -2,8 +2,8 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const assignment = /[^\S\n]*=(?!=|>)/y;
-  const localCommands = new Set<string>();
+  const assignment = /[^\S\n]*=(?!=|>|~)/y;
+  const localNames = new Set<string>();
   let previous = '\n';
   let classHeader = false;
   let commandArgument = false;
@@ -33,11 +33,11 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
-      if (/^(?:puts|warn)=?$/.test(token) && previous !== '.') {
+      if (localName.test(token) && previous !== '.') {
         assignment.lastIndex = pattern.lastIndex;
-        if (token.endsWith('=') || assignment.test(content)) localCommands.add(token.replace(/=$/, ''));
+        if (token.endsWith('=') || assignment.test(content)) localNames.add(token.replace(/=$/, ''));
       }
-      commandArgument = /^(?:puts|warn)$/.test(token) && !localCommands.has(token) &&
+      commandArgument = commandName.test(token) && !localNames.has(token) &&
         /^(?:\n|;|do)$/.test(previous) &&
         /[^\S\n]/.test(content[pattern.lastIndex] ?? '');
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
@@ -63,6 +63,8 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const expressionKeywords = /^(?:if|unless|case|when)$/;
+const localName = /^[a-z_]\w*=?$/;
+const commandName = /^(?!(?:true|false|nil|self|end)\b)[a-z_]\w*[!?]?$/;
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const regexpEnd = (content: string, start: number): number | undefined => {

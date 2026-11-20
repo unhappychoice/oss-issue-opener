@@ -160,7 +160,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['puts', 'warn'].forEach((command) => {
+['puts', 'warn', 'log'].forEach((command) => {
   test(`ignores class and module lines inside a regexp passed to ${command}`, () => {
     const gemfile = `group :test do
     ${command} /prefix
