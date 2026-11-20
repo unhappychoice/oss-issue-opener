@@ -161,6 +161,36 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['slash-delimited', `/pattern
+class
+module
+/x`],
+  ['percent-delimited', `%r{pattern
+class
+module
+}x`],
+].forEach(([name, regexp]) => {
+  test(`preserves group boundaries when puts takes a multiline regexp (${name})`, () => {
+    const gemfile = `group :test do
+  puts ${regexp}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves a gem declaration after dividing a local variable named puts', () => {
+  const gemfile = `puts = 4
+puts /2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [':test', ':development', ':development, :test'].forEach((group) => {
   ['class TestHelper\nend',
     'module TestHelpers\n  class TestHelper\n  end\nend',

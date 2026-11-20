@@ -1,15 +1,25 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
+  const blockParameters = /\|([^|\n]*)\|/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
   let beforePrevious = '';
   let classHeader = false;
+  let localPuts = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsLiteral(previous, beforePrevious)) {
+    if (token === '|' && (previous === 'do' || previous === '{')) {
+      blockParameters.lastIndex = match.index;
+      const parameters = blockParameters.exec(content);
+      localPuts ||= /\bputs\b/.test(parameters?.[1] ?? '');
+    }
+    localPuts ||= token === '=' && previous === 'puts' && beforePrevious !== '.' &&
+      content[pattern.lastIndex] !== '=';
+    if ((token === '/' || token === '%') && (expectsLiteral(previous, beforePrevious) ||
+      (!localPuts && previous === 'puts' && startsCommandRegexp(content, match.index)))) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -47,6 +57,10 @@ export const gemfileTokens = (content: string): string[] => {
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const startsCommandRegexp = (content: string, start: number): boolean =>
+  /[\t ]/.test(content[start - 1] ?? '') &&
+  (content[start] === '/' ? /^[^\s=]/.test(content[start + 1] ?? '') : content[start + 1] === 'r');
 
 const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|[?:+]|\(|\[|,|&&|\|\|)$/.test(token) ||
