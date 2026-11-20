@@ -195,6 +195,25 @@ const dialects = [
 ];
 
 dialects.forEach(({ file, declaration }) => {
+  test(`${file}: constraint-only bumps do not qualify for a release`, async (t) => {
+    const content = `dependencies { constraints {
+      ${declaration('implementation', 'org.example:constrained:1.1')}
+      ${declaration('api', 'org.example:public:1.1')}
+    }; ${declaration('implementation', 'org.example:runtime:1.0')} }`;
+    const message = 'Bump org.example:constrained from 1.0 to 1.1';
+    stubRepository({ [file]: content });
+    mockCommitFiles(t.mock, [file]);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: file }], commits: [{ sha: 'bump', commit: { message } }],
+    } }));
+    const check = createDependencyChecker('owner', 'repo', 'kotlin');
+
+    assert.equal(await check('org.example:constrained'), false);
+    assert.equal(await check('org.example:public'), false);
+    assert.equal(await check('org.example:runtime'), true);
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
+  });
+
   ['implementation', 'api'].forEach((configuration) => {
     test(`${file}: ignores block-commented ${configuration} dependencies and test-only releases`, async (t) => {
       const content = `dependencies {
