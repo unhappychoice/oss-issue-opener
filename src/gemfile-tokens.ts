@@ -2,8 +2,11 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const putsAssignment = /[^\S\n]*=(?!=|>)/y;
   let previous = '\n';
   let classHeader = false;
+  let localPuts = false;
+  let putsArgument = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
@@ -13,7 +16,8 @@ export const gemfileTokens = (content: string): string[] => {
       token = '?!';
       pattern.lastIndex++;
     }
-    if ((token === '/' || token === '%') && expectsExpression) {
+    if (((token === '/' || token === '%') && expectsExpression) ||
+      (token === '/' && putsArgument && /\S/.test(content[pattern.lastIndex] ?? ''))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         token = content.slice(match.index, end);
@@ -29,6 +33,12 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
+      if (token === 'puts' || token === 'puts=') {
+        putsAssignment.lastIndex = pattern.lastIndex;
+        localPuts ||= previous !== '.' && (token === 'puts=' || putsAssignment.test(content));
+      }
+      putsArgument = !localPuts && token === 'puts' && /^(?:\n|;|do)$/.test(previous) &&
+        /[^\S\n]/.test(content[pattern.lastIndex] ?? '');
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       previous = expressionKeywords.test(token) && (previous === '.' || previous === ':')
         ? `${previous}${token}`

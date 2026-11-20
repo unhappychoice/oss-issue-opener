@@ -160,6 +160,24 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores class and module lines inside a regexp passed to puts', () => {
+  const gemfile = `group :test do
+    puts /prefix
+class FakeScope
+module FakeModule
+suffix/
+    gem 'rspec'
+  end
+  gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('keeps division after a local named puts', () => {
+  const gemfile = "puts = 4\nputs /2\ngem 'rack', path: '/rack'";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('ignores class and end lines inside a multiline regexp in an excluded group', () => {
   const gemfile = String.raw`group :test do
     pattern = /prefix\/
