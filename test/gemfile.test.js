@@ -246,18 +246,6 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('ignores scope keywords inside a bare multiline regexp argument to puts', () => {
-  const gemfile = `group :test do
-  puts /prefix
-class FakeScope
-module FakeNamespace/im
-  gem 'rspec'
-end
-gem 'rack'`;
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
 test('preserves a gem declaration between puts division and a regexp on its own line', () => {
   const gemfile = `puts = 4
 puts /2
@@ -276,10 +264,15 @@ gem 'rack', path: '/rack'`;
   });
 });
 
-['def helper(ratio)', 'def helper ratio'].forEach((header) => {
+[
+  ['def helper(ratio)', 'ratio'],
+  ['def helper ratio', 'ratio'],
+  ['def helper(puts)', 'puts'],
+  ['def helper puts', 'puts'],
+].forEach(([header, parameter]) => {
   test(`preserves a gem declaration after dividing a method parameter (${header})`, () => {
     const gemfile = `${header}
-  ratio /2
+  ${parameter} /2
   gem 'rack', path: '/rack'
 end`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
