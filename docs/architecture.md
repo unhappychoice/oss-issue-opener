@@ -59,11 +59,16 @@ notifications already collected, then throws an `AggregateError` if operations
 failed. Batch creation similarly attempts remaining issues after a creation
 failure and reports the failures together.
 
-Errors reading commit statuses, check runs, releases, tags, or comparisons
-propagate to the runner as investigation failures. This includes incomplete
-recursive trees during a comparison. A successful CI read with no results after
-filtering yields `no-ci`. Successful release and tag reads without a baseline
-yield `no-tag`.
+The CI checker returns errors from the commit status and check run lookups
+alongside the classification. If either lookup fails, the checker reports
+`failure` when the available results include a failed check and `incomplete`
+otherwise. The runner records the lookup errors and queues any CI notification.
+When both reads succeed and no results remain after filtering, the checker
+reports `no-ci`.
+
+Errors reading releases, tags, or comparisons propagate to the runner as
+investigation failures. This includes incomplete recursive trees during a
+comparison. Successful release and tag reads without a baseline yield `no-tag`.
 
 The root listing and file content helpers still fall back to an empty list or
 empty string on read errors, which can affect ecosystem detection and dependency
