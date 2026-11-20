@@ -48,6 +48,9 @@ test('detects the original final production bump and links to the scanned commit
   const originalHead = commitSha('heads/main');
   const baseSha = commitSha('tags/v1');
   const refs = new Map([['tags/v1', baseSha], ['heads/main', originalHead]]);
+  t.mock.method(repos, 'getBranch', async ({ branch }) => ({
+    data: { commit: { sha: refs.get(`heads/${branch}`), commit: { tree: { sha: 'head-tree' } } } },
+  }));
   const resolve = t.mock.method(repos, 'getCommit', async ({ ref }) => ({
     data: ref === 'bump'
       ? { files: [{ filename: 'package-lock.json' }] }
@@ -76,7 +79,7 @@ test('detects the original final production bump and links to the scanned commit
   const issue = buildPendingReleaseIssue('owner/repo', result.changedSources, result.dependencyUpdates, result.compareUrl);
   assert.equal(issue.body.split('\n').find((line) => line.startsWith('**Diff**:')),
     `**Diff**: https://github.com/owner/repo/compare/${baseSha}...${originalHead}`);
-  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main', 'bump']);
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
   assert.deepEqual(manifest.mock.calls.map(({ arguments: [params] }) => params),
@@ -111,7 +114,8 @@ test('finishes on an empty page after an exactly full page', async (t) => {
     data: { commits: page === 1 ? commits(100) : [] },
   }));
 
-  const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', 'main');
+  const head = { sha: commitSha('main'), treeSha: 'head-tree' };
+  const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', head);
   assert.equal(compare.mock.callCount(), 1);
   assert.deepEqual(comparison, {
     baseSha: commitSha('v1'),

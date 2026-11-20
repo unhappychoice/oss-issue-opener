@@ -4,7 +4,7 @@ import type { ProjectType } from './types.js';
 import { gemfileStatements, isProductionGemIn } from './gemfile.js';
 import { rubyRuntimeDependencies } from './ruby.js';
 import { swiftDependencies } from './swift.js';
-import { gradleDependencies } from './gradle.js';
+import { gradleCatalogAliases, gradleDependencies } from './gradle.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
 type DependencyLoader = (
@@ -21,7 +21,10 @@ export const createDependencyChecker = (
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file = (path: string): Promise<string> => {
-    if (!files.has(path)) files.set(path, getFileContent(owner, repo, path, ref));
+    if (!files.has(path)) {
+      const download = () => getFileContent(owner, repo, path, ref);
+      files.set(path, path.endsWith('.gemspec') ? queueGemspecDownload(download) : download());
+    }
     return files.get(path)!;
   };
   const types = Array.isArray(type) ? type : [type];
@@ -42,6 +45,25 @@ export const isProductionDependency = (
   type: ProjectType | ProjectType[],
   getContents?: () => Promise<string[]>
 ): Promise<boolean> => createDependencyChecker(owner, repo, type, getContents)(pkg);
+
+const GEMSPEC_CONCURRENCY = 8;
+const waitingGemspecDownloads: (() => void)[] = [];
+let activeGemspecDownloads = 0;
+
+const queueGemspecDownload = async (download: () => Promise<string>): Promise<string> => {
+  if (activeGemspecDownloads < GEMSPEC_CONCURRENCY) {
+    activeGemspecDownloads++;
+  } else {
+    await new Promise<void>((resolve) => waitingGemspecDownloads.push(resolve));
+  }
+  try {
+    return await download();
+  } finally {
+    const next = waitingGemspecDownloads.shift();
+    if (next) next(); // Hand the slot directly to the next queued download.
+    else activeGemspecDownloads--;
+  }
+};
 
 const loadRuby: DependencyLoader = async (file, contents) => {
   const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
@@ -95,9 +117,28 @@ const loadKotlin: DependencyLoader = async (file, contents) => {
   const groovy = kotlinOnly ? '' : await file('build.gradle');
   const content = groovy || await file('build.gradle.kts');
   const coordinates = gradleDependencies(content);
+  const aliases = gradleCatalogAliases(content);
+  if (aliases.length > 0) {
+    const catalog = await file('gradle/libs.versions.toml');
+    coordinates.push(...gradleCatalogCoordinates(catalog, new Set(aliases)));
+  }
   return async (pkg) => coordinates.some((coordinate) =>
     coordinate === pkg || coordinate.startsWith(`${pkg}:`)
   );
+};
+
+const gradleCatalogCoordinates = (content: string, aliases: Set<string>): string[] => {
+  try {
+    return Object.entries(asTable(parse(content).libraries)).flatMap(([alias, value]) => {
+      if (!aliases.has(alias.replace(/[-_]/g, '.'))) return [];
+      if (typeof value === 'string') return [value];
+      const { module, group, name } = asTable(value);
+      if (typeof module === 'string') return [module];
+      return typeof group === 'string' && typeof name === 'string' ? [`${group}:${name}`] : [];
+    });
+  } catch {
+    return [];
+  }
 };
 
 const loadGo: DependencyLoader = async (file) => {

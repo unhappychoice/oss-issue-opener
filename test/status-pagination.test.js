@@ -9,7 +9,8 @@ const sha = 'a'.repeat(40);
   test(`reads all commit status pages when the last status is ${state}`, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
-    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha } } }));
+    t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
+    t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
     t.mock.method(octokit, 'paginate', async () => []);
     const requests = [];
     const status = (index, result) => ({
@@ -36,7 +37,7 @@ const sha = 'a'.repeat(40);
       };
     });
 
-    assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+    assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: state,
       failedChecks: state === 'failure'
         ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101' }]
