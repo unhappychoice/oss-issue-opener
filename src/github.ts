@@ -142,11 +142,13 @@ export const getCommitFiles = async (owner: string, repo: string, ref: string): 
   const perPage = 100;
   const fileLimit = 3000;
   const paths: string[] = [];
+  let fileCount = 0;
   for (let page = 1; ; page++) {
     const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
     if (!data.files) return [];
-    paths.push(...data.files.map(({ filename }) => filename));
-    if (paths.length >= fileLimit) return [];
+    fileCount += data.files.length;
+    if (fileCount >= fileLimit) return [];
+    paths.push(...changedPaths(data.files));
     if (!headers?.link?.includes('rel="next"')) return paths;
   }
 };
@@ -170,9 +172,7 @@ export const compareCommits = async (
     if (page === 1) {
       result.files = (data.files?.length ?? 0) >= 300
         ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
-        : [...new Set(data.files?.flatMap((f) =>
-          f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
-        ) ?? [])];
+        : [...new Set(changedPaths(data.files ?? []))];
     }
     result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
     if (data.commits.length < 100) return result;
@@ -209,3 +209,8 @@ export const createIssue = async (
   }
   return data.number;
 };
+
+const changedPaths = (files: { filename: string; status: string; previous_filename?: string }[]): string[] =>
+  files.flatMap(({ filename, status, previous_filename }) =>
+    status === 'renamed' && previous_filename ? [filename, previous_filename] : [filename]
+  );

@@ -362,6 +362,36 @@ test('detects source changes without dependency updates', async (t) => {
   });
 });
 
+[
+  ['skips', 'commit', 'up-to-date'],
+  ['reports', 'rust-change', 'pending'],
+].forEach(([action, renameCommit, status]) => {
+  test(`${action} a Node production bump when the Rust lockfile rename is in ${renameCommit}`, async (t) => {
+    const message = 'Bump @octokit/rest from 21 to 22';
+    stubRepository(t, message);
+    const { repos } = getOctokit();
+    const nodeFile = { filename: 'package-lock.json', status: 'modified' };
+    const rustRename = { filename: 'docs/old-cargo.lock', status: 'renamed', previous_filename: 'Cargo.lock' };
+    repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+      files: [nodeFile, rustRename],
+      commits: [
+        { sha: 'rust-change', commit: { message: 'chore: move Rust lockfile' } },
+        { sha: 'commit', commit: { message } },
+      ],
+    } }));
+    const resolveCommit = repos.getCommit.bind(repos);
+    t.mock.method(repos, 'getCommit', async (params) => params.page === undefined
+      ? resolveCommit(params)
+      : { data: { files: params.ref === renameCommit ? [nodeFile, rustRename] : [nodeFile] } });
+
+    const result = await checkPendingRelease('owner', 'repo', ['node', 'rust']);
+    assert.equal(result.status, status);
+    if (status === 'pending') {
+      assert.deepEqual(result.dependencyUpdates, [{ pkg: '@octokit/rest', from: '21', to: '22' }]);
+    }
+  });
+});
+
 test('shares the bump lookup limit across scans and keeps comparison order', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const repos = getOctokit().repos;
