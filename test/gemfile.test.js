@@ -246,6 +246,27 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores scope keywords inside a bare multiline regexp argument to puts', () => {
+  const gemfile = `group :test do
+  puts /prefix
+class FakeScope
+module FakeNamespace/im
+  gem 'rspec'
+end
+gem 'rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves a gem declaration between puts division and a regexp on its own line', () => {
+  const gemfile = `puts = 4
+puts /2
+gem 'rack'
+/prefix
+suffix/`;
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['puts / 2', 'puts /2'].forEach((division) => {
   test(`preserves a gem declaration after ${division} divides a local variable`, () => {
     const gemfile = `puts = 4

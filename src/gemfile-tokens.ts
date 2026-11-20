@@ -5,6 +5,9 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let expressionExpected = true;
   let classHeader = false;
+  let putsAssigned = false;
+  const putsAssignment = /[ \t]*(?:\*\*|<<|>>|&&|\|\||[+\-*/%&|^])?=(?!=|>|~)/y;
+  const putsRegexpArgument = /[ \t]+\/(?=\S)/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -32,6 +35,12 @@ export const gemfileTokens = (content: string): string[] => {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       expressionExpected = /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|,|\?|:)$/.test(token)
         || (/^(?:if|elsif|unless)$/.test(token) && previous !== '.' && previous !== '::');
+      if (/^puts=?$/.test(token) && /^(?:\n|;|do)$/.test(previous)) {
+        putsAssignment.lastIndex = match.index + 'puts'.length;
+        putsAssigned ||= putsAssignment.test(content);
+        putsRegexpArgument.lastIndex = pattern.lastIndex;
+        expressionExpected = !putsAssigned && putsRegexpArgument.test(content);
+      }
       previous = token;
     }
     if (token.startsWith('<<')) {
