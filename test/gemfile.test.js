@@ -159,6 +159,8 @@ class FakeScope/ : nil`],
 module FakeScope/`],
   ['unary negation', `!/prefix
 class FakeScope/`],
+  ['logical AND', `enabled && /prefix
+class FakeScope/`],
   ['quoted interpolation', `/#{"a/b"}
 end
 suffix/`],
