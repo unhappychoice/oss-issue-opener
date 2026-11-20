@@ -234,6 +234,34 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores class text in a multiline regexp used as an if condition', () => {
+  const gemfile = `group :test do
+  if /prefix
+class FakeClass
+/ =~ ENV['FEATURE']
+    gem 'conditional'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'conditional'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('recognizes division after a method named if', () => {
+  const gemfile = `group :test do
+  result = settings.if / 2
+  gem 'rspec'
+end
+gem 'rack'
+pattern = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   ['a negated slash regexp', String.raw`!/prefix\/
 class FakeClass
