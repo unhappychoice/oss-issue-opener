@@ -45,8 +45,14 @@ Set `GH_TOKEN` in your shell environment, then run:
 npm run start
 ```
 
-The log lists each account and repository, its detected project types, CI status,
-and release status. A repository can produce either or both notification types:
+The log lists each account and repository, with CI and release status for each
+repository. The release check detects project types from root manifests at the
+comparison head commit SHA and logs them as `Types:` only when it finds a
+release or tag, resolves the default branch, and the comparison contains changed
+files. For example, a successful scan of a repository without a release or tag
+logs `Release: no tags found` and omits the `Types:` line.
+
+A repository can produce either or both notification types:
 
 - `[CI Failure] owner/repo`: a failing or errored commit status or check run
   remains after excluding Codecov results.

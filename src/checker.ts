@@ -1,4 +1,4 @@
-import { getCommitStatus, getCheckRuns, getBranchHead, getDefaultBranch, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
 import type { ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
@@ -12,14 +12,16 @@ let activeLookups = 0;
 export const checkCIStatus = async (
   owner: string,
   repo: string,
-  getBranch = () => getDefaultBranch(owner, repo)
+  getHead = () => getDefaultBranchHead(owner, repo)
 ): Promise<CIStatus> => {
-  const defaultBranch = await getBranch();
-  if (!defaultBranch) return { status: 'no-branch', failedChecks: [] };
+  const head = await getHead().catch((error: unknown) => {
+    if (error instanceof Error && 'status' in error && error.status === 404) return null;
+    throw error;
+  });
+  if (head === undefined) return { status: 'no-branch', failedChecks: [] };
+  if (head === null) return { status: 'no-ci', failedChecks: [] };
 
-  const sha = await getBranchHead(owner, repo, defaultBranch);
-  if (!sha) return { status: 'no-ci', failedChecks: [] };
-
+  const { sha } = head;
   const results = await Promise.allSettled([
     getCommitStatus(owner, repo, sha),
     getCheckRuns(owner, repo, sha),
@@ -52,17 +54,17 @@ export const checkPendingRelease = async (
   owner: string,
   repo: string,
   projectTypes: ProjectType | ProjectType[] | ((getContents: GetContents) => Promise<ProjectType[]>),
-  getBranch = () => getDefaultBranch(owner, repo),
+  getHead = () => getDefaultBranchHead(owner, repo),
   getContents?: GetContents
 ): Promise<ReleaseStatus> => {
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const defaultBranch = await getBranch();
-  if (!defaultBranch) return { status: 'up-to-date' };
+  const head = await getHead();
+  if (!head) return { status: 'up-to-date' };
 
   const { baseSha, headSha, files, commits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
+    owner, repo, `tags/${latestTag}`, head
   );
   if (files.length === 0) return { status: 'up-to-date' };
 
@@ -97,29 +99,30 @@ const findDependencyUpdates = async (
   headSha: string,
   getContents: GetContents
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
-  const dependencyUpdates: DependencyUpdate[] = [];
-  const lookupErrors: unknown[] = [];
-  if (types.length === 0) return { dependencyUpdates, lookupErrors };
-  const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents, headSha)]));
+  if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
+  const checkers = types.map((type) => ({
+    type,
+    check: createDependencyChecker(owner, repo, type, getContents, headSha),
+  }));
   const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);
     return bump ? [{ sha, bump }] : [];
   });
-  const lookups = await Promise.allSettled(bumps.map(async ({ sha, bump }) => ({
-    bump,
-    affected: getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha)),
-  })));
-
-  for (const lookup of lookups) {
-    if (lookup.status === 'rejected') {
-      lookupErrors.push(lookup.reason);
-      continue;
-    }
-    const { bump, affected } = lookup.value;
-    if (affected.length !== 1) continue;
-    if (await checkers.get(affected[0])?.(bump.pkg)) dependencyUpdates.push(bump);
-  }
-  return { dependencyUpdates, lookupErrors };
+  const candidates = await Promise.all(bumps.map(async ({ sha, bump }) => {
+    const productionTypes = (await Promise.all(checkers.map(async ({ type, check }) =>
+      await check(bump.pkg) ? [type] : []
+    ))).flat();
+    return { sha, bump, productionTypes };
+  }));
+  const lookups = await Promise.allSettled(candidates.filter(({ productionTypes }) => productionTypes.length > 0)
+    .map(async ({ sha, bump, productionTypes }) => {
+      const affected = getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha));
+      return affected.length === 1 && productionTypes.includes(affected[0]) ? [bump] : [];
+    }));
+  return {
+    dependencyUpdates: lookups.flatMap((lookup) => lookup.status === 'fulfilled' ? lookup.value : []),
+    lookupErrors: lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
+  };
 };
 
 const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {
