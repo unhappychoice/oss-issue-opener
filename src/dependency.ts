@@ -66,11 +66,14 @@ const queueGemspecDownload = async (download: () => Promise<string>): Promise<st
 };
 
 const loadRuby: DependencyLoader = async (file, contents) => {
-  const gemspecNames = (await contents()).filter((name) => name.endsWith('.gemspec'));
+  const names = await contents();
+  const hasGemfile = names.includes('Gemfile');
+  const gemspecNames = names.filter((name) => name.endsWith('.gemspec'));
   const dependencies = new Set((await Promise.all(gemspecNames.map(file))).flatMap(rubyRuntimeDependencies));
   let statements: Promise<string[][]> | undefined;
   return async (pkg) => {
     if (dependencies.has(pkg)) return true;
+    if (!hasGemfile) return false;
     statements ??= file('Gemfile').then(gemfileStatements);
     return isProductionGemIn(await statements, pkg);
   };
