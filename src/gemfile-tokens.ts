@@ -2,6 +2,8 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const assignedLocals = new Set<string>();
+  const assignment = /([a-z_]\w*)[ \t]*=(?!=|>|~)/y;
   let previous = '\n';
   let regexpExpected = true;
   let command = false;
@@ -15,7 +17,7 @@ export const gemfileTokens = (content: string): string[] => {
       token = '?/';
     }
     if (((token === '/' || token === '%') && regexpExpected) ||
-        (token === '/' && command && isCommandArgument(content, match.index))) {
+        (token === '/' && command && !assignedLocals.has(previous) && isCommandArgument(content, match.index))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -28,7 +30,13 @@ export const gemfileTokens = (content: string): string[] => {
       token = '<<';
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
-      command = /^(?:\n|;|do)$/.test(previous) && /^[a-z_]\w*[!?]?$/.test(token);
+      const startsStatement = /^(?:\n|;|do)$/.test(previous);
+      command = startsStatement && /^[a-z_]\w*[!?]?$/.test(token);
+      if (startsStatement) {
+        assignment.lastIndex = match.index;
+        const local = assignment.exec(content);
+        if (local) assignedLocals.add(local[1]);
+      }
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;

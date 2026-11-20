@@ -252,6 +252,16 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['ratio = 12', 'ratio=(12)'].forEach((assignment) => {
+  test(`detects a production gem after compact division following ${assignment}`, () => {
+    const gemfile = `${assignment}
+ratio /2
+gem 'rack', path: '/x'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 [
   '#{"/"}',
   '#{ %q!}!.ord / 2 }',
