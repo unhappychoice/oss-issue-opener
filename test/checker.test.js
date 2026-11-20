@@ -343,6 +343,7 @@ test('detects source changes without dependency updates', async (t) => {
     } }));
     mockCommitFiles(t.mock, paths);
     repos.getContent.mock.mockImplementation(async ({ path }) => {
+      if (path === '') return { data: [{ name: 'Gemfile', type: 'file' }] };
       const content = path === 'Gemfile' ? "gem 'dotenv'" : JSON.stringify({
         [production ? 'dependencies' : 'devDependencies']: { dotenv: '16.4.7' },
       });
