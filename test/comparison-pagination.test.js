@@ -86,34 +86,56 @@ test('detects the original final production bump and links to the scanned commit
     [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
 });
 
-test('preserves source changes when later pages omit files', async (t) => {
-  const repos = stubRelease(t);
-  t.mock.method(repos, 'compareCommits', async ({ page }) => ({
-    data: page === 1
-      ? { files: [{ filename: 'src/index.ts' }], commits: commits(100) }
-      : { commits: commits(1) },
-  }));
+for (const path of ['docs/readme.md', 'src/index.ts', 'Gemfile.lock', null]) {
+  test(`fetches only the first comparison page for ${path ?? 'an empty file list'}`, async (t) => {
+    const repos = stubRelease(t);
+    const messages = commits(250);
+    const compare = t.mock.method(repos, 'compareCommits', async ({ page, per_page }) => ({
+      data: {
+        ...(page === 1 ? { files: path ? [{ filename: path }] : [] } : {}),
+        commits: messages.slice((page - 1) * per_page, page * per_page),
+      },
+    }));
 
-  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
-    status: 'pending',
-    changedSources: ['src/index.ts'],
-    dependencyUpdates: [],
-    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), path === 'src/index.ts'
+      ? {
+        status: 'pending',
+        changedSources: [path],
+        dependencyUpdates: [],
+        compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
+      }
+      : { status: 'up-to-date' });
+    assert.equal(compare.mock.callCount(), 1);
   });
-});
+}
 
 test('finishes on an empty page after an exactly full page', async (t) => {
   const compare = t.mock.method(getOctokit().repos, 'compareCommits', async ({ page }) => ({
     data: { commits: page === 1 ? commits(100) : [] },
   }));
 
-  assert.deepEqual(await compareCommits('owner', 'repo', 'v1', { sha: commitSha('main'), treeSha: 'head-tree' }), {
+  const head = { sha: commitSha('main'), treeSha: 'head-tree' };
+  const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', head);
+  assert.equal(compare.mock.callCount(), 1);
+  assert.deepEqual(comparison, {
     baseSha: commitSha('v1'),
     headSha: commitSha('main'),
     files: [],
-    commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
   });
+  assert.deepEqual(await getCommits(), commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })));
   assert.equal(compare.mock.callCount(), 2);
+});
+
+test('returns no changed files or commits for matching SHAs without comparing', async (t) => {
+  const compare = t.mock.method(getOctokit().repos, 'compareCommits', async () => {
+    throw new Error('Unexpected comparison');
+  });
+  const sha = commitSha('v1');
+  const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', { sha, treeSha: 'head-tree' });
+
+  assert.deepEqual(comparison, { baseSha: sha, headSha: sha, files: [] });
+  assert.deepEqual(await getCommits(), []);
+  assert.equal(compare.mock.callCount(), 0);
 });
 
 test('propagates failures on subsequent comparison pages', async (t) => {
@@ -121,7 +143,7 @@ test('propagates failures on subsequent comparison pages', async (t) => {
   const failure = new Error('Comparison page failed');
   t.mock.method(repos, 'compareCommits', async ({ page }) => {
     if (page > 1) throw failure;
-    return { data: { files: [{ filename: 'src/index.ts' }], commits: commits(100) } };
+    return { data: { files: [{ filename: 'package-lock.json' }], commits: commits(100) } };
   });
 
   await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), (error) => error === failure);
@@ -195,16 +217,26 @@ test('rejects missing comparison tree metadata instead of declaring up to date',
   await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /missing tree SHA/);
 });
 
-test('uses the pinned head tree when a capped comparison spans commit pages', async (t) => {
-  const getTree = stubCappedComparison(t, [['src/index.ts', 'old', 'new']]);
-  const firstPage = (await getOctokit().repos.compareCommits()).data;
-  getOctokit().repos.compareCommits.mock.mockImplementation(async ({ page }) => ({ data: page === 1
+test('uses the pinned head tree to find a dependency change that requires later pages', async (t) => {
+  const getTree = stubCappedComparison(t, [['package-lock.json', 'old', 'new']]);
+  const compare = getOctokit().repos.compareCommits;
+  const { data: firstPage } = await compare();
+  compare.mock.resetCalls();
+  compare.mock.mockImplementation(async ({ page }) => ({ data: page === 1
     ? { ...firstPage, commits: commits(100).map((item) => ({
       ...item, commit: { ...item.commit, tree: { sha: 'intermediate-tree' } },
     })) }
-    : { commits: firstPage.commits },
+    : { commits: [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }] },
   }));
-  assert.equal((await checkPendingRelease('owner', 'repo', 'node')).status, 'pending');
+  mockCommitFiles(t.mock, ['package-lock.json']);
+  t.mock.method(getOctokit().repos, 'getContent', async () => ({
+    data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
+  }));
+
+  const result = await checkPendingRelease('owner', 'repo', 'node');
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example', from: '1.0.0', to: '2.0.0' }]);
+  assert.deepEqual(compare.mock.calls.map(({ arguments: [{ page }] }) => page), [1, 2]);
   assert.deepEqual(getTree.mock.calls.map(({ arguments: [params] }) => params.tree_sha),
     ['merge-base-tree', 'head-tree']);
 });

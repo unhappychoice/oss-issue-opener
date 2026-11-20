@@ -177,23 +177,30 @@ export const compareCommits = async (
   repo: string,
   base: string,
   head: BranchHead
-): Promise<{ baseSha: string; headSha: string; files: string[]; commits: ComparedCommit[] }> => {
+): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommit[]> }> => {
   const { repos } = getOctokit();
   const { data: baseCommit } = await repos.getCommit({ owner, repo, ref: base });
   const endpoints = { owner, repo, base: baseCommit.sha, head: head.sha };
-  const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
-  if (result.baseSha === result.headSha) return result;
+  const { base: baseSha, head: headSha } = endpoints;
+  if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => [] };
 
-  for (let page = 1; ; page++) {
-    const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
-    if (page === 1) {
-      result.files = (data.files?.length ?? 0) >= 300
-        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
-        : [...new Set(changedPaths(data.files ?? []))];
+  const per_page = 100;
+  const { data } = await repos.compareCommits({ ...endpoints, per_page, page: 1 });
+  const files = (data.files?.length ?? 0) >= 300
+    ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
+    : [...new Set(changedPaths(data.files ?? []))];
+
+  const getCommits = async (): Promise<ComparedCommit[]> => {
+    let pageCommits = data.commits;
+    const commits: ComparedCommit[] = [];
+    for (let page = 2; ; page++) {
+      commits.push(...pageCommits.map(({ sha, commit }) => ({ sha, message: commit.message })));
+      if (pageCommits.length < per_page) return commits;
+      pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
     }
-    result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-    if (data.commits.length < 100) return result;
-  }
+  };
+
+  return { baseSha, headSha, files, getCommits };
 };
 
 export const listOpenIssues = async (
