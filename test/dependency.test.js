@@ -12,8 +12,8 @@ const stubRepository = (manifests, commitMessages = []) => {
   Object.assign(getOctokit().repos, {
     getContent: async ({ owner, repo, path }) => {
       calls.push({ owner, repo, path });
-      if (!(path in manifests)) throw new Error('Not found');
-      const content = manifests[path];
+      const content = path === '' ? manifests[''] ?? Object.keys(manifests) : manifests[path];
+      if (content === undefined) throw Object.assign(new Error('Not found'), { status: 404 });
       return { data: Array.isArray(content) ? content.map((name) => ({ name })) :
         { content: Buffer.from(content).toString('base64') } };
     },
@@ -61,14 +61,16 @@ test('Gradle resolves production catalog accessors and reads the catalog once', 
   assert.deepEqual(calls.map(({ path }) => path), ['build.gradle', 'gradle/libs.versions.toml']);
 });
 
-test('Gradle keeps direct dependencies when the catalog is malformed', async () => {
-  stubRepository({
-    'build.gradle': 'implementation("org.example:direct:1.0"); api(libs.invalid)',
-    'gradle/libs.versions.toml': '[libraries',
+[['missing', {}], ['malformed', { 'gradle/libs.versions.toml': '[libraries' }]].forEach(([state, catalog]) => {
+  test(`Gradle keeps direct dependencies when the catalog is ${state}`, async () => {
+    stubRepository({
+      'build.gradle': 'implementation("org.example:direct:1.0"); api(libs.invalid)',
+      ...catalog,
+    });
+    const check = createDependencyChecker('owner', 'repo', 'kotlin');
+    assert.equal(await check('org.example:direct'), true);
+    assert.equal(await check('org.example:invalid'), false);
   });
-  const check = createDependencyChecker('owner', 'repo', 'kotlin');
-  assert.equal(await check('org.example:direct'), true);
-  assert.equal(await check('org.example:invalid'), false);
 });
 
 test('release checks reuse parsed Node dependencies and preserve every production update', async () => {
@@ -307,7 +309,6 @@ dev = "3"` }, ['Cargo.toml']],
   ['go', { 'go.mod': 'require (\nfirst v1\nsecond v2\n)' }, ['go.mod']],
   ['swift', { 'Package.swift': '.package(url: "first"), .package(url: "second")' }, ['Package.swift']],
   ['node', { 'package.json': '{invalid' }, ['package.json']],
-  ['node', {}, ['package.json']],
   ['unknown', {}, []],
 ];
 

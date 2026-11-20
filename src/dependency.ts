@@ -7,8 +7,9 @@ import { swiftDependencies } from './swift.js';
 import { gradleCatalogAliases, gradleDependencies } from './gradle.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
+type ReadManifest = (path: string, optional?: boolean) => Promise<string>;
 type DependencyLoader = (
-  file: (path: string) => Promise<string>,
+  file: ReadManifest,
   contents: () => Promise<string[]>
 ) => Promise<DependencyChecker>;
 
@@ -20,9 +21,9 @@ export const createDependencyChecker = (
   ref?: string
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
-  const file = (path: string): Promise<string> => {
+  const file: ReadManifest = (path, optional) => {
     if (!files.has(path)) {
-      const download = () => getFileContent(owner, repo, path, ref);
+      const download = () => getFileContent(owner, repo, path, ref, optional);
       files.set(path, path.endsWith('.gemspec') ? queueGemspecDownload(download) : download());
     }
     return files.get(path)!;
@@ -69,7 +70,7 @@ const loadRuby: DependencyLoader = async (file, contents) => {
   const names = await contents();
   const hasGemfile = names.includes('Gemfile');
   const gemspecNames = names.filter((name) => name.endsWith('.gemspec'));
-  const dependencies = new Set((await Promise.all(gemspecNames.map(file))).flatMap(rubyRuntimeDependencies));
+  const dependencies = new Set((await Promise.all(gemspecNames.map((name) => file(name)))).flatMap(rubyRuntimeDependencies));
   let statements: Promise<string[][]> | undefined;
   return async (pkg) => {
     if (dependencies.has(pkg)) return true;
@@ -80,8 +81,9 @@ const loadRuby: DependencyLoader = async (file, contents) => {
 };
 
 const loadNode: DependencyLoader = async (file) => {
+  const content = await file('package.json');
   try {
-    const json = JSON.parse(await file('package.json'));
+    const json = JSON.parse(content);
     const dependencies = json.dependencies ?? {};
     return async (pkg) => typeof dependencies === 'object' && Object.hasOwn(dependencies, pkg);
   } catch {
@@ -116,13 +118,14 @@ const loadRust: DependencyLoader = async (file) => {
 
 const loadKotlin: DependencyLoader = async (file, contents) => {
   const files = await contents();
-  const kotlinOnly = files.includes('build.gradle.kts') && !files.includes('build.gradle');
-  const groovy = kotlinOnly ? '' : await file('build.gradle');
-  const content = groovy || await file('build.gradle.kts');
+  const hasGroovy = files.includes('build.gradle');
+  const hasKotlin = files.includes('build.gradle.kts');
+  const groovy = hasKotlin && !hasGroovy ? '' : await file('build.gradle', !hasGroovy);
+  const content = groovy || await file('build.gradle.kts', !hasKotlin);
   const coordinates = gradleDependencies(content);
   const aliases = gradleCatalogAliases(content);
   if (aliases.length > 0) {
-    const catalog = await file('gradle/libs.versions.toml');
+    const catalog = await file('gradle/libs.versions.toml', true);
     coordinates.push(...gradleCatalogCoordinates(catalog, new Set(aliases)));
   }
   return async (pkg) => coordinates.some((coordinate) =>
