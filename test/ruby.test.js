@@ -11,6 +11,11 @@ test('detects calls using parentheses', () => {
   assert.deepEqual(rubyRuntimeDependencies("spec.add_dependency('rake')"), ['rake']);
 });
 
+test('ignores bare dependency names in gemspec declarations', () => {
+  const gemspec = "rack = 'puma'\nspec.add_dependency rack\nspec.add_runtime_dependency(rack)";
+  assert.deepEqual(rubyRuntimeDependencies(gemspec), []);
+});
+
 test('ignores commented-out declarations', () => {
   assert.deepEqual(rubyRuntimeDependencies('# spec.add_dependency "rake"'), []);
 });

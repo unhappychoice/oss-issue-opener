@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
@@ -32,6 +33,45 @@ const bumps = Array.from({ length: 100 }, (_, index) => ({
   pkg: ['first', 'second', 'dev'][index % 3], from: `${index}`, to: `${index + 1}`,
 }));
 const messages = bumps.map(({ pkg, from, to }) => `Bump ${pkg} from ${from} to ${to}`);
+
+test('Gradle resolves production catalog accessors and reads the catalog once', async () => {
+  const calls = stubRepository({
+    'build.gradle': `dependencies {
+      api libs.example.core
+      implementation(platform(libs.example.bom))
+      testImplementation(libs.example.test)
+      api(libs.invalid)
+      implementation(libs.missing)
+    }`,
+    'gradle/libs.versions.toml': `[versions]
+      example = "1.0"
+      [libraries]
+      example-core = { module = "org.example:core", version.ref = "example" }
+      example_bom = { group = "org.example", name = "bom", version.ref = "example" }
+      example-test = "org.example:test:1.0"
+      invalid = { group = "org.example" }
+      [plugins]
+      missing = { id = "org.example.missing", version = "1.0" }
+    `,
+  });
+  const check = createDependencyChecker('owner', 'repo', 'kotlin');
+  assert.deepEqual(await Promise.all(['core', 'bom', 'test', 'invalid', 'missing'].map(
+    (name) => check(`org.example:${name}`)
+  )), [true, true, false, false, false]);
+  assert.deepEqual(calls.map(({ path }) => path), ['build.gradle', 'gradle/libs.versions.toml']);
+});
+
+[['missing', {}], ['malformed', { 'gradle/libs.versions.toml': '[libraries' }]].forEach(([state, catalog]) => {
+  test(`Gradle keeps direct dependencies when the catalog is ${state}`, async () => {
+    stubRepository({
+      'build.gradle': 'implementation("org.example:direct:1.0"); api(libs.invalid)',
+      ...catalog,
+    });
+    const check = createDependencyChecker('owner', 'repo', 'kotlin');
+    assert.equal(await check('org.example:direct'), true);
+    assert.equal(await check('org.example:invalid'), false);
+  });
+});
 
 test('release checks reuse parsed Node dependencies and preserve every production update', async () => {
   const calls = stubRepository({ 'package.json': JSON.stringify({
@@ -75,6 +115,40 @@ test('Ruby loads the fallback only when needed and caches missing files and list
   assert.equal(await missing('first'), false);
   assert.equal(await missing('second'), false);
   assert.deepEqual(missingCalls.map(({ path }) => path), ['', 'Gemfile']);
+});
+
+test('overlapping Ruby release scans share a gemspec download limit', async (t) => {
+  const paths = Array.from({ length: 12 }, (_, index) => `gem-${index}.gemspec`);
+  const last = paths.at(-1);
+  const dependency = { pkg: 'rack', from: '3.0.0', to: '3.1.0' };
+  const repos = ['first', 'second'];
+  stubRepository({});
+  mockCommitFiles(t.mock, [last]);
+  t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: last }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump rack from 3.0.0 to 3.1.0' } }],
+  } }));
+
+  let inFlight = 0;
+  let peak = 0;
+  const downloads = [];
+  t.mock.method(getOctokit().repos, 'getContent', async ({ repo, path }) => {
+    if (path === '') return { data: [...paths, last].map((name) => ({ name })) };
+    if (!path.endsWith('.gemspec')) throw new Error('Not found');
+    downloads.push(`${repo}/${path}`);
+    peak = Math.max(peak, ++inFlight);
+    await setImmediate();
+    inFlight--;
+    return { data: {
+      content: Buffer.from(path === last ? 'spec.add_runtime_dependency "rack"' : '').toString('base64'),
+    } };
+  });
+
+  const results = await Promise.all(repos.map((repo) => checkPendingRelease('owner', repo, 'ruby')));
+
+  assert.equal(peak, 8);
+  assert.deepEqual(downloads.sort(), repos.flatMap((repo) => paths.map((path) => `${repo}/${path}`)).sort());
+  assert.deepEqual(results.map(({ dependencyUpdates }) => dependencyUpdates), [[dependency], [dependency]]);
 });
 
 [['a.gemspec', 'b.gemspec', 'Gemfile'], ['Gemfile', 'b.gemspec', 'a.gemspec']].forEach((names) => {
@@ -123,6 +197,25 @@ const dialects = [
 ];
 
 dialects.forEach(({ file, declaration }) => {
+  test(`${file}: constraint-only bumps do not qualify for a release`, async (t) => {
+    const content = `dependencies { constraints {
+      ${declaration('implementation', 'org.example:constrained:1.1')}
+      ${declaration('api', 'org.example:public:1.1')}
+    }; ${declaration('implementation', 'org.example:runtime:1.0')} }`;
+    const message = 'Bump org.example:constrained from 1.0 to 1.1';
+    stubRepository({ [file]: content });
+    mockCommitFiles(t.mock, [file]);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: file }], commits: [{ sha: 'bump', commit: { message } }],
+    } }));
+    const check = createDependencyChecker('owner', 'repo', 'kotlin');
+
+    assert.equal(await check('org.example:constrained'), false);
+    assert.equal(await check('org.example:public'), false);
+    assert.equal(await check('org.example:runtime'), true);
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
+  });
+
   ['implementation', 'api'].forEach((configuration) => {
     test(`${file}: ignores block-commented ${configuration} dependencies and test-only releases`, async (t) => {
       const content = `dependencies {

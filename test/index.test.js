@@ -79,7 +79,7 @@ test('CLI submits confirmed CI failures before exiting with status 1 for an endp
           return Response.json(pathname.endsWith('/repos') ? [] : { type: 'User' });
         }
         if (pathname === '/repos/unhappychoice/example/branches/main') {
-          return Response.json({ commit: { sha: '${sha}' } });
+          return Response.json({ commit: { sha: '${sha}', commit: { tree: { sha: 'head-tree' } } } });
         }
         if (pathname === '/repos/unhappychoice/example/commits/${sha}/status') {
           return Response.json({ statuses: [{ state: 'failure', context: 'build' }] });

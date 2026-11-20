@@ -7,12 +7,15 @@ import { buildCIFailureIssue } from '../dist/issue.js';
 const sha = 'a'.repeat(40);
 
 initOctokit('test-token');
-beforeEach(() => mock.method(getOctokit().repos, 'getBranch', async () => ({ data: { commit: { sha } } })));
+beforeEach(() => {
+  const { repos } = getOctokit();
+  mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mock.method(repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
+});
 afterEach(() => mock.restoreAll());
 
 const checkStatus = async (status, conclusion) => {
   const client = getOctokit();
-  mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
   mock.method(client, 'paginate', async (method, params) => {
     assert.equal(method, client.checks.listForRef);
@@ -80,7 +83,7 @@ test('action_required includes the failed check name and URL in the notification
       { status: 'completed', conclusion: 'failure', name: 'codeCOV/project', html_url: checkUrl },
     ]);
 
-    assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+    assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: state === 'success' ? 'success' : 'failure',
       failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl }],
     });
@@ -94,7 +97,7 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
   mock.method(client.repos, 'getCombinedStatusForRef', async () => { throw statusesError; });
   mock.method(client, 'paginate', async () => { throw checksError; });
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+  assert.deepEqual(await checkCIStatus('owner', 'repo'), {
     status: 'incomplete',
     failedChecks: [],
     endpointErrors: [statusesError, checksError],
@@ -106,7 +109,7 @@ test('evaluates the same commit when the default branch advances between CI look
   const nextSha = 'b'.repeat(40);
   let branchHead = sha;
   const branch = mock.method(client.repos, 'getBranch', async () => ({
-    data: { commit: { sha: branchHead } },
+    data: { commit: { sha: branchHead, commit: { tree: { sha: 'head-tree' } } } },
   }));
   const resolve = (ref) => ref === 'main' ? branchHead : ref;
   const statuses = mock.method(client.repos, 'getCombinedStatusForRef', async ({ ref }) => {
@@ -118,7 +121,7 @@ test('evaluates the same commit when the default branch advances between CI look
     { status: 'completed', conclusion: resolve(ref) === sha ? 'success' : 'failure', name: 'build' },
   ]);
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+  assert.deepEqual(await checkCIStatus('owner', 'repo'), {
     status: 'success',
     failedChecks: [],
   });
@@ -137,7 +140,7 @@ test('skips CI lookups when the default branch has no head', async () => {
   const statuses = mock.method(client.repos, 'getCombinedStatusForRef', async () => ({}));
   const checks = mock.method(client, 'paginate', async () => []);
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => 'main'), {
+  assert.deepEqual(await checkCIStatus('owner', 'repo'), {
     status: 'no-ci',
     failedChecks: [],
   });
@@ -149,5 +152,5 @@ test('reports errors resolving the default branch head', async () => {
   const error = Object.assign(new Error('Service unavailable'), { status: 503 });
   mock.method(getOctokit().repos, 'getBranch', async () => { throw error; });
 
-  await assert.rejects(checkCIStatus('owner', 'repo', async () => 'main'), error);
+  await assert.rejects(checkCIStatus('owner', 'repo'), error);
 });
