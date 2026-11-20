@@ -220,9 +220,10 @@ gem 'rack'`;
   ['slash-delimited', '/\nclass\nmodule\nend\n/x'],
   ['percent-delimited', '%r{a{2}\\}\nclass\nmodule\nend\n}x'],
   ['ternary', 'enabled ? /\nclass\n/x : /\nmodule\n/x'],
+  ['after and', 'enabled and /\nclass\n/x'],
   ['interpolated', '/#{%q!}/! + /nested/.source}\nclass\n/x'],
 ].forEach(([name, expression]) => {
-  test(`preserves group boundaries across a multiline ${name} regexp`, () => {
+  test(`preserves group boundaries across a multiline regexp (${name})`, () => {
     const gemfile = `group :test do
   pattern = ${expression}
   gem 'rspec'
