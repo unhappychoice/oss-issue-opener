@@ -335,7 +335,7 @@ test('shares the bump lookup limit across scans and keeps comparison order', asy
   }
 });
 
-test('propagates bump lookup failures to the release investigation', async (t) => {
+test('reports an incomplete release check when its only bump lookup fails', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const failure = new Error('Commit files unavailable');
   t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
@@ -343,5 +343,8 @@ test('propagates bump lookup failures to the release investigation', async (t) =
     return { data: { sha: ref } };
   });
 
-  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), (error) => error === failure);
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'incomplete',
+    lookupErrors: [failure],
+  });
 });

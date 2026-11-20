@@ -75,12 +75,18 @@ export const checkPendingRelease = async (
 
   const changedDependencyTypes = getDependencyProjectTypes(files);
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
-  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, dependencyTypes, headSha, getPinnedContents);
+  const { dependencyUpdates, lookupErrors } = await findDependencyUpdates(
+    owner, repo, commits, dependencyTypes, headSha, getPinnedContents
+  );
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
-  return changedSources.length > 0 || dependencyUpdates.length > 0
-    ? { status: 'pending', changedSources, dependencyUpdates, compareUrl }
-    : { status: 'up-to-date' };
+  if (changedSources.length > 0 || dependencyUpdates.length > 0) {
+    return {
+      status: 'pending', changedSources, dependencyUpdates, compareUrl,
+      ...(lookupErrors.length > 0 ? { lookupErrors } : {}),
+    };
+  }
+  return lookupErrors.length > 0 ? { status: 'incomplete', lookupErrors } : { status: 'up-to-date' };
 };
 
 const findDependencyUpdates = async (
@@ -90,24 +96,30 @@ const findDependencyUpdates = async (
   types: ProjectType[],
   headSha: string,
   getContents: GetContents
-): Promise<DependencyUpdate[]> => {
-  if (types.length === 0) return [];
+): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
+  const dependencyUpdates: DependencyUpdate[] = [];
+  const lookupErrors: unknown[] = [];
+  if (types.length === 0) return { dependencyUpdates, lookupErrors };
   const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents, headSha)]));
   const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);
     return bump ? [{ sha, bump }] : [];
   });
-  const lookups = await Promise.all(bumps.map(async ({ sha, bump }) => ({
+  const lookups = await Promise.allSettled(bumps.map(async ({ sha, bump }) => ({
     bump,
     affected: getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha)),
   })));
 
-  const updates: DependencyUpdate[] = [];
-  for (const { bump, affected } of lookups) {
+  for (const lookup of lookups) {
+    if (lookup.status === 'rejected') {
+      lookupErrors.push(lookup.reason);
+      continue;
+    }
+    const { bump, affected } = lookup.value;
     if (affected.length !== 1) continue;
-    if (await checkers.get(affected[0])?.(bump.pkg)) updates.push(bump);
+    if (await checkers.get(affected[0])?.(bump.pkg)) dependencyUpdates.push(bump);
   }
-  return updates;
+  return { dependencyUpdates, lookupErrors };
 };
 
 const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {

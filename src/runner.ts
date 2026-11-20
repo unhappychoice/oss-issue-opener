@@ -109,11 +109,15 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
         return types;
       };
       const releaseStatus = await deps.checkPendingRelease(owner, repo, getProjectTypes, getBranch);
+      releaseStatus.lookupErrors?.forEach((cause) => recordFailure(`${fullName}: release investigation`, failures, cause));
       if (releaseStatus.status === 'no-tag') {
         log('⚪', 'Release: no tags found');
         return [];
       } else if (releaseStatus.status === 'up-to-date') {
         log('✅', 'Release: up to date');
+        return [];
+      } else if (releaseStatus.status === 'incomplete') {
+        log('⚠️', 'Release: incomplete');
         return [];
       }
       log('📦', 'Release: pending');
