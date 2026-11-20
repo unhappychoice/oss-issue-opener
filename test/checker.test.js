@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { getOctokit } from '../dist/github.js';
+import { buildPendingReleaseIssue } from '../dist/issue.js';
 import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 initMockOctokit('test-token');
@@ -44,6 +45,18 @@ prefixes.forEach((prefix) => {
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
   });
+});
+
+test('renders versions from a production dependency bump as literal text', async (t) => {
+  const from = '`[old](https://example.com/old)`';
+  const to = '``<https://example.com/new>``';
+  stubRepository(t, `Bump @octokit/rest from ${from} to ${to}`);
+
+  const release = await checkPendingRelease('owner', 'repo', 'node');
+  assert.equal(release.status, 'pending');
+  const issue = buildPendingReleaseIssue('owner/repo', release.changedSources, release.dependencyUpdates, release.compareUrl);
+
+  assert.equal(issue.body.split('\n')[3], '- ` @octokit/rest ` `` ' + from + ' `` -> ``` ' + to + ' ```');
 });
 
 test('ignores bump text outside a dependency update subject', async (t) => {
@@ -349,6 +362,36 @@ test('detects source changes without dependency updates', async (t) => {
   });
 });
 
+[
+  ['skips', 'commit', 'up-to-date'],
+  ['reports', 'rust-change', 'pending'],
+].forEach(([action, renameCommit, status]) => {
+  test(`${action} a Node production bump when the Rust lockfile rename is in ${renameCommit}`, async (t) => {
+    const message = 'Bump @octokit/rest from 21 to 22';
+    stubRepository(t, message);
+    const { repos } = getOctokit();
+    const nodeFile = { filename: 'package-lock.json', status: 'modified' };
+    const rustRename = { filename: 'docs/old-cargo.lock', status: 'renamed', previous_filename: 'Cargo.lock' };
+    repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+      files: [nodeFile, rustRename],
+      commits: [
+        { sha: 'rust-change', commit: { message: 'chore: move Rust lockfile' } },
+        { sha: 'commit', commit: { message } },
+      ],
+    } }));
+    const resolveCommit = repos.getCommit.bind(repos);
+    t.mock.method(repos, 'getCommit', async (params) => params.page === undefined
+      ? resolveCommit(params)
+      : { data: { files: params.ref === renameCommit ? [nodeFile, rustRename] : [nodeFile] } });
+
+    const result = await checkPendingRelease('owner', 'repo', ['node', 'rust']);
+    assert.equal(result.status, status);
+    if (status === 'pending') {
+      assert.deepEqual(result.dependencyUpdates, [{ pkg: '@octokit/rest', from: '21', to: '22' }]);
+    }
+  });
+});
+
 test('shares the bump lookup limit across scans and keeps comparison order', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const repos = getOctokit().repos;
@@ -391,7 +434,7 @@ test('shares the bump lookup limit across scans and keeps comparison order', asy
   }
 });
 
-test('propagates bump lookup failures to the release investigation', async (t) => {
+test('reports an incomplete release check when its only bump lookup fails', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const failure = new Error('Commit files unavailable');
   t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
@@ -399,5 +442,8 @@ test('propagates bump lookup failures to the release investigation', async (t) =
     return { data: { sha: ref } };
   });
 
-  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), (error) => error === failure);
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'incomplete',
+    lookupErrors: [failure],
+  });
 });
