@@ -221,6 +221,7 @@ gem 'rack'`;
   ['percent-delimited', '%r{a{2}\\}\nclass\nmodule\nend\n}x'],
   ['ternary', 'enabled ? /\nclass\n/x : /\nmodule\n/x'],
   ['after and', 'enabled and /\nclass\n/x'],
+  ['after or', 'enabled or /\nclass\n/x'],
   ['interpolated', '/#{%q!}/! + /nested/.source}\nclass\n/x'],
 ].forEach(([name, expression]) => {
   test(`preserves group boundaries across a multiline regexp (${name})`, () => {
