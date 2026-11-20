@@ -143,6 +143,30 @@ test('ignores heredoc openers in strings and comments', () => {
   assert.equal(isProductionGem(gemfile, 'rake'), true);
 });
 
+[
+  ['slash delimiter', String.raw`/prefix\/suffix
+class FakeScope
+module FakeNamespace/ix`],
+  ['paired percent delimiter', `%r{prefix{2}
+class FakeScope
+module FakeNamespace}ix`],
+  ['unpaired percent delimiter', `%r!prefix
+class FakeScope
+module FakeNamespace!ix`],
+].forEach(([name, regexp]) => {
+  test(`preserves group boundaries across a multiline regexp with a ${name}`, () => {
+    const gemfile = `group :test do
+  pattern = ${regexp}
+  class TestHelper
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['def helper(ratio)', 'def helper ratio'].forEach((header) => {
   test(`preserves a gem declaration after dividing a method parameter (${header})`, () => {
     const gemfile = `${header}

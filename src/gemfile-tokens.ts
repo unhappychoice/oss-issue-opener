@@ -8,6 +8,16 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
+    if ((token === '/' || token === '%') && /^(?:\n|;|=|=>|~|\(|\[|,|if|elsif|unless)$/.test(previous)) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push(content.slice(match.index, end));
+        previous = token;
+        classHeader = false;
+        continue;
+      }
+    }
     if (token.startsWith('<<') && classHeader) {
       pattern.lastIndex = match.index + 2;
       tokens.push('<<');
@@ -34,6 +44,32 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const regexpDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const opening = /\/|%r([^\w\s])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+
+  const delimiter = match[1] ?? '/';
+  const closing = regexpDelimiters.get(delimiter) ?? delimiter;
+  const parts = /\\[\s\S]|[\s\S]/y;
+  parts.lastIndex = opening.lastIndex;
+  let depth = 1;
+  let part: RegExpExecArray | null;
+  while ((part = parts.exec(content)) !== null) {
+    if (delimiter !== closing && part[0] === delimiter) depth++;
+    if (part[0] === closing && --depth === 0) {
+      const options = /[imxounes]*/y;
+      options.lastIndex = parts.lastIndex;
+      options.exec(content);
+      return options.lastIndex;
+    }
+  }
+  return undefined;
 };
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {
