@@ -1,4 +1,6 @@
-export const gemfileTokens = (content: string): string[] => {
+import { blockKind, createGemfileStatementCollector } from './gemfile-scopes.js';
+
+export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
@@ -6,8 +8,21 @@ export const gemfileTokens = (content: string): string[] => {
   let expressionExpected = true;
   let classHeader = false;
   let putsArgument = false;
-  let putsLocal = false;
-  let statementStart = 0;
+  let locals = { puts: false };
+  const enclosingLocals: { puts: boolean }[] = [];
+  const statements = createGemfileStatementCollector((statement) => {
+    onStatement?.(statement);
+    if (statement[0] === 'end') locals = enclosingLocals.pop() ?? locals;
+    const kind = blockKind(statement);
+    if (!kind) return;
+    enclosingLocals.push(locals);
+    if (kind === 'namespace') locals = { puts: false };
+    if (kind === 'method') locals = { puts: hasPutsParameter(statement) };
+  });
+  const emit = (token: string) => {
+    tokens.push(token);
+    statements.push(token);
+  };
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -18,7 +33,7 @@ export const gemfileTokens = (content: string): string[] => {
       const end = token === '?' ? characterEnd(content, match.index) : delimitedLiteralEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
-        tokens.push(content.slice(match.index, end));
+        emit(content.slice(match.index, end));
         previous = token;
         expressionExpected = false;
         classHeader = false;
@@ -28,17 +43,15 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (token.startsWith('<<') && classHeader) {
       pattern.lastIndex = match.index + 2;
-      tokens.push('<<');
+      emit('<<');
       previous = '<<';
       expressionExpected = false;
       classHeader = false;
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
-      if (token === '=' && previous === 'puts' && putsArgument) putsLocal = true;
-      if (token === 'puts' && tokens[statementStart] === 'def' && previous !== 'def') putsLocal = true;
-      putsArgument = token === 'puts' && !putsLocal && (expressionExpected || previous === 'do');
-      if (token === '\n' || token === ';') statementStart = tokens.length + 1;
+      if (token === '=' && previous === 'puts' && putsArgument) locals.puts = true;
+      putsArgument = token === 'puts' && !locals.puts && (expressionExpected || previous === 'do');
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       expressionExpected = /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|,|\?|:)$/.test(token)
         || (/^(?:if|elsif|unless)$/.test(token) && previous !== '.' && previous !== '::');
@@ -48,17 +61,24 @@ export const gemfileTokens = (content: string): string[] => {
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
       pending.push({ delimiter, indented });
-      tokens.push('""');
+      emit('""');
       continue;
     }
-    tokens.push(token);
+    emit(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
         pattern.lastIndex = heredocEnd(content, pattern.lastIndex, delimiter, indented);
       });
     }
   }
+  statements.finish();
   return tokens;
+};
+
+const hasPutsParameter = (statement: string[]): boolean => {
+  const parameterStart = statement[2] === '.' || statement[2] === '::' ? 4 : 2;
+  return statement.slice(parameterStart).some((token, index, parameters) =>
+    token === 'puts' && (index === 0 || ['(', ',', '*', '&'].includes(parameters[index - 1] ?? '')));
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);

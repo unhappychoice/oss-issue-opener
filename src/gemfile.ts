@@ -1,3 +1,4 @@
+import { blockKind } from './gemfile-scopes.js';
 import { gemfileTokens } from './gemfile-tokens.js';
 import { rubyDependencyName } from './ruby.js';
 
@@ -9,25 +10,13 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
   return statements.some((tokens) => {
     if (tokens[0] === 'end') blocks.pop();
     const excluded = blocks.includes(true);
-    if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
-      tokens.some((token, index) => (token === 'class' || token === 'module') && tokens[index - 1] === '=') ||
-      /^(if|unless|case|begin|while|until|for|class|module)$/.test(tokens[0] ?? '')) {
+    if (blockKind(tokens)) {
       blocks.push(tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1)));
     }
     if (tokens[0] !== 'gem') return false;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
     return rubyDependencyName(tokens[nameIndex]) === pkg && !excluded &&
       !hasInlineExcludedGroup(tokens.slice(nameIndex + 1));
-  });
-};
-
-const isEndlessMethod = (tokens: string[]): boolean => {
-  let depth = 0;
-  return tokens.some((token, index) => {
-    if (token === '(') depth++;
-    if (token === ')') depth--;
-    const nameEnd = tokens[2] === '.' ? 4 : 2;
-    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };
 
@@ -46,41 +35,7 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
 });
 
 export const gemfileStatements = (content: string): string[][] => {
-  const tokens = gemfileTokens(content);
   const result: string[][] = [];
-  let current: string[] = [];
-  let depth = 0;
-  tokens.forEach((token) => {
-    if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
-    if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
-      if (current.length) result.push(current);
-      current = [];
-      return;
-    }
-    if (token === '\n') return;
-    if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
-      result.push([...current, 'do']);
-      current = [];
-      return;
-    }
-    if (depth === 0 && token === '}') {
-      if (current.length) result.push(current);
-      result.push(['end']);
-      current = [];
-      return;
-    }
-    if (token === 'end' && depth === 0 && current.length) {
-      result.push(current);
-      current = [];
-    }
-    if (['(', '[', '{'].includes(token)) depth++;
-    if ([')', ']', '}'].includes(token)) depth--;
-    current.push(token);
-    if ((token === 'do' || token === 'end') && depth === 0) {
-      result.push(current);
-      current = [];
-    }
-  });
-  if (current.length) result.push(current);
+  gemfileTokens(content, (tokens) => result.push(tokens));
   return result;
 };

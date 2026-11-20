@@ -190,6 +190,7 @@ class FakeScope/`],
   ['quoted interpolation', `/#{"a/b"}
 end
 suffix/`],
+  ['percent string with a closing brace and division in interpolation', '/#{ %q!}!.ord / 2 }/'],
   ['percent string interpolation', `/#{{ value: %q{a/b} }.fetch(:value)}
 end
 suffix/`],
@@ -288,6 +289,25 @@ gem 'rack', path: '/rack'`;
 end`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('keeps a puts parameter local to its method when classifying a later regexp', () => {
+  const gemfile = `def helper(puts)
+  if puts
+    puts /2
+  end
+  puts /2
+end
+group :test do
+  puts /prefix
+class FakeScope
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 test('preserves a gem declaration between local division and a multiline regexp', () => {
