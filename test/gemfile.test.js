@@ -144,6 +144,21 @@ test('ignores heredoc openers in strings and comments', () => {
 });
 
 [
+  ['non-interpolated', '%q{#{literal}\nclass FakeScope}'],
+  ['interpolated', '%Q!#{"!"}\nmodule FakeScope!'],
+].forEach(([name, literal]) => {
+  test(`preserves group boundaries across a multiline ${name} percent string`, () => {
+    const gemfile = `group :test do
+  message = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+[
   ['slash delimiter', String.raw`/prefix\/suffix
 class FakeScope
 module FakeNamespace/ix`],

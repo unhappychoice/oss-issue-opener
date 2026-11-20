@@ -10,7 +10,7 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#')) continue;
     if (expressionExpected && (token === '?' || token === '/' || token === '%')) {
-      const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
+      const end = token === '?' ? characterEnd(content, match.index) : delimitedLiteralEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
@@ -59,19 +59,22 @@ const characterEnd = (content: string, start: number): number | undefined => {
   return character.test(content) ? character.lastIndex : undefined;
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%r([^\w\s])/y;
+const delimitedLiteralEnd = (content: string, start: number): number | undefined => {
+  const opening = /\/|%([qQwWiIxrs]?)([^\w\s])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
 
-  const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
-  if (end === undefined) return undefined;
+  const [, type, delimiter] = match;
+  const end = literalEnd(content, opening.lastIndex, delimiter ?? '/', percentInterpolates(type));
+  if (end === undefined || (delimiter !== undefined && type !== 'r')) return end;
   const options = /[imxounes]*/y;
   options.lastIndex = end;
   options.exec(content);
   return options.lastIndex;
 };
+
+const percentInterpolates = (type: string | undefined): boolean => !/^[qwis]$/.test(type ?? '');
 
 const literalEnd = (content: string, start: number, delimiter: string, interpolates: boolean): number | undefined => {
   const closing = pairedDelimiters.get(delimiter) ?? delimiter;
@@ -100,7 +103,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   while ((part = parts.exec(content)) !== null) {
     const delimiter = part[1] ?? part[3];
     if (delimiter !== undefined) {
-      const interpolates = part[1] !== "'" && !/^[qwis]$/.test(part[2] ?? '');
+      const interpolates = part[1] !== "'" && percentInterpolates(part[2]);
       const end = literalEnd(content, parts.lastIndex, delimiter, interpolates);
       if (end === undefined) return undefined;
       parts.lastIndex = end;
