@@ -61,7 +61,7 @@ export const checkPendingRelease = async (
   const defaultBranch = await getBranch();
   if (!defaultBranch) return { status: 'up-to-date' };
 
-  const { baseSha, headSha, files, commits } = await compareCommits(
+  const { baseSha, headSha, files, getCommits } = await compareCommits(
     owner, repo, `tags/${latestTag}`, `heads/${defaultBranch}`
   );
   if (files.length === 0) return { status: 'up-to-date' };
@@ -75,7 +75,8 @@ export const checkPendingRelease = async (
 
   const changedDependencyTypes = getDependencyProjectTypes(files);
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
-  const dependencyUpdates = await findDependencyUpdates(owner, repo, commits, dependencyTypes, headSha, getPinnedContents);
+  const dependencyUpdates = dependencyTypes.length === 0 ? []
+    : await findDependencyUpdates(owner, repo, await getCommits(), dependencyTypes, headSha, getPinnedContents);
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
   return changedSources.length > 0 || dependencyUpdates.length > 0
@@ -91,7 +92,6 @@ const findDependencyUpdates = async (
   headSha: string,
   getContents: GetContents
 ): Promise<DependencyUpdate[]> => {
-  if (types.length === 0) return [];
   const checkers = new Map(types.map((type) => [type, createDependencyChecker(owner, repo, type, getContents, headSha)]));
   const bumps = commits.flatMap(({ sha, message }) => {
     const bump = parseBumpCommit(message);

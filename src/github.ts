@@ -156,27 +156,32 @@ export const compareCommits = async (
   repo: string,
   base: string,
   head: string
-): Promise<{ baseSha: string; headSha: string; files: string[]; commits: ComparedCommit[] }> => {
+): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommit[]> }> => {
   const { repos } = getOctokit();
   const [{ data: baseCommit }, { data: headCommit }] = await Promise.all([
     repos.getCommit({ owner, repo, ref: base }),
     repos.getCommit({ owner, repo, ref: head }),
   ]);
   const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
-  const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
+  const per_page = 100;
+  const { data } = await repos.compareCommits({ ...endpoints, per_page, page: 1 });
+  const files = (data.files?.length ?? 0) >= 300
+    ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, headCommit.commit?.tree?.sha)
+    : [...new Set(data.files?.flatMap((f) =>
+      f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
+    ) ?? [])];
 
-  for (let page = 1; ; page++) {
-    const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
-    if (page === 1) {
-      result.files = (data.files?.length ?? 0) >= 300
-        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, headCommit.commit?.tree?.sha)
-        : [...new Set(data.files?.flatMap((f) =>
-          f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
-        ) ?? [])];
+  const getCommits = async (): Promise<ComparedCommit[]> => {
+    let pageCommits = data.commits;
+    const commits: ComparedCommit[] = [];
+    for (let page = 2; ; page++) {
+      commits.push(...pageCommits.map(({ sha, commit }) => ({ sha, message: commit.message })));
+      if (pageCommits.length < per_page) return commits;
+      pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
     }
-    result.commits.push(...data.commits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-    if (data.commits.length < 100) return result;
-  }
+  };
+
+  return { baseSha: endpoints.base, headSha: endpoints.head, files, getCommits };
 };
 
 export const listOpenIssues = async (
