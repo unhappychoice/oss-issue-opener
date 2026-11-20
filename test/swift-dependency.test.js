@@ -3,7 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 afterEach(() => mock.restoreAll());
@@ -100,7 +100,7 @@ cases.forEach(([name, content, pkg, expected]) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg, from: '1.0.0', to: '1.1.0' }],
-      compareUrl: 'https://github.com/owner/repo/compare/v1.0.0...main',
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });

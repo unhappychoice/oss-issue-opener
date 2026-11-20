@@ -30,18 +30,18 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
   return repos;
 };
 
-export const getRepoContents = async (owner: string, repo: string, path = ''): Promise<string[]> => {
+export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
   try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path });
-    return Array.isArray(data) ? data.map((f) => f.name) : [];
+    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
+    return Array.isArray(data) ? data.filter((entry) => entry.type !== 'dir').map((entry) => entry.name) : [];
   } catch {
     return [];
   }
 };
 
-export const getFileContent = async (owner: string, repo: string, path: string): Promise<string> => {
+export const getFileContent = async (owner: string, repo: string, path: string, ref?: string): Promise<string> => {
   try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path });
+    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
     if ('content' in data && data.content) {
       return Buffer.from(data.content, 'base64').toString('utf-8');
     }
@@ -58,6 +58,18 @@ export const getDefaultBranch = async (owner: string, repo: string): Promise<str
   } catch {
     return null;
   }
+};
+
+export type BranchHead = { sha: string; treeSha: string };
+
+export const getDefaultBranchHead = async (
+  owner: string, repo: string, listedBranch?: string | null
+): Promise<BranchHead | undefined> => {
+  const branch = listedBranch || await getDefaultBranch(owner, repo);
+  if (!branch) return undefined;
+
+  const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
+  return { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha };
 };
 
 export const getCommitStatus = async (
@@ -145,22 +157,19 @@ export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
-  head: string
-): Promise<{ files: string[]; commits: ComparedCommit[] }> => {
+  head: BranchHead
+): Promise<{ baseSha: string; headSha: string; files: string[]; commits: ComparedCommit[] }> => {
   const { repos } = getOctokit();
-  const [{ data: baseCommit }, { data: headCommit }] = await Promise.all([
-    repos.getCommit({ owner, repo, ref: base }),
-    repos.getCommit({ owner, repo, ref: head }),
-  ]);
-  const result = { files: [] as string[], commits: [] as ComparedCommit[] };
-  if (baseCommit.sha === headCommit.sha) return result;
+  const { data: baseCommit } = await repos.getCommit({ owner, repo, ref: base });
+  const endpoints = { owner, repo, base: baseCommit.sha, head: head.sha };
+  const result = { baseSha: endpoints.base, headSha: endpoints.head, files: [] as string[], commits: [] as ComparedCommit[] };
+  if (result.baseSha === result.headSha) return result;
 
-  const endpoints = { owner, repo, base: baseCommit.sha, head: headCommit.sha };
   for (let page = 1; ; page++) {
     const { data } = await repos.compareCommits({ ...endpoints, per_page: 100, page });
     if (page === 1) {
       result.files = (data.files?.length ?? 0) >= 300
-        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, headCommit.commit?.tree?.sha)
+        ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
         : [...new Set(data.files?.flatMap((f) =>
           f.status === 'renamed' && f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]
         ) ?? [])];

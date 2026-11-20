@@ -42,16 +42,19 @@ const expectFailures = async (deps, expected) => {
 
 test('preserves GitHub read failures and waits for the remaining notifications', async () => {
   const checksFailure = new Error('Check runs HTTP 503');
+  const statusesFailure = new Error('Commit statuses HTTP 503');
   const releasesFailure = new Error('Releases HTTP 503');
   initMockOctokit('test-token');
   const client = getOctokit();
+  mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo), commit: { tree: { sha: 'head-tree' } } } } }));
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => ({ data: { statuses: [
-    { state: repo === 'broken' ? 'success' : 'failure', context: 'build' },
-  ] } }));
+  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => {
+    if (repo === 'last') throw statusesFailure;
+    return { data: { statuses: [{ state: 'failure', context: 'build' }] } };
+  });
   mock.method(client, 'paginate', async (_route, { repo }) => {
     if (repo === 'broken') throw checksFailure;
-    return [];
+    return repo === 'last' ? [{ status: 'completed', conclusion: 'failure', name: 'test suite' }] : [];
   });
   mock.method(client.repos, 'listReleases', async ({ repo }) => {
     if (repo === 'first') throw releasesFailure;
@@ -70,14 +73,17 @@ test('preserves GitHub read failures and waits for the remaining notifications',
   await assert.rejects(runChecks(deps), (error) => {
     assert.ok(error instanceof AggregateError);
     const causes = new Map(error.errors.map(({ message, cause }) => [message, cause]));
-    assert.equal(error.errors.length, 2);
+    assert.equal(error.errors.length, 3);
     assert.equal(causes.get('Failed owner/broken: CI investigation'), checksFailure);
+    assert.equal(causes.get('Failed owner/last: CI investigation'), statusesFailure);
     assert.equal(causes.get('Failed owner/first: release investigation'), releasesFailure);
     assert.deepEqual(batches.map((issues) => issues.map(({ repo, type }) => [repo, type])), [[
       ['owner/first', 'ci-failure'],
-      ['owner/broken', 'pending-release'],
+      ['owner/broken', 'ci-failure'], ['owner/broken', 'pending-release'],
       ['owner/last', 'ci-failure'], ['owner/last', 'pending-release'],
     ]]);
+    assert.match(batches[0].find(({ repo, type }) => repo === 'owner/broken' && type === 'ci-failure').body, /build/);
+    assert.match(batches[0].find(({ repo, type }) => repo === 'owner/last' && type === 'ci-failure').body, /test suite/);
     return true;
   });
 });
@@ -231,10 +237,13 @@ test('reports failures even when there are no notifications to create', async ()
   assert.equal(create.mock.callCount(), 0);
 });
 
+const headSha = (repo) => Buffer.from(repo).toString('hex').padEnd(40, '0');
+
 const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   initMockOctokit('test-token');
   const client = getOctokit();
   mock.method(client.repos, 'listReleases', async () => ({ data: releases }));
+  mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo), commit: { tree: { sha: 'head-tree' } } } } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
@@ -242,12 +251,22 @@ const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   return client.repos;
 };
 
-test('shares default branches per repository and refreshes them on each scan', async () => {
+test('shares default branch heads per repository and refreshes them on each scan', async () => {
   const repos = stubInvestigations();
   let branch = 'main';
   const lookup = mock.method(repos, 'get', async () => ({ data: { default_branch: branch } }));
-  const compared = mock.method(repos, 'compareCommits', async () => ({ data: {
-    files: [{ filename: 'src/example.ts' }], commits: [],
+  const getBranch = mock.method(repos, 'getBranch', async ({ repo, branch }) => {
+    const sha = commitSha(`${repo}/${branch}`);
+    return { data: { commit: { sha, commit: { tree: { sha: `${sha}-tree` } } } } };
+  });
+  const compared = mock.method(repos, 'compareCommits', async ({ page }) => ({ data: page === 1 ? {
+    files: Array.from({ length: 300 }, (_, index) => ({ filename: `docs/${index}.md` })),
+    merge_base_commit: { commit: { tree: { sha: 'merge-base-tree' } } },
+    commits: Array.from({ length: 100 }, (_, index) => ({ sha: `commit-${index}`, commit: { message: 'docs: update' } })),
+  } : { commits: [] } }));
+  const trees = mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => ({ data: {
+    truncated: false,
+    tree: tree_sha === 'merge-base-tree' ? [] : [{ path: 'src/example.ts', type: 'blob', mode: '100644', sha: 'new' }],
   } }));
   const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
 
@@ -257,16 +276,24 @@ test('shares default branches per repository and refreshes them on each scan', a
 
   assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params),
     [...Array(2)].flatMap(() => ['first', 'broken', 'last'].map((repo) => ({ owner: 'owner', repo }))));
-  assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
-    ['main', 'main', 'main', 'next', 'next', 'next'].map((branch) => commitSha(`heads/${branch}`)));
+  const expectedHeads = ['main', 'next'].flatMap((branch) => ['first', 'broken', 'last'].map((repo) => commitSha(`${repo}/${branch}`)));
+  assert.equal(getBranch.mock.callCount(), expectedHeads.length);
+  assert.deepEqual(repos.getCommit.mock.calls.map(({ arguments: [{ ref }] }) => ref), Array(6).fill('tags/v1'));
+  assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
+  assert.deepEqual(getOctokit().paginate.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
+  const pages = compared.mock.calls.map(({ arguments: [{ head, page }] }) => [head, page]);
+  assert.deepEqual(pages.filter(([, page]) => page === 1), expectedHeads.map((head) => [head, 1]));
+  assert.deepEqual(pages.filter(([, page]) => page === 2), expectedHeads.map((head) => [head, 2]));
+  assert.deepEqual(trees.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha),
+    expectedHeads.flatMap((head) => ['merge-base-tree', `${head}-tree`]));
   batches.forEach((issues, scan) => {
     assert.equal(issues.length, 6);
     issues.filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
       assert.ok(body.includes('[build](https://example.com/build)'));
     });
-    issues.filter(({ type }) => type === 'pending-release').forEach(({ body }) => {
+    issues.filter(({ type }) => type === 'pending-release').forEach(({ body, repo }) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`v1...${scan === 0 ? 'main' : 'next'}`));
+      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${commitSha(`${repo.split('/')[1]}/${scan === 0 ? 'main' : 'next'}`)}`));
     });
   });
 });
@@ -282,12 +309,13 @@ test('shares the default branch when release comparison is empty', async () => {
 
   assert.equal(lookup.mock.callCount(), 3);
   assert.equal(contents.mock.callCount(), 0);
+  assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Types:')));
   assert.deepEqual(batches[0].map(({ type }) => type), Array(3).fill('ci-failure'));
 });
 
 test('reports up to date without comparing or listing root contents when both refs resolve to the same commit', async () => {
   const repos = stubInvestigations();
-  const resolve = mock.method(repos, 'getCommit', async () => ({ data: { sha: commitSha('heads/main') } }));
+  const resolve = mock.method(repos, 'getCommit', async () => ({ data: { sha: headSha('repo') } }));
   const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
   const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
   const { deps, batches } = setup({
@@ -299,7 +327,8 @@ test('reports up to date without comparing or listing root contents when both re
 
   await runChecks(deps);
 
-  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'heads/main']);
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1']);
+  assert.equal(repos.getBranch.mock.callCount(), 1);
   assert.equal(compare.mock.callCount(), 0);
   assert.equal(contents.mock.callCount(), 0);
   assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Release: up to date')));
@@ -348,8 +377,56 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   assert.equal(repos.listReleases.mock.callCount(), 3);
   assert.equal(tags.mock.callCount(), 3);
   assert.equal(contents.mock.callCount(), 0);
+  assert.equal(repos.getBranch.mock.callCount(), 0);
   assert.equal(console.log.mock.calls.filter(({ arguments: [line] }) => line.includes('Release: no tags found')).length, 3);
+  assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Types:')));
   assert.deepEqual(batches, []);
+});
+
+test('notifies about a production bump at the compared head after the default branch advances', async () => {
+  const repos = stubInvestigations();
+  const pinnedHead = commitSha('heads/main');
+  let branchHead = pinnedHead;
+  mock.method(repos, 'getBranch', async () => ({
+    data: { commit: { sha: branchHead, commit: { tree: { sha: 'head-tree' } } } },
+  }));
+  mock.method(repos, 'getCommit', async ({ ref }) => ({
+    data: ref === 'bump'
+      ? { files: [{ filename: 'package.json' }] }
+      : { sha: commitSha(ref) },
+  }));
+  mock.method(repos, 'compareCommits', async ({ head }) => {
+    assert.equal(head, pinnedHead);
+    branchHead = commitSha('advanced');
+    return { data: {
+      files: [{ filename: 'package.json' }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 1.1.0' } }],
+    } };
+  });
+  const content = mock.method(repos, 'getContent', async ({ path, ref = branchHead }) => {
+    const manifest = ref === pinnedHead
+      ? { dependencies: { runtime: '1.1.0' } }
+      : { devDependencies: { runtime: '1.1.0' } };
+    return { data: path === ''
+      ? [{ name: 'package.json' }]
+      : { content: Buffer.from(JSON.stringify(manifest)).toString('base64') } };
+  });
+  const { deps, batches } = setup({
+    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+    checkPendingRelease,
+    detectProjectTypes,
+  });
+
+  await runChecks(deps);
+
+  const issues = batches.flat();
+  assert.deepEqual(issues.map(({ type }) => type), ['pending-release']);
+  assert.match(issues[0].body, /runtime.*1\.0\.0.*1\.1\.0/);
+  assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Types: node')));
+  assert.deepEqual(content.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]), [
+    ['', pinnedHead], ['package.json', pinnedHead],
+  ]);
 });
 
 test('reuses one root listing per repository after finding a tag baseline', async () => {
@@ -448,17 +525,20 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params.repo),
       ['fallback-0', 'fallback-1', 'fallback-2']);
     const branches = [...listed.map(({ default_branch }) => default_branch), ...Array(3).fill('fallback')];
-    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), branches);
-    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), branches);
+    const heads = repos.getBranch.mock.calls.map(({ arguments: [params] }) => params);
+    assert.deepEqual(heads.map(({ branch }) => branch), branches);
+    const shas = heads.map(({ repo }) => headSha(repo));
+    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), shas);
+    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), shas);
     assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
-      branches.map((branch) => commitSha(`heads/${branch}`)));
+      shas);
     assert.equal(batches[0].length, 206);
     batches[0].filter(({ type }) => type === 'ci-failure').forEach(({ body }) => {
       assert.ok(body.includes('[build](https://example.com/build)'));
     });
     batches[0].filter(({ type }) => type === 'pending-release').forEach(({ body }, index) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`v1...${branches[index]}`));
+      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${shas[index]}`));
     });
   });
 });
