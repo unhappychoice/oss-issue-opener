@@ -8,7 +8,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#')) continue;
-    if ((token === '/' || token === '%') && /^(?:\n|;|=|=>|~|\(|\[|,|if|elsif|unless)$/.test(previous)) {
+    if ((token === '/' || token === '%') && /^(?:\n|;|=|=>|~|\(|\[|,|\?|:|if|elsif|unless)$/.test(previous)) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -46,7 +46,7 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const regexpDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const regexpEnd = (content: string, start: number): number | undefined => {
   const opening = /\/|%r([^\w\s])/y;
@@ -54,20 +54,48 @@ const regexpEnd = (content: string, start: number): number | undefined => {
   const match = opening.exec(content);
   if (!match) return undefined;
 
-  const delimiter = match[1] ?? '/';
-  const closing = regexpDelimiters.get(delimiter) ?? delimiter;
+  const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
+  if (end === undefined) return undefined;
+  const options = /[imxounes]*/y;
+  options.lastIndex = end;
+  options.exec(content);
+  return options.lastIndex;
+};
+
+const literalEnd = (content: string, start: number, delimiter: string, interpolates: boolean): number | undefined => {
+  const closing = pairedDelimiters.get(delimiter) ?? delimiter;
   const parts = /\\[\s\S]|[\s\S]/y;
-  parts.lastIndex = opening.lastIndex;
+  parts.lastIndex = start;
   let depth = 1;
   let part: RegExpExecArray | null;
   while ((part = parts.exec(content)) !== null) {
-    if (delimiter !== closing && part[0] === delimiter) depth++;
-    if (part[0] === closing && --depth === 0) {
-      const options = /[imxounes]*/y;
-      options.lastIndex = parts.lastIndex;
-      options.exec(content);
-      return options.lastIndex;
+    if (interpolates && part[0] === '#' && content[parts.lastIndex] === '{') {
+      const end = interpolationEnd(content, parts.lastIndex + 1);
+      if (end === undefined) return undefined;
+      parts.lastIndex = end;
+      continue;
     }
+    if (delimiter !== closing && part[0] === delimiter) depth++;
+    if (part[0] === closing && --depth === 0) return parts.lastIndex;
+  }
+  return undefined;
+};
+
+const interpolationEnd = (content: string, start: number): number | undefined => {
+  const parts = /(['"\x60])|%([qQwWiIxrs]?)([^\w\s])|#[^\n]*|[\s\S]/y;
+  parts.lastIndex = start;
+  let depth = 1;
+  let part: RegExpExecArray | null;
+  while ((part = parts.exec(content)) !== null) {
+    const delimiter = part[1] ?? part[3];
+    if (delimiter !== undefined) {
+      const interpolates = part[1] !== "'" && !/^[qwis]$/.test(part[2] ?? '');
+      const end = literalEnd(content, parts.lastIndex, delimiter, interpolates);
+      if (end === undefined) return undefined;
+      parts.lastIndex = end;
+    }
+    if (part[0] === '{') depth++;
+    if (part[0] === '}' && --depth === 0) return parts.lastIndex;
   }
   return undefined;
 };

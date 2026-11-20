@@ -153,6 +153,16 @@ module FakeNamespace}ix`],
   ['unpaired percent delimiter', `%r!prefix
 class FakeScope
 module FakeNamespace!ix`],
+  ['true ternary branch', `condition ? /prefix
+class FakeScope/ : nil`],
+  ['false ternary branch', `condition ? nil : /prefix
+module FakeScope/`],
+  ['quoted interpolation', `/#{"a/b"}
+end
+suffix/`],
+  ['percent string interpolation', `/#{{ value: %q{a/b} }.fetch(:value)}
+end
+suffix/`],
 ].forEach(([name, regexp]) => {
   test(`preserves group boundaries across a multiline regexp with a ${name}`, () => {
     const gemfile = `group :test do
