@@ -123,33 +123,6 @@ test('Gemfile fallback matches package names literally', async () => {
   assert.equal(await check('['), false);
 });
 
-['/prefix\nclass FakeScope\nsuffix/', '%r!prefix\nclass FakeScope\nsuffix!'].forEach((literal) => {
-  test(`Gemfile fallback preserves exclusions after an unless condition with ${literal.split('\n')[0]}`, async () => {
-    mockRubyRepository('', `group :test do
-  unless ${literal}
-    gem 'rspec'
-  end
-end
-gem 'rack'`);
-    assert.equal(await check('rspec'), false);
-    assert.equal(await check('rack'), true);
-  });
-});
-
-['warn', 'log'].forEach((command) => {
-  test(`Gemfile fallback preserves exclusions around a multiline regexp passed to ${command}`, async () => {
-    mockRubyRepository('', `group :test do
-  ${command} /prefix
-class FakeScope
-suffix/
-  gem 'rspec'
-end
-gem 'rack'`);
-    assert.equal(await check('rspec'), false);
-    assert.equal(await check('rack'), true);
-  });
-});
-
 test('Gemfile fallback preserves group exclusions for literal package names', async () => {
   mockRubyRepository('', `group :test do
     gem '(a+)+$'

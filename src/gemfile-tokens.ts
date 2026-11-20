@@ -1,33 +1,14 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
+  const pattern = /#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const assignment = /[^\S\n]*=(?!=|>|~)/y;
-  const localNames = new Set<string>();
-  const scopes: Scope[] = [];
   let previous = '\n';
   let classHeader = false;
-  let commandArgument = false;
-  let loopHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
-    let token = match[0];
+    const token = match[0];
     if (token.startsWith('#')) continue;
-    const expectsExpression = expressionKeywords.test(previous) || /^(?:\n|;|=|=>|~|!|\(|\[|,|\?|:|&&|\|\|)$/.test(previous);
-    if (token === '?' && expectsExpression && content[pattern.lastIndex] === '!') {
-      token = '?!';
-      pattern.lastIndex++;
-    }
-    if (((token === '/' || token === '%') && expectsExpression) ||
-      (token === '/' && commandArgument && /\S/.test(content[pattern.lastIndex] ?? ''))) {
-      const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
-        token = content.slice(match.index, end);
-        pattern.lastIndex = end;
-      }
-    }
     if (token.startsWith('<<') && classHeader) {
-      // In a singleton class header, << introduces the receiver.
       pattern.lastIndex = match.index + 2;
       tokens.push('<<');
       previous = '<<';
@@ -35,20 +16,8 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
-      updateScopes(scopes, token, previous, loopHeader, content, pattern.lastIndex);
-      if (/^(?:\n|;|do)$/.test(token)) loopHeader = false;
-      if (statementBoundary.test(previous) && /^(?:while|until|for)$/.test(token)) loopHeader = true;
-      if (localName.test(token) && previous !== '.') {
-        assignment.lastIndex = pattern.lastIndex;
-        if (token.endsWith('=') || assignment.test(content)) localNames.add(token.replace(/=$/, ''));
-      }
-      commandArgument = commandName.test(token) && statementBoundary.test(previous) &&
-        !localNames.has(token) && !scopes.some(({ names }) => names.includes(token)) &&
-        /[^\S\n]/.test(content[pattern.lastIndex] ?? '');
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
-      previous = expressionKeywords.test(token) && (previous === '.' || previous === ':')
-        ? `${previous}${token}`
-        : token;
+      previous = token;
     }
     if (token.startsWith('<<')) {
       const indented = /^<<[-~]/.test(token);
@@ -65,81 +34,6 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
-};
-
-type Scope = { close: 'end' | '}'; names: string[] };
-
-const statementBoundary = /^(?:\n|;|do)$/;
-const scopeKeyword = /^(?:if|unless|case|begin|while|until|for|def|class|module)$/;
-
-const updateScopes = (scopes: Scope[], token: string, previous: string, loopHeader: boolean, content: string, offset: number): void => {
-  if (token === scopes.at(-1)?.close && previous !== '.') {
-    scopes.pop();
-  } else if (token === '{' || (token === 'do' && !loopHeader && previous !== '.')) {
-    const parameters = /\s*\|\s*((?:[*&]{0,2}[a-z_]\w*\s*(?:[,;]\s*|(?=\|)))+)\|/y;
-    parameters.lastIndex = offset;
-    const names = parameters.exec(content)?.[1].match(/[a-z_]\w*/g) ?? [];
-    scopes.push({ close: token === '{' ? '}' : 'end', names });
-  } else if ((statementBoundary.test(previous) || previous === '=') && scopeKeyword.test(token)) {
-    scopes.push({ close: 'end', names: [] });
-  }
-};
-
-const expressionKeywords = /^(?:if|unless|case|when)$/;
-const localName = /^[a-z_]\w*=?$/;
-const commandName = /^(?!(?:true|false|nil|self|end)\b)[a-z_]\w*[!?]?$/;
-const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
-
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%r([^a-zA-Z0-9\u0080-\uffff])/y;
-  opening.lastIndex = start;
-  const match = opening.exec(content);
-  if (!match) return undefined;
-  const delimiter = match[1] ?? '/';
-  const end = literalEnd(content, opening.lastIndex, delimiter, true);
-  if (end === undefined) return undefined;
-  const options = /[imxounes]*/y;
-  options.lastIndex = end;
-  options.exec(content);
-  return options.lastIndex;
-};
-
-const literalEnd = (content: string, start: number, delimiter: string, interpolates: boolean): number | undefined => {
-  const closing = pairedDelimiters.get(delimiter) ?? delimiter;
-  let depth = 1;
-  let offset = start;
-  while (offset < content.length) {
-    const char = content[offset++];
-    if (char === closing) {
-      if (--depth === 0) return offset;
-    } else if (char === '\\') {
-      offset++;
-    } else if (interpolates && char === '#' && content[offset] === '{') {
-      const end = interpolationEnd(content, offset + 1);
-      if (end === undefined) return undefined;
-      offset = end;
-    } else if (char === delimiter) {
-      depth++;
-    }
-  }
-  return undefined;
-};
-
-const interpolationEnd = (content: string, start: number): number | undefined => {
-  const part = /%([qQ])([^a-zA-Z0-9\u0080-\uffff])|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|#[^\n]*|[\s\S]/y;
-  part.lastIndex = start;
-  let depth = 1;
-  let match: RegExpExecArray | null;
-  while ((match = part.exec(content)) !== null) {
-    if (match[2]) {
-      const end = literalEnd(content, part.lastIndex, match[2], match[1] === 'Q');
-      if (end === undefined) return undefined;
-      part.lastIndex = end;
-    }
-    if (match[0] === '{') depth++;
-    if (match[0] === '}' && --depth === 0) return part.lastIndex;
-  }
-  return undefined;
 };
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {
