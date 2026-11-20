@@ -186,6 +186,20 @@ suffix!x
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['&&', '||'].forEach((operator) => {
+  test(`ignores scope tokens inside a multiline regexp after ${operator}`, () => {
+    const gemfile = `group :test do
+  matcher = enabled ${operator} /prefix
+class FakeScope
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['/prefix\nclass FakeScope\nsuffix/', '%r{prefix\nclass FakeScope\nsuffix}'].forEach((literal) => {
   test(`ignores scope tokens inside a negated ${literal.startsWith('/') ? 'slash' : 'percent'} regexp`, () => {
     const gemfile = `group :test do
