@@ -219,6 +219,7 @@ const regexpExpressions = [
   ['numeric prefix in a regexp passed to puts', 'puts /2\nclass RegexText\nsuffix/'],
   ['slash literal after comparing puts', 'puts == nil\nputs /prefix\nclass RegexText\nsuffix/'],
   ['slash literal after assigning other locals', '(output, count) = [8, 1]\nputs /prefix\nclass RegexText\nsuffix/'],
+  ['slash literal after nested assignment to other locals', '((output, count), rest) = [[8, 1], 2]\nputs /prefix\nclass RegexText\nsuffix/'],
   ['qualified puts after a local assignment', 'puts = 8\nKernel.puts /prefix\nclass RegexText\nsuffix/'],
   ['percent regexp passed to puts', 'puts %r{prefix\nmodule RegexText\nsuffix}'],
   ['return before a slash literal', 'def matcher\n  return /prefix\nclass RegexText\nsuffix/\nend'],
@@ -278,6 +279,9 @@ test('preserves gem declarations between division expressions', () => {
   'puts ^= 8',
   '(puts, count) = [8, 1]',
   'puts, count = [8, 1]',
+  '((puts, count), rest) = [[8, 1], 2]',
+  'count, (puts, *rest) = [1, [8, 2]]',
+  '((count,\n  (value, puts)), tail) = [[1, [2, 8]], 3]',
 ].forEach((assignment) => {
   ['/ 2', '/2'].forEach((division) => {
     test(`preserves gem declarations after ${assignment} and puts ${division}`, () => {

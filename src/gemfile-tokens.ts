@@ -16,7 +16,7 @@ export const gemfileTokens = (content: string): string[] => {
       const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
       const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
       if (token === '=' || compoundAssignment) {
-        const assignsPuts = barePuts || (!compoundAssignment && assignsParallelPuts(tokens, index));
+        const assignsPuts = barePuts || (!compoundAssignment && assignsParallelPuts(tokens));
         if (assignsPuts && (compoundAssignment || !/^[=~]/.test(content[pattern.lastIndex] ?? '')) &&
           !declaresPutsParameter(tokens)) {
           putsAssignments.add(currentLocalScope(tokens).index);
@@ -233,12 +233,20 @@ const hasPutsParameter = (parameters: string[]): boolean => {
   return false;
 };
 
-const assignsParallelPuts = (tokens: string[], end: number): boolean => {
-  let boundary = end;
-  while (boundary >= 0 && tokens[boundary] !== '\n' && tokens[boundary] !== ';') boundary--;
-  const target = tokens.slice(boundary + 1, end + 1).filter((token) => !isSpacing(token)).join(' ');
-  const match = /^(?:\( (\w+(?: , \w+)+) \)|(\w+(?: , \w+)+))$/.exec(target);
-  return (match?.[1] ?? match?.[2] ?? '').split(' , ').includes('puts');
+const assignmentTarget = String.raw`(?:(?:\* )?\w+|\*)`;
+const assignmentList = `${assignmentTarget}(?: , ${assignmentTarget})*(?: ,)?`;
+const groupedAssignment = new RegExp(String.raw`\( (${assignmentList}) \)`, 'g');
+const parallelAssignment = new RegExp(`^${assignmentList}$`);
+const putsTarget = /(?:^| )puts(?: |$)/;
+
+const assignsParallelPuts = (tokens: string[]): boolean => {
+  let targets = splitGemfileStatements(tokens).at(-1)?.join(' ') ?? '';
+  let previous: string;
+  do {
+    previous = targets;
+    targets = targets.replace(groupedAssignment, (_, group: string) => putsTarget.test(group) ? 'puts' : '_');
+  } while (targets !== previous);
+  return parallelAssignment.test(targets) && putsTarget.test(targets);
 };
 
 const previousSignificantToken = (tokens: string[], index: number): number => {
