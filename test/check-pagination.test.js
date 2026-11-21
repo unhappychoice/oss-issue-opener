@@ -96,7 +96,8 @@ test('reports a failed check on the oldest of 1,001 check suites', async (t) => 
     return respond('check_runs', suiteId === 1 ? [...Array(100).fill(success), failure] : [success]);
   });
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo', async () => ({ sha, treeSha: 'head-tree' })), {
+  const getHead = async () => ({ status: 'found', head: { sha, treeSha: 'head-tree' } });
+  assert.deepEqual(await checkCIStatus('owner', 'repo', getHead), {
     status: 'failure',
     failedChecks: [{ name: failure.name, url: failure.html_url }],
   });
