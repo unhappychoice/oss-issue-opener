@@ -551,6 +551,38 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   });
 });
 
+for (const hasSourceChange of [true, false]) {
+  test(`reports comparison page failures ${hasSourceChange ? 'with' : 'without'} a confirmed source change`, async () => {
+    const repos = stubInvestigations();
+    const failure = Object.assign(new Error('Comparison page 2 HTTP 503'), { status: 503 });
+    const compare = mock.method(repos, 'compareCommits', async ({ page }) => {
+      if (page === 2) throw failure;
+      return { data: {
+        files: ['package-lock.json', ...(hasSourceChange ? ['src/index.ts'] : [])].map((filename) => ({ filename })),
+        commits: Array.from({ length: 100 }, (_, index) => ({
+          sha: `commit-${index}`, commit: { message: 'docs: update documentation' },
+        })),
+      } };
+    });
+    mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+    const { deps, batches } = setup({
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
+      checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    await expectFailures(deps, [['Failed owner/repo: release investigation', failure]]);
+    assert.deepEqual(compare.mock.calls.map(({ arguments: [{ page }] }) => page), [1, 2]);
+    const status = hasSourceChange ? 'pending' : 'incomplete';
+    assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes(`Release: ${status}`)));
+    assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), hasSourceChange ? [['pending-release']] : []);
+    if (hasSourceChange) assert.match(batches[0][0].body, /src\/index\.ts/);
+  });
+}
+
 test('submits confirmed release notifications before reporting incomplete bump file lists', async () => {
   const repos = stubInvestigations();
   mock.method(repos, 'getCommit', async ({ ref, page }) => {

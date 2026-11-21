@@ -138,7 +138,7 @@ test('returns no changed files or commits for matching SHAs without comparing', 
   assert.equal(compare.mock.callCount(), 0);
 });
 
-test('propagates failures on subsequent comparison pages', async (t) => {
+test('reports an incomplete release investigation when subsequent comparison pages fail', async (t) => {
   const repos = stubRelease(t);
   const failure = new Error('Comparison page failed');
   t.mock.method(repos, 'compareCommits', async ({ page }) => {
@@ -146,7 +146,10 @@ test('propagates failures on subsequent comparison pages', async (t) => {
     return { data: { files: [{ filename: 'package-lock.json' }], commits: commits(100) } };
   });
 
-  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), (error) => error === failure);
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'incomplete',
+    lookupErrors: [failure],
+  });
 });
 
 const stubCappedComparison = (t, extraFiles = []) => {

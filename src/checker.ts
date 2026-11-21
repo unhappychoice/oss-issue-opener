@@ -107,7 +107,12 @@ const findDependencyUpdates = async (
   getContents: GetContents
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
-  const commits = await getCommits();
+  let commits: ComparedCommit[];
+  try {
+    commits = await getCommits();
+  } catch (error) {
+    return { dependencyUpdates: [], lookupErrors: [error] };
+  }
   const checkers = types.map((type) => ({
     type,
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
