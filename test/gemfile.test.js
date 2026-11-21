@@ -357,6 +357,25 @@ gem 'rack', path: '/x'`;
   });
 });
 
+[
+  ['n', '[4]', 'n', ''],
+  ['(left, right), *rest', '[[[4, 6], 8]]', 'right', ' do'],
+].forEach(([targets, values, name, delimiter]) => {
+  test(`preserves group exclusions after compact division of for-loop target ${name}`, () => {
+    const gemfile = `group :test do
+  for ${targets} in ${values}${delimiter}
+    ${name} /2
+  end
+  ${name} /2
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves group exclusions when assigning the result of a command with a multiline regexp', () => {
   const gemfile = `group :test do
   result = warn /prefix

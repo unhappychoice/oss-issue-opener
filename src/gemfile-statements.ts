@@ -29,6 +29,16 @@ export const multipleAssignmentTargets = (tokens: string[]): string[] => {
   if (equals < 0) return [];
   const targets = tokens.slice(0, equals);
   if (!targets.includes(',') && !targets.includes('*')) return [];
+  return localTargets(targets);
+};
+
+export const forLoopTargets = (tokens: string[]): string[] => {
+  if (tokens[0] !== 'for') return [];
+  const separator = tokens.indexOf('in');
+  return separator < 0 ? [] : localTargets(tokens.slice(1, separator));
+};
+
+const localTargets = (targets: string[]): string[] => {
   const localName = /^[a-z_]\w*$/;
   const valid = targets.every((token, index) =>
     ['(', ')', ',', '*'].includes(token) ||
