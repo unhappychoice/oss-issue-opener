@@ -13,18 +13,18 @@ const scanGemfile = (content: string) => {
   let commandArgument = false;
   const statements: string[][] = [];
   const scopes = [new Set<string>()];
-  let assignedCommand: string | undefined;
+  const assignedLocals = new Set<string>();
   const parser = new GemfileStatements((statement) => {
     statements.push(statement);
     const parent = scopes.at(-1)!;
     const scope = gemfileScope(statement);
-    if (assignedCommand && statement[0] !== 'def') parent.add(assignedCommand);
-    assignedCommand = undefined;
+    if (statement[0] !== 'def') assignedLocals.forEach((name) => parent.add(name));
+    assignedLocals.clear();
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
     if (scope === 'isolated') scopes.push(new Set());
     if (scope === 'control') scopes.push(parent);
     if (scope === 'block') {
-      scopes.push(new Set([...parent, ...commandBlockParameters(content, pattern.lastIndex)]));
+      scopes.push(new Set([...parent, ...blockParameters(content, pattern.lastIndex)]));
     }
   });
   const append = (token: string): void => {
@@ -56,14 +56,12 @@ const scanGemfile = (content: string) => {
       continue;
     }
     if (!isSpacing(token)) {
-      const command = token.replace(/=$/, '');
-      if (regexpCommands.includes(command)) {
-        const bare = !['.', ':', '@', '$'].includes(previous);
-        if (bare && (token.endsWith('=') || isAssignment(content, pattern.lastIndex))) {
-          assignedCommand = command;
-        }
+      const name = token.replace(/=$/, '');
+      if (isCommandName(name) && !['.', ':', '@', '$'].includes(previous) &&
+        (token.endsWith('=') || isAssignment(content, pattern.lastIndex))) {
+        assignedLocals.add(name);
       }
-      commandArgument = regexpCommands.includes(token) && !scopes.at(-1)!.has(token) &&
+      commandArgument = isCommandName(token) && !scopes.at(-1)!.has(token) &&
         /^(?:\n|;|do)$/.test(previous) &&
         /[^\S\n]/.test(content.charAt(pattern.lastIndex));
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
@@ -96,14 +94,18 @@ const isCommandRegexpEnd = (content: string, start: number, end: number): boolea
   !/[\w'"`]/.test(content.charAt(end)) &&
   !/\n[\t ]*end\b[^\n]*\n[\s\S]*?^[\t ]*#[^\n]*\/[imxounes]*$/m.test(content.slice(start, end));
 
-const regexpCommands = ['puts', 'warn'];
+const isCommandName = (token: string): boolean =>
+  /^[a-z_]\w*[!?]?$/.test(token) &&
+  !/^(?:alias|and|begin|break|case|class|def|defined\?|do|else|elsif|end|ensure|false|for|if|in|module|next|nil|not|or|redo|rescue|retry|return|self|super|then|true|undef|unless|until|when|while|yield)$/.test(token);
 
-const commandBlockParameters = (content: string, start: number): string[] => {
+const blockParameters = (content: string, start: number): string[] => {
   const parameters = /\s*\|([^|]*)\|/y;
   parameters.lastIndex = start;
   const names = parameters.exec(content)?.[1] ?? '';
-  return regexpCommands.filter((command) =>
-    new RegExp(`(?:^|[,;(*&])\\s*${command}\\s*(?:$|[,;)=:])`).test(names));
+  return Array.from(
+    names.matchAll(/(?:^|[,;(*&])\s*([a-z_]\w*)\s*(?=$|[,;)=:])/g),
+    ([, name]) => name,
+  );
 };
 
 const isAssignment = (content: string, start: number): boolean => {

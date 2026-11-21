@@ -227,7 +227,7 @@ gem 'rack'`;
 });
 
 ['/x', '/rack', '/'].forEach((path) => {
-  ['warn', 'puts'].forEach((name) => {
+  ['warn', 'puts', 'helper'].forEach((name) => {
     test(`detects a gem with path ${path} after compact division of the ${name} block parameter`, () => {
       const gemfile = `group :test do
   [4].each do |${name}|
@@ -271,18 +271,20 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('preserves group exclusions after a multiline regexp passed to puts', () => {
-  const gemfile = `group :test do
+['puts', 'helper'].forEach((name) => {
+  test(`preserves group exclusions after a multiline regexp passed to ${name}`, () => {
+    const gemfile = `group :test do
   warn = 4
-  puts /prefix
+  ${name} /prefix
 class FakeClass
 /x
   gem 'rspec'
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [
@@ -306,7 +308,7 @@ pattern = /suffix/`;
   });
 });
 
-['warn', 'puts'].forEach((name) => {
+['warn', 'puts', 'helper'].forEach((name) => {
   test(`detects a production gem after compact division of a local variable named ${name}`, () => {
     const gemfile = `group :test do
   ${name} = 4
