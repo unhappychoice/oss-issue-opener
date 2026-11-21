@@ -45,13 +45,17 @@ const expectFailures = async (deps, expected) => {
   ['repository metadata', 'get', 503],
   ['listed branch head', 'getBranch', 503],
   ['repository metadata', 'get', 404, 'no-branch', 'no-branch'],
+  ['repository metadata without a default branch', 'get', 200, 'no-branch', 'no-branch'],
   ['listed branch head', 'getBranch', 404, 'no-ci', 'no-head'],
 ].forEach(([lookup, method, status, ciStatus, releaseStatus]) => {
   test(`handles HTTP ${status} from the shared ${lookup} lookup with a release baseline`, async () => {
     const cause = Object.assign(new Error(`HTTP ${status}`), { status });
     initMockOctokit('test-token');
     const { repos } = getOctokit();
-    const request = mock.method(repos, method, async () => { throw cause; });
+    const request = mock.method(repos, method, async () => {
+      if (status === 200) return { data: { default_branch: null } };
+      throw cause;
+    });
     mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
     const repository = method === 'get' ? { fullName: 'owner/repo' } : { fullName: 'owner/repo', defaultBranch: 'main' };
     const { deps, batches } = setup({
@@ -80,6 +84,7 @@ const expectFailures = async (deps, expected) => {
     }
 
     assert.equal(request.mock.callCount(), 1);
+    if (method === 'get') assert.equal(repos.getBranch.mock.callCount(), 0);
     assert.equal(repos.getCommit.mock.callCount(), 0);
     assert.deepEqual(batches, []);
     assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Release: up to date')));
