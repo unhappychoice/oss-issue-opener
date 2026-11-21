@@ -84,7 +84,7 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
   assert.equal(repos.getCommit.mock.calls.filter(({ arguments: [{ page }] }) => page !== undefined).length, 0);
-  assert.equal(repos.getContent.mock.callCount(), 1);
+  assert.deepEqual(repos.getContent.mock.calls.map(({ arguments: [{ path }] }) => path), ['package.json']);
 });
 
 [
