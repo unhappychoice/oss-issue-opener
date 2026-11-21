@@ -212,6 +212,7 @@ gem 'rack'`;
 
 [
   ['slash regexp', "pattern = /first\\/part\nclass Fake\nmodule Fake\ngem 'ignored'\nlast/im"],
+  ['regexp after unary bang', "pattern = !/first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp passed to puts', "puts /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
   ['regexp after and', "true and /first\nclass Fake\ngem 'ignored'\nlast/"],
@@ -272,6 +273,40 @@ test('keeps local puts division separate from the following gem path', () => {
 end
 puts = 12
 puts /2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+for (const separateScope of ['helper do', 'class Helpers', 'module Helpers', 'def helper']) {
+  test(`recognizes a puts regexp after a local assignment in ${separateScope}`, () => {
+    const gemfile = `${separateScope}
+  puts = 12
+end
+group :test do
+  puts /prefix
+class RegexText
+gem 'ignored'
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
+
+test('inherits an outer puts local in a block and retains assignments in conditionals', () => {
+  const gemfile = `if true
+  puts = 12
+end
+group :test do
+  puts /2
+  gem 'rspec'
+end
 gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);

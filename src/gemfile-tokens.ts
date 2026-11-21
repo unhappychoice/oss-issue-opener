@@ -1,8 +1,23 @@
-export const gemfileTokens = (content: string): string[] => {
+import { gemfileScopeKind, readGemfileStatements } from './gemfile-statements.js';
+
+export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  let localPuts = false;
+  const scopes = [{ localPuts: false }];
+  const statements = readGemfileStatements((statement) => {
+    if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
+    const kind = gemfileScopeKind(statement);
+    const scope = scopes.at(-1)!;
+    if (kind === 'shared') scopes.push(scope);
+    if (kind === 'block') scopes.push({ ...scope });
+    if (kind === 'isolated') scopes.push({ localPuts: false });
+    onStatement?.(statement);
+  });
+  const emit = (token: string): void => {
+    tokens.push(token);
+    statements.push(token);
+  };
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -11,42 +26,43 @@ export const gemfileTokens = (content: string): string[] => {
       const qualifier = tokens[previousSignificantToken(tokens, tokens.length - 1)];
       if (!['.', '@', '$', ':'].includes(qualifier ?? '') &&
         (token === 'puts=' || /^[^\S\n]*=(?![=~>])/.test(content.slice(pattern.lastIndex)))) {
-        localPuts = true;
+        scopes.at(-1)!.localPuts = true;
       }
     }
     if (token === '?' || token === '/' || token === '%') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
-      const putsRegexp = !localPuts && token === '/' && tokens[previous] === 'puts' &&
+      const putsRegexp = !scopes.at(-1)!.localPuts && token === '/' && tokens[previous] === 'puts' &&
         /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
       if (expectsExpression(tokens[previous] ?? '\n', qualifier) || putsRegexp) {
         const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
-          tokens.push('<literal>');
+          emit('<literal>');
           continue;
         }
       }
     }
     if (token.startsWith('<<')) {
       if (opensSingletonClass(tokens)) {
-        tokens.push('<<');
+        emit('<<');
         pattern.lastIndex = match.index + 2;
         continue;
       }
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
       pending.push({ delimiter, indented });
-      tokens.push('""');
+      emit('""');
       continue;
     }
-    tokens.push(token);
+    emit(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
         pattern.lastIndex = heredocEnd(content, pattern.lastIndex, delimiter, indented);
       });
     }
   }
+  statements.finish();
   return tokens;
 };
 
