@@ -246,7 +246,7 @@ another_ratio = total / size`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['receiver.if', 'receiver::!', 'receiver.return'].forEach((call) => {
+['receiver.if', 'receiver::!', 'receiver.return', 'receiver.not'].forEach((call) => {
   test(`preserves a production gem after dividing the result of ${call}`, () => {
     const gemfile = `ratio = ${call} / 2
 gem 'rack', path: '/rack'`;
@@ -290,17 +290,19 @@ gem 'rack'`;
   });
 });
 
-test('ignores a class keyword in a regexp after unary negation', () => {
-  const gemfile = `group :test do
-  matcher = !/prefix
+['!', 'not '].forEach((operator) => {
+  test(`ignores a class keyword in a regexp after ${operator.trim()}`, () => {
+    const gemfile = `group :test do
+  matcher = ${operator}/prefix
 class RegexText
 suffix/
   gem 'rspec'
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 ['&&', '||'].forEach((operator) => {
