@@ -226,8 +226,11 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['[warn]', '[0, warn]', '[0, *warn]', '[[warn]]', '[0, [1, [2, *warn]]]'].forEach((pattern) => {
-  test(`recognizes division after an array pattern binds warn with ${pattern}`, () => {
+[
+  '[warn]', '[0, warn]', '[0, *warn]', '[[warn]]', '[0, [1, [2, *warn]]]',
+  '{warn:}', '{other: 0, warn:}', '[{warn:}]', '{nested: {warn:}}',
+].forEach((pattern) => {
+  test(`recognizes division after a pattern binds warn with ${pattern}`, () => {
     const gemfile = `group :test do
   module TestHelpers
     class Matcher
@@ -250,10 +253,11 @@ matcher = /suffix/`;
   });
 });
 
-test('recognizes a warn regexp after a pinned array pattern expression', () => {
-  const gemfile = `group :test do
+['[^([[warn]])]', '{warn: 4}', '[^({warn: 4})]'].forEach((pattern) => {
+  test(`recognizes a warn regexp after a pattern without a binding in ${pattern}`, () => {
+    const gemfile = `group :test do
   case values
-  in [^([[warn]])]
+  in ${pattern}
     warn /prefix
 class RegexpText
 gem "ignored"
@@ -263,9 +267,10 @@ suffix/
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
 });
 
 [

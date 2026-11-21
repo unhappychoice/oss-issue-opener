@@ -16,7 +16,9 @@ export const gemfileStatementsFromTokens = (tokens: string[]): string[][] => {
       return;
     }
     if (token === '\n') return;
-    if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
+    const startsHashPattern = current.length === 1 && current[0] === 'in';
+    if (depth === 0 && token === '{' && current.length && !startsHashPattern &&
+      !['=', ',', '=>'].includes(current.at(-1)!)) {
       result.push([...current, 'do']);
       current = [];
       return;
@@ -78,7 +80,7 @@ type BindingScope = {
 const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): boolean => {
   if (statements.some((statement) =>
     assignsForTargets(statement, name) || assignsMultipleTargets(statement, name) ||
-    bindsArrayPatternTarget(statement, name) || bindsRescueTarget(statement, name))) {
+    bindsPatternTarget(statement, name) || bindsRescueTarget(statement, name))) {
     return true;
   }
   const tokens = statements.flatMap((statement) => [...statement, ';']);
@@ -108,20 +110,27 @@ const assignsForTargets = (statement: string[], name: string): boolean => {
   return separator > 1 && includesLocalTarget(statement.slice(1, separator), name);
 };
 
-const bindsArrayPatternTarget = (statement: string[], name: string): boolean => {
-  if (statement[0] !== 'in' || statement[1] !== '[') return false;
-  const delimiters = ['['];
+const bindsPatternTarget = (statement: string[], name: string): boolean => {
+  if (statement[0] !== 'in' || !['[', '{'].includes(statement[1])) return false;
+  const delimiters = [statement[1]];
   for (let index = 2; index < statement.length; index++) {
     const token = statement[index];
-    if (token === name &&
-      ['[', ',', '*'].includes(statement[index - 1]) &&
-      [',', ']'].includes(statement[index + 1]) &&
-      delimiters.every((delimiter) => delimiter === '[')) return true;
+    if (token === name && !delimiters.includes('(') &&
+      isPatternBinding(statement, index, delimiters.at(-1))) return true;
     if (['[', '(', '{'].includes(token)) delimiters.push(token);
     if ([']', ')', '}'].includes(token)) delimiters.pop();
     if (delimiters.length === 0) return false;
   }
   return false;
+};
+
+const isPatternBinding = (statement: string[], index: number, delimiter: string | undefined): boolean => {
+  const previous = statement[index - 1];
+  const next = statement[index + 1];
+  if (delimiter === '{') {
+    return ['{', ','].includes(previous) && next === ':' && [',', '}'].includes(statement[index + 2]);
+  }
+  return ['[', ',', '*'].includes(previous) && [',', ']'].includes(next);
 };
 
 const includesLocalTarget = (targets: string[], name: string): boolean =>
