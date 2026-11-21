@@ -375,6 +375,40 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
+  ['both ecosystems on page one', [1], 1, true, [1], 'up-to-date'],
+  ['a second ecosystem on page two', [1], 2, true, [1, 2], 'up-to-date'],
+  ['an ineligible ecosystem on page one', [2], 1, false, [1], 'up-to-date'],
+  ['only the eligible ecosystem', [2, 20], undefined, true, Array.from({ length: 20 }, (_, i) => i + 1), 'pending'],
+].forEach(([scenario, nodePages, rubyPage, rubyProduction, expectedPages, status]) => {
+  test(`paginates a production bump with ${scenario}`, async (t) => {
+    stubRepository(t, 'Bump dotenv from 16.4.5 to 16.4.7', ['package-lock.json', 'Gemfile.lock']);
+    const { repos } = getOctokit();
+    repos.getContent.mock.mockImplementation(async ({ path }) => {
+      if (path === '') return { data: [{ name: 'Gemfile', type: 'file' }] };
+      const content = path === 'Gemfile'
+        ? (rubyProduction ? "gem 'dotenv'" : "gem 'rack'")
+        : JSON.stringify({ dependencies: { dotenv: '16.4.7' } });
+      return { data: { content: Buffer.from(content).toString('base64') } };
+    });
+    const pages = [];
+    t.mock.method(repos, 'getCommit', async ({ ref, page }) => {
+      if (page === undefined) return { data: { sha: ref } };
+      pages.push(page);
+      const files = nodePages.includes(page) ? [{ filename: 'package-lock.json' }] : [];
+      if (page === rubyPage) {
+        files.push({ filename: 'docs/old-gemfile.lock', status: 'renamed', previous_filename: 'Gemfile.lock' });
+      }
+      files.push({ filename: `docs/page-${page}.md` });
+      return { data: { files }, headers: { link: page < 20 ? '<next>; rel="next"' : '' } };
+    });
+
+    const result = await checkPendingRelease('owner', 'repo', ['node', 'ruby']);
+    assert.equal(result.status, status);
+    assert.deepEqual(pages, expectedPages);
+  });
+});
+
+[
   ['skips', 'commit', 'up-to-date'],
   ['reports', 'rust-change', 'pending'],
 ].forEach(([action, renameCommit, status]) => {
