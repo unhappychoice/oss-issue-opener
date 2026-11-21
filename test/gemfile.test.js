@@ -212,6 +212,8 @@ gem 'rack'`;
 
 const regexpExpressions = [
   ['slash literal', 'matcher = /prefix\nclass RegexText\nsuffix/'],
+  ['return before a slash literal', 'def matcher\n  return /prefix\nclass RegexText\nsuffix/\nend'],
+  ['return before a percent regexp', 'def matcher\n  return %r{prefix\nclass RegexText\nsuffix}\nend'],
   ['escaped delimiter and options', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
   ['paired percent regexp', 'matcher = %r{prefix{2}\nclass RegexText\nsuffix}'],
   ['ternary branches', 'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /prefix\nmodule RegexText\nsuffix/'],
