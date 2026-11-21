@@ -208,17 +208,19 @@ gem 'rack'`;
 });
 
 ['/x', '/rack', '/'].forEach((path) => {
-  test(`detects a gem with path ${path} after compact division of a block parameter`, () => {
-    const gemfile = `group :test do
-  [4].each do |warn|
-    warn /2
+  ['warn', 'puts'].forEach((name) => {
+    test(`detects a gem with path ${path} after compact division of the ${name} block parameter`, () => {
+      const gemfile = `group :test do
+  [4].each do |${name}|
+    ${name} /2
   end
   gem 'rspec'
 end
 gem 'rack', path: '${path}'`;
 
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
   });
 });
 
@@ -250,6 +252,20 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('preserves group exclusions after a multiline regexp passed to puts', () => {
+  const gemfile = `group :test do
+  warn = 4
+  puts /prefix
+class FakeClass
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   ['an unparenthesized slash regexp', ' /2\nclass FakeClass\n/x'],
   ['a parenthesized slash regexp', '(/prefix\nclass FakeClass\n/x)'],
@@ -270,16 +286,18 @@ pattern = /suffix/`;
   });
 });
 
-test('detects a production gem after compact division of a local variable named warn', () => {
-  const gemfile = `group :test do
-  warn = 4
-  warn /2
+['warn', 'puts'].forEach((name) => {
+  test(`detects a production gem after compact division of a local variable named ${name}`, () => {
+    const gemfile = `group :test do
+  ${name} = 4
+  ${name} /2
   gem 'rspec'
 end
 gem 'rack', path: '/x'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [
