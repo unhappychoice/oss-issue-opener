@@ -218,6 +218,8 @@ gem 'rack'`;
   ['regexp passed to print', "print /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp passed to a custom helper', "helper /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
+  ['multiline percent string', "text = %q{first{nested}\\}\nclass Fake\nmodule Fake\ngem 'ignored'\nlast}"],
+  ['interpolated percent string', `puts %Q!first#{%q(!)}\nend\ngem 'ignored'\nlast!`],
   ['regexp after and', "true and /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp after or', "false or %r{first\nmodule Fake\ngem 'ignored'\nlast}"],
   ['ternary regexp branches', "enabled = true; pattern = enabled ?/first\nclass Fake\nlast/ : /first\nend\nlast/"],

@@ -53,12 +53,12 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       const command = tokens[previous] ?? '';
-      const commandRegexp = token !== '?' && commandIdentifier.test(command) &&
+      const commandLiteral = token !== '?' && commandIdentifier.test(command) &&
         (qualifier === '.' || !scopes.at(-1)!.has(command)) &&
         qualifier !== '@' && qualifier !== '$' &&
         /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
-      if (expectsExpression(tokens[previous] ?? '\n', qualifier) || commandRegexp) {
-        const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
+      if (expectsExpression(tokens[previous] ?? '\n', qualifier) || commandLiteral) {
+        const end = token === '?' ? characterEnd(content, match.index) : literalEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
           emit('<literal>');
@@ -170,10 +170,8 @@ const characterEnd = (content: string, start: number): number | undefined => {
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, inInterpolation: boolean) => {
-  const opening = inInterpolation
-    ? /\/|%(r|[qQwWiIxs]?)([^\p{L}\p{N}\s])/uy
-    : /\/|%(r)([^\p{L}\p{N}\s])/uy;
+const literalFrame = (content: string, start: number) => {
+  const opening = /\/|%([rqQwWiIxs]?)([^\p{L}\p{N}\s])/uy;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -192,8 +190,8 @@ const literalFrame = (content: string, start: number, inInterpolation: boolean) 
   };
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const initial = literalFrame(content, start, false);
+const literalEnd = (content: string, start: number): number | undefined => {
+  const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
   const expression = new RegExp(tokenPattern, 'y');
@@ -214,7 +212,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
         continue;
       }
       const nested = (token === '/' || token === '%') && expectsValue
-        ? literalFrame(content, offset, true)
+        ? literalFrame(content, offset)
         : undefined;
       if (nested) {
         frames.push(nested);
