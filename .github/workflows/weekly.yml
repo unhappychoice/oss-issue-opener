@@ -31,5 +31,6 @@ jobs:
 
       - name: Check repositories and create issues
         env:
+          AUTO_CLOSE_CI_ALERTS: ${{ vars.AUTO_CLOSE_CI_ALERTS }}
           GH_TOKEN: ${{ secrets.OSS_GITHUB_TOKEN }}
         run: npm run start
