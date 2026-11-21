@@ -262,3 +262,18 @@ other = 12 / 4`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('keeps local puts division separate from the following gem path', () => {
+  const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper; end
+  end
+  gem 'rspec'
+end
+puts = 12
+puts /2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

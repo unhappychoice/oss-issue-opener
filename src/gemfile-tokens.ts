@@ -2,14 +2,22 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let localPuts = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === 'puts' || token === 'puts=') {
+      const qualifier = tokens[previousSignificantToken(tokens, tokens.length - 1)];
+      if (!['.', '@', '$', ':'].includes(qualifier ?? '') &&
+        (token === 'puts=' || /^[^\S\n]*=(?![=~>])/.test(content.slice(pattern.lastIndex)))) {
+        localPuts = true;
+      }
+    }
     if (token === '?' || token === '/' || token === '%') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
-      const putsRegexp = token === '/' && tokens[previous] === 'puts' &&
+      const putsRegexp = !localPuts && token === '/' && tokens[previous] === 'puts' &&
         /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
       if (expectsExpression(tokens[previous] ?? '\n', qualifier) || putsRegexp) {
         const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
