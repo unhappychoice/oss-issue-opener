@@ -1,9 +1,37 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { setTimeout } from 'node:timers/promises';
 import { checkCIStatus } from '../dist/checker.js';
-import { getOctokit, initOctokit } from '../dist/github.js';
+import { getCheckRuns, getOctokit, initOctokit } from '../dist/github.js';
 
 const sha = 'a'.repeat(40);
+
+test('shares four suite lookups across repositories and yields runs in suite order', async () => {
+  initOctokit('test-token');
+  const octokit = getOctokit();
+  const suiteIds = [4, 3, 2, 1];
+  let active = 0;
+  let peak = 0;
+  octokit.hook.wrap('request', async (_request, options) => {
+    const { url } = octokit.request.endpoint.parse(options);
+    const respond = (data) => ({ status: 200, url, headers: {}, data });
+    if (new URL(url).pathname.endsWith('/check-suites')) {
+      return respond({ total_count: 1001, check_suites: suiteIds.map((id) => ({ id })) });
+    }
+
+    const [, repo, suiteId] = new URL(url).pathname.match(/^\/repos\/owner\/([^/]+)\/check-suites\/(\d+)\/check-runs$/);
+    peak = Math.max(peak, ++active);
+    await setTimeout(Number(suiteId) * 10);
+    active--;
+    return respond({ total_count: 1, check_runs: [{ name: `${repo}-${suiteId}`, status: 'completed', conclusion: 'success' }] });
+  });
+
+  const repos = ['first', 'second'];
+  const results = await Promise.all(repos.map((repo) => Array.fromAsync(getCheckRuns('owner', repo, sha))));
+  assert.equal(peak, 4);
+  assert.deepEqual(results.map((pages) => pages.flat().map(({ context }) => context)),
+    repos.map((repo) => suiteIds.map((id) => `${repo}-${id}`)));
+});
 
 [
   { total: 100, conclusion: 'success', requestCount: 1 },
