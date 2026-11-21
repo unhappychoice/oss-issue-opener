@@ -55,7 +55,7 @@ const opensCommandRegexp = (
 ): boolean => {
   const previous = tokens[previousIndex] ?? '\n';
   const command = tokens[index];
-  return (command === 'warn' || command === 'puts') && index < tokens.length - 1 &&
+  return (command === 'warn' || command === 'puts' || command === 'print') && index < tokens.length - 1 &&
     /\S/.test(content[start + 1] ?? '') &&
     (previous === '.'
       ? tokens[previousSignificantToken(tokens, previousIndex - 1)] === 'Kernel'

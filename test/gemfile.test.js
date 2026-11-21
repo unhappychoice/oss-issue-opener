@@ -529,6 +529,8 @@ gem 'rack'`;
   ['a multiline Kernel.warn regexp', 'Kernel.warn /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline puts regexp', 'puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline Kernel.puts regexp', 'Kernel.puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline print regexp', 'print /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline Kernel.print regexp', 'Kernel.print /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
 ].forEach(([description, statement]) => {
   test(`preserves group exclusions around ${description}`, () => {
     const gemfile = `group :test do
@@ -544,17 +546,19 @@ gem 'rack'`;
   });
 });
 
-test('keeps division by a local variable named puts visible', () => {
-  const gemfile = `puts = 12
+['puts', 'print'].forEach((name) => {
+  test(`keeps division of a local variable named ${name} visible`, () => {
+    const gemfile = `${name} = 12
 group :test do
-  puts /2
+  ${name} /2
   gem 'rspec'
 end
 gem 'rack'
 matcher = /suffix/`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('recognizes a production gem after division by a rescue variable', () => {
