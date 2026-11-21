@@ -15,9 +15,8 @@ export const getOctokit = (): Octokit => {
 // Forks are excluded: their releases and CI belong to the upstream project.
 const isMaintained = (repo: any): boolean => !repo.archived && !repo.private && !repo.fork;
 
-export const listOrgRepos = async (name: string): Promise<Repository[]> => {
+export async function* listOrgRepos(name: string): AsyncGenerator<Repository> {
   const { data: user } = await getOctokit().users.getByUsername({ username: name });
-  const repos: Repository[] = [];
 
   const [endpoint, params] =
     user.type === 'Organization'
@@ -25,10 +24,9 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
       : [getOctokit().repos.listForUser, { username: name, per_page: 100, type: 'owner' }];
 
   for await (const response of getOctokit().paginate.iterator(endpoint as any, params as any)) {
-    repos.push(...(response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch })));
+    yield* (response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch }));
   }
-  return repos;
-};
+}
 
 export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
   const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });

@@ -16,8 +16,9 @@ const setup = (overrides = {}) => {
   const batches = [];
   const checked = [];
   const deps = {
-    listOrgRepos: async (org) => org === 'unhappychoice'
-      ? ['first', 'broken', 'last'].map((repo) => ({ fullName: `owner/${repo}` })) : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield* ['first', 'broken', 'last'].map((repo) => ({ fullName: `owner/${repo}` }));
+    },
     detectProjectTypes: async () => ['node'],
     checkCIStatus: async (_owner, repo) => {
       checked.push(repo);
@@ -118,7 +119,9 @@ test('runs the CI and release investigations for a repository concurrently', asy
   let resolveCI;
   let releaseStartedBeforeCIFinished = false;
   const { deps } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo' }] : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo' };
+    },
     checkCIStatus: async () => new Promise((resolve) => {
       resolveCI = () => resolve({ status: 'success', failedChecks: [] });
     }),
@@ -175,10 +178,10 @@ test('continues other organizations and reports investigation and batch failures
   const creation = new Error('Issue creation unavailable');
   const organizations = [];
   const { deps } = setup({
-    listOrgRepos: async (org) => {
+    listOrgRepos: async function* (org) {
       organizations.push(org);
       if (org === 'unhappychoice') throw lookup;
-      return org === 'irasutoya-tools' ? [{ fullName: 'owner/repo' }] : [];
+      if (org === 'irasutoya-tools') yield { fullName: 'owner/repo' };
     },
     checkPendingRelease: async () => { throw comparison; },
     createIssuesInBatch: async (issues) => {
@@ -320,7 +323,9 @@ test('reports up to date without comparing or listing root contents when both re
   const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
   const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
   const { deps, batches } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+    },
     checkCIStatus,
     checkPendingRelease,
     detectProjectTypes,
@@ -415,7 +420,9 @@ test('skips root listings when neither releases nor tags provide a baseline', as
       return { data: { content: '' } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,
@@ -459,8 +466,9 @@ test('submits confirmed release notifications before rejecting failed bump looku
   }));
   const repoNames = ['source', 'dependency', 'unconfirmed'];
   const { deps, batches } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice'
-      ? repoNames.map((repo) => ({ fullName: `owner/${repo}`, defaultBranch: 'main' })) : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield* repoNames.map((repo) => ({ fullName: `owner/${repo}`, defaultBranch: 'main' }));
+    },
     checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
     checkPendingRelease,
     detectProjectTypes,
@@ -510,7 +518,9 @@ test('notifies about a production bump at the compared head after the default br
       : { content: Buffer.from(JSON.stringify(manifest)).toString('base64') } };
   });
   const { deps, batches } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+    },
     checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
     checkPendingRelease,
     detectProjectTypes,
@@ -577,7 +587,9 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
       return { data: { content: Buffer.from(manifests[path]).toString('base64') } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkPendingRelease,
       detectProjectTypes,
     });
