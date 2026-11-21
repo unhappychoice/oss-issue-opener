@@ -36,7 +36,7 @@ prefixes.forEach((prefix) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: '@octokit/rest', from: '21.1.1', to: '22.0.1' }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     });
   });
 
@@ -108,7 +108,7 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
       status: 'pending',
       changedSources,
       dependencyUpdates: [],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -137,7 +137,7 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'serde', from: '1.0.218', to: '1.0.219' }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' };
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'rust'), expected);
   });
@@ -162,7 +162,7 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
       status: 'pending',
       changedSources: files,
       dependencyUpdates: [],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -181,7 +181,7 @@ test('passes through Markdown-significant characters in changed filenames unesca
     status: 'pending',
     changedSources: [malicious],
     dependencyUpdates: [],
-    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -198,7 +198,7 @@ test('detects source changes without dependency updates', async (t) => {
     status: 'pending',
     changedSources: ['src/index.ts'],
     dependencyUpdates: [],
-    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
 });
 
@@ -224,7 +224,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: sources,
       dependencyUpdates: [],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -261,7 +261,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg, from: '3.1.0', to: '3.1.1' }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -287,7 +287,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'org.example:bom', from: '1.0', to: '1.1' }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     });
   });
 });
@@ -327,7 +327,7 @@ test('detects source changes without dependency updates', async (t) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg, from, to }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });
@@ -420,7 +420,7 @@ test('shares the bump lookup limit across scans and keeps comparison order', asy
   const first = Promise.withResolvers();
   const rest = Promise.withResolvers();
   t.mock.method(repos, 'getCommit', async ({ repo, ref, page }) => {
-    if (page === undefined) return { data: { sha: ref } };
+    if (page === undefined) return { data: ref };
     const lookup = `${repo}/${ref}`;
     started.push(lookup);
     await (lookup === 'first/0' ? first.promise : rest.promise);
@@ -451,7 +451,7 @@ test('reports an incomplete release check when its only bump lookup fails', asyn
   const failure = new Error('Commit files unavailable');
   t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
     if (page !== undefined) throw failure;
-    return { data: { sha: ref } };
+    return { data: ref };
   });
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
@@ -463,7 +463,7 @@ test('reports an incomplete release check when its only bump lookup fails', asyn
 test('reports an incomplete release check at the commit file cap', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
-    if (page === undefined) return { data: { sha: ref } };
+    if (page === undefined) return { data: ref };
     const files = Array.from({ length: 100 }, (_, index) => ({
       filename: page === 1 && index === 0 ? 'package-lock.json' : `docs/${page}-${index}.md`,
     }));

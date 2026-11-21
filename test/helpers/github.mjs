@@ -10,7 +10,7 @@ export const initMockOctokit = (token) => {
     data: { commit: { sha: commitSha(`heads/${branch}`), commit: { tree: { sha: 'head-tree' } } } },
   }));
   mock.method(getOctokit().repos, 'getCommit', async ({ ref }) => ({
-    data: { sha: commitSha(ref) },
+    data: commitSha(ref),
   }));
 };
 

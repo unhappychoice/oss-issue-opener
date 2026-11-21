@@ -81,7 +81,7 @@ test('skips gemspec directories when loading Ruby dependencies', async () => {
         status: 'pending',
         changedSources: [],
         dependencyUpdates: [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }],
-        compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
+        compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1')}...${commitSha('heads/main')}`,
       });
   });
 });

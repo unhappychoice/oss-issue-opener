@@ -71,7 +71,7 @@ export const checkPendingRelease = async (
   if (result.status !== 'found') return { status: result.status };
 
   const { baseSha, headSha, files, getCommits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, result.head
+    owner, repo, `refs/tags/${latestTag}`, result.head
   );
   if (files.length === 0) return { status: 'up-to-date' };
 
