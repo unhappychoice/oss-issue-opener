@@ -209,3 +209,33 @@ gem 'rack'`;
     });
   });
 });
+
+const regexpExpressions = [
+  ['slash literal', 'matcher = /prefix\nclass RegexText\nsuffix/'],
+  ['escaped delimiter and options', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
+  ['paired percent regexp', 'matcher = %r{prefix{2}\nclass RegexText\nsuffix}'],
+  ['ternary branches', 'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /prefix\nmodule RegexText\nsuffix/'],
+  ['percent string inside interpolation', 'matcher = /prefix#{ %q!} /! }\nclass RegexText\nsuffix/'],
+  ['nested regexp inside interpolation', 'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/'],
+  ['block end and gem declaration', "matcher = /prefix\nend\ngem 'ignored'\nsuffix/"],
+  ['division inside interpolation', 'matcher = /prefix#{ 8 / 2 }\nclass RegexText\nsuffix/'],
+];
+
+regexpExpressions.forEach(([name, expression]) => {
+  test(`ignores scope keywords in a multiline regexp with ${name}`, () => {
+    const gemfile = `group :test do
+  ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('preserves gem declarations between division expressions', () => {
+  const gemfile = "ratio = 8 /2\ngem 'rack'\nratio /2";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
