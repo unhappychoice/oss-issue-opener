@@ -1,17 +1,19 @@
 import { gemfileScopeKind, readGemfileStatements } from './gemfile-statements.js';
 
+const regexpCommands = new Set(['puts', 'warn']);
+
 export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const scopes = [{ localPuts: false }];
+  const scopes = [new Set<string>()];
   const statements = readGemfileStatements((statement) => {
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
     const kind = gemfileScopeKind(statement);
     const scope = scopes.at(-1)!;
     if (kind === 'shared') scopes.push(scope);
-    if (kind === 'block') scopes.push({ ...scope });
-    if (kind === 'isolated') scopes.push({ localPuts: false });
+    if (kind === 'block') scopes.push(new Set(scope));
+    if (kind === 'isolated') scopes.push(new Set());
     onStatement?.(statement);
   });
   const emit = (token: string): void => {
@@ -22,19 +24,21 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === 'puts' || token === 'puts=') {
+    const commandName = token.replace(/=$/, '');
+    if (regexpCommands.has(commandName)) {
       const qualifier = tokens[previousSignificantToken(tokens, tokens.length - 1)];
       if (!['.', '@', '$', ':'].includes(qualifier ?? '') &&
-        (token === 'puts=' || /^[^\S\n]*=(?![=~>])/.test(content.slice(pattern.lastIndex)))) {
-        scopes.at(-1)!.localPuts = true;
+        (token !== commandName || /^[^\S\n]*=(?![=~>])/.test(content.slice(pattern.lastIndex)))) {
+        scopes.at(-1)!.add(commandName);
       }
     }
     if (token === '?' || token === '/' || token === '%') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
-      const putsRegexp = !scopes.at(-1)!.localPuts && token === '/' && tokens[previous] === 'puts' &&
+      const command = tokens[previous] ?? '';
+      const commandRegexp = token === '/' && regexpCommands.has(command) && !scopes.at(-1)!.has(command) &&
         /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
-      if (expectsExpression(tokens[previous] ?? '\n', qualifier) || putsRegexp) {
+      if (expectsExpression(tokens[previous] ?? '\n', qualifier) || commandRegexp) {
         const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;

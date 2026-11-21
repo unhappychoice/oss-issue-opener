@@ -264,28 +264,29 @@ other = 12 / 4`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('keeps local puts division separate from the following gem path', () => {
-  const gemfile = `group :test do
+for (const command of ['puts', 'warn']) {
+  test(`keeps local ${command} division separate from the following gem path`, () => {
+    const gemfile = `group :test do
   module TestHelpers
     class TestHelper; end
   end
   gem 'rspec'
 end
-puts = 12
-puts /2
+${command} = 12
+${command} /2
 gem 'rack', path: '/rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 
-for (const separateScope of ['helper do', 'class Helpers', 'module Helpers', 'def helper']) {
-  test(`recognizes a puts regexp after a local assignment in ${separateScope}`, () => {
-    const gemfile = `${separateScope}
-  puts = 12
+  for (const separateScope of ['helper do', 'class Helpers', 'module Helpers', 'def helper']) {
+    test(`recognizes a ${command} regexp after a local assignment in ${separateScope}`, () => {
+      const gemfile = `${separateScope}
+  ${command} = 12
 end
 group :test do
-  puts /prefix
+  ${command} /prefix
 class RegexText
 gem 'ignored'
 suffix/
@@ -293,10 +294,11 @@ suffix/
 end
 gem 'rack'`;
 
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'ignored'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
+  }
 }
 
 test('inherits an outer puts local in a block and retains assignments in conditionals', () => {
