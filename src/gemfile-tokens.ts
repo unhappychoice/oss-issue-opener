@@ -1,32 +1,11 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const assignment = /[^\S\n]*=(?!=|>|~)/y;
-  let hasWarnAssignment = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === 'warn' || token === 'warn=') {
-      assignment.lastIndex = match.index + 'warn'.length;
-      const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)];
-      hasWarnAssignment ||= !['.', '::', '@', '$', 'def'].includes(previous) && assignment.test(content);
-    }
-    if (token === '?' && content[pattern.lastIndex] === '/' && canStartRegexp(tokens)) {
-      tokens.push('?/');
-      pattern.lastIndex++;
-      continue;
-    }
-    if ((token === '/' || token === '%') &&
-      canStartRegexp(tokens, hasWarnAssignment ? '' : content.slice(match.index, match.index + 2))) {
-      const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
-        tokens.push(content.slice(match.index, end));
-        pattern.lastIndex = end;
-        continue;
-      }
-    }
     if (token.startsWith('<<')) {
       // A singleton class uses the shift token where the pattern can match a heredoc opener.
       if (opensSingletonClass(tokens)) {
@@ -48,63 +27,6 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
-};
-
-const canStartRegexp = (tokens: string[], opener = ''): boolean => {
-  const index = previousSignificantToken(tokens, tokens.length - 1);
-  const previous = tokens[index] ?? '\n';
-  if (/^(?:\n|;|=|=>|&&|\|\||~|\(|\[|,|\?|:)$/.test(previous)) return true;
-  if (previous === 'warn') return index < tokens.length - 1 && /^\/\S$/.test(opener);
-  return /^(?:!|not|do|if|elsif|unless|when|return)$/.test(previous) &&
-    !['.', '::'].includes(tokens[previousSignificantToken(tokens, index - 1)]);
-};
-
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const opener = /\/|%r([^\w\s])/y;
-  opener.lastIndex = start;
-  const match = opener.exec(content);
-  if (!match) return undefined;
-  const end = literalEnd(content, opener.lastIndex, match[1] ?? '/', true);
-  if (end === undefined) return undefined;
-  const options = /[imxounes]*(?!\w)/y;
-  options.lastIndex = end;
-  return options.test(content) ? options.lastIndex : undefined;
-};
-
-const interpolationEnd = (content: string, start: number): number | undefined => {
-  const parts = /%([qQ])([^\w\s])|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|#[^\n]*|[{}]|[^%'"#{}]+|[%'"]/y;
-  parts.lastIndex = start;
-  let depth = 1;
-  let match: RegExpExecArray | null;
-  while ((match = parts.exec(content)) !== null) {
-    if (match[1]) {
-      const end = literalEnd(content, parts.lastIndex, match[2], match[1] === 'Q');
-      if (end === undefined) return undefined;
-      parts.lastIndex = end;
-    }
-    if (match[0] === '{') depth++;
-    if (match[0] === '}' && --depth === 0) return parts.lastIndex;
-  }
-  return undefined;
-};
-
-const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
-
-const literalEnd = (content: string, start: number, opening: string, interpolates: boolean): number | undefined => {
-  const closing = pairedDelimiters.get(opening) ?? opening;
-  let depth = 1;
-  for (let index = start; index < content.length; index++) {
-    const character = content[index];
-    if (character === closing && --depth === 0) return index + 1;
-    if (character === opening && opening !== closing) depth++;
-    if (interpolates && content.startsWith('#{', index)) {
-      const end = interpolationEnd(content, index + 2);
-      if (end === undefined) return undefined;
-      index = end - 1;
-    }
-    if (character === '\\') index++;
-  }
-  return undefined;
 };
 
 const opensSingletonClass = (tokens: string[]): boolean => {
