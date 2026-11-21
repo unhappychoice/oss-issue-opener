@@ -407,6 +407,7 @@ const regexpExpressions = [
   ['an interpolated slash character literal', '/#{ ?/.ord / 2 }/'],
   ['unary negation', '!/prefix\nclass RegexText\nsuffix/'],
   ['the right operand of addition', '1 + /prefix\nclass RegexText\nsuffix/'],
+  ['the right operand of multiplication', '1 * /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of or', 'false or /prefix\nclass RegexText\nsuffix/'],
   ['the right operand of and', 'true and /prefix\nmodule RegexText\nsuffix/'],
   ['percent delimiters', '%r!prefix\nclass RegexText\nsuffix!'],
