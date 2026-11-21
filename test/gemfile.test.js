@@ -293,6 +293,35 @@ gem 'rack'`;
 });
 
 [
+  ['a slash regexp', '/prefix\nclass FakeClass\n/x'],
+  ['a percent regexp', '%r{prefix\nclass FakeClass\n}x'],
+].forEach(([description, argument]) => {
+  test(`preserves group exclusions when Regexp.union receives ${description}`, () => {
+    const gemfile = `group :test do
+  union = 4
+  Regexp.union ${argument}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves group exclusions after division and modulo of receiver method results', () => {
+  const gemfile = `group :test do
+  settings.limit / 2
+  settings.limit % 2
+  gem 'rspec'
+end
+gem 'rack', path: 'vendor/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
   ['an unparenthesized slash regexp', ' /2\nclass FakeClass\n/x'],
   ['an unparenthesized percent regexp', ' %r!prefix\nclass FakeClass\nsuffix!x'],
   ['an unparenthesized bare percent string', ' %!prefix\nclass FakeClass\nsuffix!'],
