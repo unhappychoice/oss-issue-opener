@@ -475,3 +475,27 @@ test('inherits a surrounding local assignment in nested blocks', () => {
 end`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('ignores scope keywords in a multiline regexp passed to print', () => {
+  const gemfile = `group :test do
+  print /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves a production gem after division of a rescue variable', () => {
+  const gemfile = `begin
+  raise 'failure'
+rescue => puts
+  puts /2
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

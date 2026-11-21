@@ -66,13 +66,16 @@ const expectsRegexp = (token = '\n', previous?: string): boolean =>
   compoundAssignmentPattern.test(token) || /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|and|or|do|if|elsif|unless|case|when|return)$/.test(token));
 
-const commandNames = ['puts', 'warn'] as const;
+const commandNames = ['print', 'puts', 'warn'] as const;
 type CommandName = typeof commandNames[number];
+
+const isCommandName = (token: string | undefined): token is CommandName =>
+  commandNames.some((name) => name === token);
 
 const startsCommandRegexp = (
   previous: string | undefined, content: string, start: number,
 ): previous is CommandName => {
-  if (previous !== 'puts' && previous !== 'warn') return false;
+  if (!isCommandName(previous)) return false;
   const argument = /[ \t](?:\/\S|%r)/y;
   argument.lastIndex = start - 1;
   return argument.test(content);
@@ -196,7 +199,7 @@ const currentLocalScope = (tokens: string[], name: CommandName): LocalScope => {
   splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
     const scope = scopes.at(-1) ?? topLevel;
-    if (bindsForTarget(statement, name)) scope.bindsName = true;
+    if (bindsForTarget(statement, name) || bindsRescueTarget(statement, name)) scope.bindsName = true;
     if (statement[0] === '|' && hasParameter(statement.slice(1, -1), name)) scope.bindsName = true;
     if (opensScope(statement)) {
       scopes.push(opensLocalScope(statement)
@@ -209,6 +212,9 @@ const currentLocalScope = (tokens: string[], name: CommandName): LocalScope => {
 
 const opensBlockScope = (statement: string[]): boolean =>
   statement.at(-1) === 'do' && !/^(?:for|until|while)$/.test(statement[0]);
+
+const bindsRescueTarget = (statement: string[], name: CommandName): boolean =>
+  statement[0] === 'rescue' && statement.at(-2) === '=>' && statement.at(-1) === name;
 
 const bindsForTarget = (statement: string[], name: CommandName): boolean => {
   if (statement[0] !== 'for') return false;
