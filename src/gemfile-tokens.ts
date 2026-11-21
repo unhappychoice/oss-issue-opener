@@ -13,8 +13,8 @@ export const gemfileTokens = (content: string): string[] => {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previousIndex = previousSignificantToken(tokens, index - 1);
       const previous = tokens[previousIndex];
-      const warnRegexp = token === '/' && opensWarnRegexp(content, match.index, tokens, index, previousIndex);
-      if (expectsRegexp(tokens[index], previous) || warnRegexp) {
+      const commandRegexp = token === '/' && opensCommandRegexp(content, match.index, tokens, index, previousIndex);
+      if (expectsRegexp(tokens[index], previous) || commandRegexp) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
           : rubyLiteralEnd(content, match.index, tokenPattern);
@@ -50,14 +50,16 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
 
-const opensWarnRegexp = (
+const opensCommandRegexp = (
   content: string, start: number, tokens: string[], index: number, previousIndex: number,
 ): boolean => {
   const previous = tokens[previousIndex] ?? '\n';
-  return tokens[index] === 'warn' && index < tokens.length - 1 && /\S/.test(content[start + 1] ?? '') &&
+  const command = tokens[index];
+  return (command === 'warn' || command === 'puts') && index < tokens.length - 1 &&
+    /\S/.test(content[start + 1] ?? '') &&
     (previous === '.'
       ? tokens[previousSignificantToken(tokens, previousIndex - 1)] === 'Kernel'
-      : ['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), 'warn'));
+      : ['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), command));
 };
 
 const opensSingletonClass = (tokens: string[]): boolean => {

@@ -459,6 +459,8 @@ gem 'rack'`;
 [
   ['a multiline percent string', 'message = %q{prefix{nested}\nclass LiteralText\ngem "ignored"\nsuffix}'],
   ['a multiline Kernel.warn regexp', 'Kernel.warn /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline puts regexp', 'puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline Kernel.puts regexp', 'Kernel.puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
 ].forEach(([description, statement]) => {
   test(`preserves group exclusions around ${description}`, () => {
     const gemfile = `group :test do
@@ -472,4 +474,17 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
+});
+
+test('keeps division by a local variable named puts visible', () => {
+  const gemfile = `puts = 12
+group :test do
+  puts /2
+  gem 'rspec'
+end
+gem 'rack'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
