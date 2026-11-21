@@ -602,6 +602,8 @@ gem 'rack'`;
   ['a multiline Kernel.puts regexp', 'Kernel.puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline print regexp', 'print /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline Kernel.print regexp', 'Kernel.print /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline p regexp', 'p /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline Kernel.p regexp', 'Kernel.p /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
 ].forEach(([description, statement]) => {
   test(`preserves group exclusions around ${description}`, () => {
     const gemfile = `group :test do
@@ -617,7 +619,7 @@ gem 'rack'`;
   });
 });
 
-['puts', 'print'].forEach((name) => {
+['puts', 'print', 'p'].forEach((name) => {
   test(`keeps division of a local variable named ${name} visible`, () => {
     const gemfile = `${name} = 12
 group :test do
