@@ -214,6 +214,7 @@ gem 'rack'`;
   ['slash regexp', "pattern = /first\\/part\nclass Fake\nmodule Fake\ngem 'ignored'\nlast/im"],
   ['regexp after unary bang', "pattern = !/first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp passed to puts', "puts /first\nclass Fake\ngem 'ignored'\nlast/"],
+  ['percent regexp passed to puts', "puts %r{first\nclass Fake\ngem 'ignored'\nlast}"],
   ['regexp passed to print', "print /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp passed to a custom helper', "helper /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],

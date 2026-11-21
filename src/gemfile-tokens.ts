@@ -53,7 +53,7 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       const command = tokens[previous] ?? '';
-      const commandRegexp = token === '/' && commandIdentifier.test(command) &&
+      const commandRegexp = token !== '?' && commandIdentifier.test(command) &&
         (qualifier === '.' || !scopes.at(-1)!.has(command)) &&
         qualifier !== '@' && qualifier !== '$' &&
         /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
