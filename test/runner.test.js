@@ -55,7 +55,9 @@ const expectFailures = async (deps, expected) => {
     mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
     const repository = method === 'get' ? { fullName: 'owner/repo' } : { fullName: 'owner/repo', defaultBranch: 'main' };
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [repository] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield repository;
+      },
       checkCIStatus,
       checkPendingRelease,
     });
@@ -97,9 +99,9 @@ test('preserves GitHub read failures and waits for the remaining notifications',
     return { data: { statuses: [{ state: 'failure', context: 'build' }] } };
   });
   mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
-  mock.method(client, 'paginate', async (_route, { repo }) => {
+  mock.method(client.paginate, 'iterator', async function* (_route, { repo }) {
     if (repo === 'broken') throw checksFailure;
-    return repo === 'last' ? [{ status: 'completed', conclusion: 'failure', name: 'test suite' }] : [];
+    yield { data: repo === 'last' ? [{ status: 'completed', conclusion: 'failure', name: 'test suite' }] : [] };
   });
   mock.method(client.repos, 'listReleases', async ({ repo }) => {
     if (repo === 'first') throw releasesFailure;
@@ -295,7 +297,7 @@ const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
   ] } }));
   mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
-  mock.method(client, 'paginate', async () => []);
+  mock.method(client.paginate, 'iterator', async function* () { yield { data: [] }; });
   return client.repos;
 };
 
@@ -328,7 +330,9 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
       } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,
@@ -390,7 +394,7 @@ test('shares default branch heads per repository and refreshes them on each scan
   assert.equal(getBranch.mock.callCount(), expectedHeads.length);
   assert.deepEqual(repos.getCommit.mock.calls.map(({ arguments: [{ ref }] }) => ref), Array(6).fill('tags/v1'));
   assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
-  assert.deepEqual(getOctokit().paginate.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
+  assert.deepEqual(getOctokit().paginate.iterator.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
   const pages = compared.mock.calls.map(({ arguments: [{ head, page }] }) => [head, page]);
   assert.deepEqual(pages, expectedHeads.map((head) => [head, 1]));
   assert.deepEqual(trees.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha),
@@ -625,7 +629,9 @@ test('submits confirmed release notifications before reporting incomplete bump f
       return { data: { content: Buffer.from('require example.com/runtime v1.1.0').toString('base64') } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,
@@ -770,6 +776,10 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
       full_name: `owner/fallback-${index}`, default_branch,
     }));
     const iterator = mock.method(client.paginate, 'iterator', async function* (route, params) {
+      if (route === client.checks.listForRef) {
+        yield { data: [] };
+        return;
+      }
       assert.equal(route, accountType === 'User' ? repos.listForUser : repos.listForOrg);
       assert.equal(params.per_page, 100);
       if ((params.username ?? params.org) !== 'unhappychoice') return;
@@ -786,7 +796,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
 
     await runChecks(deps);
 
-    assert.equal(iterator.mock.callCount(), 4);
+    assert.equal(iterator.mock.calls.filter(({ arguments: [route] }) => route !== client.checks.listForRef).length, 4);
     assert.deepEqual(lookup.mock.calls.map(({ arguments: [params] }) => params.repo),
       ['fallback-0', 'fallback-1', 'fallback-2']);
     const branches = [...listed.map(({ default_branch }) => default_branch), ...Array(3).fill('fallback')];
@@ -794,7 +804,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     assert.deepEqual(heads.map(({ branch }) => branch), branches);
     const shas = heads.map(({ repo }) => headSha(repo));
     assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), shas);
-    assert.deepEqual(client.paginate.mock.calls.map(({ arguments: [_, params] }) => params.ref), shas);
+    assert.deepEqual(iterator.mock.calls.filter(({ arguments: [route] }) => route === client.checks.listForRef).map(({ arguments: [_, params] }) => params.ref), shas);
     assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
       shas);
     assert.equal(batches[0].length, 206);

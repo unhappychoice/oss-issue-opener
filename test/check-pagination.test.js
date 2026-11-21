@@ -61,44 +61,54 @@ const sha = 'a'.repeat(40);
   });
 });
 
-test('reports a failed check on the oldest of 1,001 check suites', async (t) => {
-  initOctokit('test-token');
-  const octokit = getOctokit();
-  t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
-  const suites = Array.from({ length: 1001 }, (_, i) => ({ id: 1001 - i }));
-  const success = { name: 'build', status: 'completed', conclusion: 'success' };
-  const failure = {
-    name: 'oldest-build', status: 'completed', conclusion: 'failure',
-    html_url: 'https://github.com/owner/repo/actions/runs/1',
-  };
-
-  octokit.hook.wrap('request', async (_request, options) => {
-    const { url } = octokit.request.endpoint.parse(options);
-    const next = new URL(url);
-    const size = Number(next.searchParams.get('per_page'));
-    const page = Number(next.searchParams.get('page') ?? 1);
-    const start = (page - 1) * size;
-    const end = start + size;
-    const commit = `/repos/owner/repo/commits/${sha}`;
-    const respond = (key, items) => {
-      next.searchParams.set('page', String(page + 1));
-      return {
-        status: 200, url,
-        headers: end < items.length ? { link: `<${next}>; rel="next"` } : {},
-        data: { total_count: items.length, [key]: items.slice(start, end) },
-      };
+[
+  ['reports a failed check on the oldest of 1,001 check suites', false],
+  ['preserves an earlier failed check when a later page in its suite fails', true],
+].forEach(([name, failLaterPage]) => {
+  test(name, async (t) => {
+    initOctokit('test-token');
+    const octokit = getOctokit();
+    t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
+    const pageError = Object.assign(new Error('Check run page unavailable'), { status: 503 });
+    const suites = Array.from({ length: 1001 }, (_, i) => ({ id: 1001 - i }));
+    const success = { name: 'build', status: 'completed', conclusion: 'success' };
+    const failure = {
+      name: 'oldest-build', status: 'completed', conclusion: 'failure',
+      html_url: 'https://github.com/owner/repo/actions/runs/1',
     };
 
-    if (next.pathname === `${commit}/check-suites`) return respond('check_suites', suites);
-    if (next.pathname === `${commit}/check-runs`) return respond('check_runs', suites.slice(0, 1000).map(() => success));
-    const suiteId = Number(next.pathname.match(/^\/repos\/owner\/repo\/check-suites\/(\d+)\/check-runs$/)?.[1]);
-    assert.ok(suiteId >= 1 && suiteId <= 1001, `Unexpected request: ${url}`);
-    return respond('check_runs', suiteId === 1 ? [...Array(100).fill(success), failure] : [success]);
-  });
+    octokit.hook.wrap('request', async (_request, options) => {
+      const { url } = octokit.request.endpoint.parse(options);
+      const next = new URL(url);
+      const size = Number(next.searchParams.get('per_page'));
+      const page = Number(next.searchParams.get('page') ?? 1);
+      const start = (page - 1) * size;
+      const end = start + size;
+      const commit = `/repos/owner/repo/commits/${sha}`;
+      const respond = (key, items) => {
+        next.searchParams.set('page', String(page + 1));
+        return {
+          status: 200, url,
+          headers: end < items.length ? { link: `<${next}>; rel="next"` } : {},
+          data: { total_count: items.length, [key]: items.slice(start, end) },
+        };
+      };
 
-  const getHead = async () => ({ status: 'found', head: { sha, treeSha: 'head-tree' } });
-  assert.deepEqual(await checkCIStatus('owner', 'repo', getHead), {
-    status: 'failure',
-    failedChecks: [{ name: failure.name, url: failure.html_url }],
+      if (next.pathname === `${commit}/check-suites`) return respond('check_suites', suites);
+      if (next.pathname === `${commit}/check-runs`) return respond('check_runs', suites.slice(0, 1000).map(() => success));
+      const suiteId = Number(next.pathname.match(/^\/repos\/owner\/repo\/check-suites\/(\d+)\/check-runs$/)?.[1]);
+      assert.ok(suiteId >= 1 && suiteId <= 1001, `Unexpected request: ${url}`);
+      if (suiteId !== 1) return respond('check_runs', [success]);
+      if (failLaterPage && page === 2) throw pageError;
+      const runs = failLaterPage ? [failure, ...Array(100).fill(success)] : [...Array(100).fill(success), failure];
+      return respond('check_runs', runs);
+    });
+
+    const getHead = async () => ({ status: 'found', head: { sha, treeSha: 'head-tree' } });
+    assert.deepEqual(await checkCIStatus('owner', 'repo', getHead), {
+      status: 'failure',
+      failedChecks: [{ name: failure.name, url: failure.html_url }],
+      ...(failLaterPage ? { endpointErrors: [pageError] } : {}),
+    });
   });
 });

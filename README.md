@@ -94,7 +94,7 @@ is pending if any result is pending, successful if all results succeeded, or `no
 results remain. The decision does not depend on workflow execution order.
 
 If either GitHub API lookup fails, the scanner still queues a notification for
-failures found by the other lookup. When the available results contain no
+failures found on any successfully retrieved page. When the available results contain no
 failure, the scanner reports `CI: incomplete`. In both cases it logs the
 lookup error and exits with a nonzero status after processing the batch.
 
