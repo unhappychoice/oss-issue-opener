@@ -14,7 +14,7 @@ export const gemfileTokens = (content: string): string[] => {
     if ((regexpExpected && (token === '/' || token === '%')) ||
       (warnArgument && token === '/' && /\S/.test(content.charAt(pattern.lastIndex)))) {
       const end = regexpEnd(content, match.index);
-      if (end !== undefined && (regexpExpected || isCommandRegexpEnd(content, end))) {
+      if (end !== undefined && (regexpExpected || isCommandRegexpEnd(content, match.index, end))) {
         token = content.slice(match.index, end);
         pattern.lastIndex = end;
       }
@@ -60,8 +60,9 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const isCommandRegexpEnd = (content: string, end: number): boolean =>
-  !/[\w'"`]/.test(content.charAt(end));
+const isCommandRegexpEnd = (content: string, start: number, end: number): boolean =>
+  !/[\w'"`]/.test(content.charAt(end)) &&
+  !/\n[\t ]*end\b[^\n]*\n[\s\S]*?^[\t ]*#[^\n]*\/[imxounes]*$/m.test(content.slice(start, end));
 
 const isAssignment = (content: string, start: number): boolean => {
   const assignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;

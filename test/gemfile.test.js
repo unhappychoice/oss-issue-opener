@@ -222,6 +222,20 @@ gem 'rack', path: '${path}'`;
   });
 });
 
+test('preserves the group boundary when a comment follows compact block-parameter division', () => {
+  const gemfile = `group :test do
+  [4].each do |warn|
+    warn /2
+  end
+  gem 'rspec'
+end
+# /
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('ignores class and module text in a multiline regexp inside an excluded group', () => {
   const gemfile = String.raw`group :test do
   pattern = /prefix\/
