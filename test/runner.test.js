@@ -330,7 +330,9 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
       } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,

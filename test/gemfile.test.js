@@ -376,6 +376,25 @@ gem 'rack' # /`;
   });
 });
 
+['rescue => number', 'rescue TypeError, ArgumentError => number then'].forEach((clause) => {
+  test(`preserves group exclusions after compact division following ${clause}`, () => {
+    const gemfile = `group :test do
+  class Helper
+    begin
+      raise TypeError
+    ${clause}
+      number /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/x/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves group exclusions when assigning the result of a command with a multiline regexp', () => {
   const gemfile = `group :test do
   result = warn /prefix

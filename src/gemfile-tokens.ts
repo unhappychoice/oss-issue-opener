@@ -1,4 +1,4 @@
-import { forLoopTargets, GemfileStatements, gemfileScope, methodParameters, multipleAssignmentTargets } from './gemfile-statements.js';
+import { forLoopTargets, GemfileStatements, gemfileScope, methodParameters, multipleAssignmentTargets, rescueTarget } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => scanGemfile(content).tokens;
 
@@ -21,6 +21,8 @@ const scanGemfile = (content: string) => {
     if (statement[0] !== 'def') {
       multipleAssignmentTargets(statement).forEach((name) => assignedLocals.add(name));
       forLoopTargets(statement).forEach((name) => assignedLocals.add(name));
+      const rescued = rescueTarget(statement);
+      if (rescued) assignedLocals.add(rescued);
       assignedLocals.forEach((name) => parent.add(name));
     }
     assignedLocals.clear();

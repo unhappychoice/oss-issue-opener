@@ -38,6 +38,14 @@ export const forLoopTargets = (tokens: string[]): string[] => {
   return separator < 0 ? [] : localTargets(tokens.slice(1, separator));
 };
 
+export const rescueTarget = (tokens: string[]): string | undefined => {
+  if (tokens[0] !== 'rescue') return undefined;
+  const then = tokens.indexOf('then');
+  const targetIndex = (then < 0 ? tokens.length : then) - 1;
+  const target = tokens[targetIndex];
+  return tokens[targetIndex - 1] === '=>' && /^[a-z_]\w*$/.test(target) ? target : undefined;
+};
+
 const localTargets = (targets: string[]): string[] => {
   const localName = /^[a-z_]\w*$/;
   const valid = targets.every((token, index) =>
