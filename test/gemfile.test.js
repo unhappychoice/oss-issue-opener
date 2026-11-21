@@ -226,6 +226,48 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['[warn]', '[0, warn]', '[0, *warn]'].forEach((pattern) => {
+  test(`recognizes division after an array pattern binds warn with ${pattern}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class Matcher
+      case values
+      in ${pattern}
+        warn /2
+        gem 'minitest'
+      end
+      warn /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+matcher = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'minitest'), false);
+  });
+});
+
+test('recognizes a warn regexp after a pinned array pattern expression', () => {
+  const gemfile = `group :test do
+  case values
+  in [^([warn])]
+    warn /prefix
+class RegexpText
+gem "ignored"
+suffix/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+});
+
 [
   ['warn', '[4]'],
   ['other, (warn, third)', '[[1, [4, 8]]]'],

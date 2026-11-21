@@ -76,7 +76,9 @@ type BindingScope = {
 };
 
 const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): boolean => {
-  if (statements.some((statement) => assignsForTargets(statement, name) || assignsMultipleTargets(statement, name))) {
+  if (statements.some((statement) =>
+    assignsForTargets(statement, name) || assignsMultipleTargets(statement, name) ||
+    bindsArrayPatternTarget(statement, name))) {
     return true;
   }
   const tokens = statements.flatMap((statement) => [...statement, ';']);
@@ -101,6 +103,21 @@ const assignsForTargets = (statement: string[], name: string): boolean => {
   if (statement[0] !== 'for') return false;
   const separator = statement.indexOf('in', 1);
   return separator > 1 && includesLocalTarget(statement.slice(1, separator), name);
+};
+
+const bindsArrayPatternTarget = (statement: string[], name: string): boolean => {
+  if (statement[0] !== 'in' || statement[1] !== '[') return false;
+  let depth = 1;
+  for (let index = 2; index < statement.length; index++) {
+    const token = statement[index];
+    if (depth === 1 && token === name &&
+      ['[', ',', '*'].includes(statement[index - 1]) &&
+      [',', ']'].includes(statement[index + 1])) return true;
+    if (['[', '(', '{'].includes(token)) depth++;
+    if ([']', ')', '}'].includes(token)) depth--;
+    if (depth === 0) return false;
+  }
+  return false;
 };
 
 const includesLocalTarget = (targets: string[], name: string): boolean =>
