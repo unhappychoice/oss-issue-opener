@@ -1,3 +1,5 @@
+import { opensScope, splitGemfileStatements } from './gemfile-scopes.js';
+
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
@@ -14,11 +16,11 @@ export const gemfileTokens = (content: string): string[] => {
       const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
       if (token === '=') {
         hasLocalPuts ||= !/^[=~]/.test(content.slice(pattern.lastIndex, pattern.lastIndex + 1)) &&
-          (barePuts || assignsParallelPuts(tokens, index));
+          (barePuts || assignsParallelPuts(tokens, index)) && !declaresPutsParameter(tokens);
       } else if (expectsRegexp(previous, qualifier) ||
         ((!hasLocalPuts || !barePuts) && startsPutsRegexp(previous, content, match.index))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
-        if (end !== undefined) {
+        if (end !== undefined && (!barePuts || !hasPutsParameterInScope(tokens))) {
           tokens.push(content.slice(match.index, end));
           pattern.lastIndex = end;
           continue;
@@ -159,6 +161,37 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 };
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const hasPutsParameterInScope = (tokens: string[]): boolean => {
+  const scopes: boolean[] = [];
+  for (const statement of splitGemfileStatements(tokens)) {
+    if (statement[0] === 'end') scopes.pop();
+    if (opensScope(statement)) {
+      scopes.push(statement[0] === 'def' ? hasPutsParameter(statement) : scopes.at(-1) ?? false);
+    }
+  }
+  return scopes.at(-1) ?? false;
+};
+
+const declaresPutsParameter = (tokens: string[]): boolean => {
+  const statement = splitGemfileStatements(tokens).at(-1);
+  return statement?.[0] === 'def' && hasPutsParameter(statement);
+};
+
+const hasPutsParameter = (statement: string[]): boolean => {
+  const parameters = statement.slice(statement[2] === '.' ? 4 : 2);
+  if (parameters[0] === '(') parameters.shift();
+  let depth = 0;
+  let atParameterStart = true;
+  for (const token of parameters) {
+    if (atParameterStart && token === 'puts') return true;
+    if (atParameterStart && ['*', '&'].includes(token)) continue;
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    atParameterStart = depth === 0 && token === ',';
+  }
+  return false;
+};
 
 const assignsParallelPuts = (tokens: string[], end: number): boolean => {
   let boundary = end;

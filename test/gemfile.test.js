@@ -264,3 +264,32 @@ test('preserves gem declarations after a slash character literal', () => {
   const gemfile = "separator = ?/\ngem 'rack', path: '/rack'";
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+['render(puts)', 'render puts', 'render(count, puts = 8)'].forEach((signature) => {
+  test(`preserves gem declarations after dividing a parameter in def ${signature}`, () => {
+    const gemfile = `def ${signature}
+  if true
+    puts /2
+  end
+end
+gem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['puts', 'puts = 8'].forEach((parameter) => {
+  test(`recognizes a puts regexp after leaving def render(${parameter})`, () => {
+    const gemfile = `def render(${parameter})
+  puts /2
+end
+group :test do
+  puts /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
