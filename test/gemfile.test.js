@@ -255,7 +255,8 @@ gem 'rack'`;
   test(`preserves a production gem after dividing a local variable named warn with ${division}`, () => {
     const gemfile = `warn = 8
 ratio = warn ${division}
-gem 'rack', path: '/rack'`;
+gem 'rack'
+another_ratio = ratio / 2`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });

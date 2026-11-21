@@ -2,16 +2,24 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const assignment = /[^\S\n]*=(?!=|>|~)/y;
+  let hasWarnAssignment = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === 'warn' || token === 'warn=') {
+      assignment.lastIndex = match.index + 'warn'.length;
+      const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)];
+      hasWarnAssignment ||= !['.', '::', '@', '$', 'def'].includes(previous) && assignment.test(content);
+    }
     if (token === '?' && content[pattern.lastIndex] === '/' && canStartRegexp(tokens)) {
       tokens.push('?/');
       pattern.lastIndex++;
       continue;
     }
-    if ((token === '/' || token === '%') && canStartRegexp(tokens, content.slice(match.index, match.index + 2))) {
+    if ((token === '/' || token === '%') &&
+      canStartRegexp(tokens, hasWarnAssignment ? '' : content.slice(match.index, match.index + 2))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
