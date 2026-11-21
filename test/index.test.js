@@ -59,11 +59,12 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
   assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
 });
 
-test('CLI submits confirmed CI failures before exiting with status 1 for an endpoint error', () => {
+const runPartialCICLI = (endpoint, hasFailure) => {
   const sha = 'a'.repeat(40);
   const preload = `
+    const endpoint = ${JSON.stringify(endpoint)};
     globalThis.fetch = async (url, options) => {
-      const { origin, pathname } = new URL(url);
+      const { origin, pathname, searchParams } = new URL(url);
       if (origin !== 'https://api.github.com') throw new Error('Unexpected origin: ' + origin);
       if (options.method === 'POST' && pathname === '/repos/unhappychoice/oss-issue-opener/issues') {
         const issue = JSON.parse(options.body);
@@ -82,13 +83,40 @@ test('CLI submits confirmed CI failures before exiting with status 1 for an endp
           return Response.json({ commit: { sha: '${sha}', commit: { tree: { sha: 'head-tree' } } } });
         }
         if (pathname === '/repos/unhappychoice/example/commits/${sha}/status') {
-          return Response.json({ statuses: [{ state: 'failure', context: 'build' }] });
+          if (endpoint === 'statuses') {
+            if (searchParams.get('page') === '2') {
+              return Response.json({ message: 'CI page unavailable' }, { status: 503 });
+            }
+            return Response.json({ statuses: Array.from({ length: 100 }, (_, index) => ({
+              state: ${hasFailure} && index === 0 ? 'failure' : 'success', context: index === 0 ? 'build' : 'lint-' + index,
+            })) });
+          }
+          return Response.json({ statuses: endpoint === 'first-check-page'
+            ? [{ state: 'failure', context: 'build' }] : [] });
         }
         if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-suites') {
           return Response.json({ total_count: 0, check_suites: [] });
         }
         if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-runs') {
-          return Response.json({ message: 'Check runs unavailable' }, { status: 503 });
+          if (endpoint === 'first-check-page' || searchParams.get('page') === '2') {
+            return Response.json({ message: 'CI page unavailable' }, { status: 503 });
+          }
+          const respond = (data, init) => {
+            const response = Response.json(data, init);
+            Object.defineProperty(response, 'url', { value: url });
+            return response;
+          };
+          if (endpoint === 'statuses') return respond({ total_count: 0, check_runs: [] });
+          const next = new URL(url);
+          next.searchParams.set('page', '2');
+          return respond({
+            total_count: 101,
+            check_runs: Array.from({ length: 100 }, (_, index) => ({
+              status: 'completed',
+              conclusion: ${hasFailure} && index === 0 ? 'failure' : 'success',
+              name: index === 0 ? 'build' : 'lint-' + index,
+            })),
+          }, { headers: { link: '<' + next + '>; rel="next"' } });
         }
         if (['/releases', '/tags', '/issues'].some((suffix) => pathname.endsWith(suffix))) {
           return Response.json([]);
@@ -97,13 +125,31 @@ test('CLI submits confirmed CI failures before exiting with status 1 for an endp
       throw new Error('Unexpected GitHub request: ' + options.method + ' ' + url);
     };
   `;
-  const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, entryPoint], {
+  return spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, entryPoint], {
     env: { ...process.env, GH_TOKEN: 'test-token' }, encoding: 'utf8',
   });
+};
 
-  assert.ifError(result.error);
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
-  assert.match(result.stderr, /Check runs unavailable/);
-  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+[
+  ['first-check-page', true],
+  ['statuses', true],
+  ['statuses', false],
+  ['check-runs', true],
+  ['check-runs', false],
+].forEach(([endpoint, hasFailure]) => {
+  test(`CLI exits with status 1 after a ${endpoint} error with ${hasFailure ? 'a confirmed failure' : 'no confirmed failures'}`, () => {
+    const result = runPartialCICLI(endpoint, hasFailure);
+
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    if (hasFailure) {
+      assert.match(result.stdout, /CI: failure/);
+      assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
+    } else {
+      assert.match(result.stdout, /CI: incomplete/);
+      assert.match(result.stdout, /CI failures: 0/);
+    }
+    assert.match(result.stderr, /CI page unavailable/);
+    assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+  });
 });

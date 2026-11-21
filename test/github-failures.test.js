@@ -19,7 +19,7 @@ afterEach(() => mock.restoreAll());
 const pendingIssue = () => buildCIFailureIssue('owner/repo', []);
 
 [
-  ['commit statuses', 'getCombinedStatusForRef', () => getCommitStatus('owner', 'repo', 'main')],
+  ['commit statuses', 'getCombinedStatusForRef', () => Array.fromAsync(getCommitStatus('owner', 'repo', 'main'))],
   ['releases', 'listReleases', () => getLatestRelease('owner', 'repo')],
   ['fallback tags', 'listTags', () => getLatestRelease('owner', 'repo')],
 ].forEach(([name, method, read]) => {
@@ -47,11 +47,11 @@ test('returns null when default branch retrieval fails', async () => {
 
 test('preserves the request error when check runs retrieval fails', async () => {
   const failure = new Error('HTTP 503');
-  const request = mock.method(getOctokit(), 'paginate', async () => {
+  const request = mock.method(getOctokit().paginate, 'iterator', () => {
     throw failure;
   });
 
-  await assert.rejects(getCheckRuns('owner', 'repo', 'main'), (error) => error === failure);
+  await assert.rejects(Array.fromAsync(getCheckRuns('owner', 'repo', 'main')), (error) => error === failure);
   assert.equal(request.mock.callCount(), 1);
   assert.deepEqual(request.mock.calls[0].arguments, [
     getOctokit().checks.listForRef, { owner: 'owner', repo: 'repo', ref: 'main', per_page: 100 },
@@ -63,7 +63,7 @@ test('reports no-ci and no-tag after successful empty reads', async () => {
   mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha: 'a'.repeat(40), commit: { tree: { sha: 'head-tree' } } } } }));
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
-  mock.method(client, 'paginate', async () => []);
+  mock.method(client.paginate, 'iterator', async function* () { yield { data: [] }; });
   mock.method(client.repos, 'listReleases', async () => ({ data: [] }));
   mock.method(client.repos, 'listTags', async () => ({ data: [] }));
 
