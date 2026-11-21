@@ -272,3 +272,30 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('distinguishes a warn regexp argument from division', () => {
+  const gemfile = `group :test do
+  warn /prefix
+class RegexText
+gem "ignored"
+suffix/
+  gem 'rspec'
+end
+warn = 12
+warn / 2
+gem 'rack'
+warn/2
+gem 'rake'
+ratio = warn /2
+gem 'rails'
+warn /2
+gem 'json'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rake'), true);
+  assert.equal(isProductionGem(gemfile, 'rails'), true);
+  assert.equal(isProductionGem(gemfile, 'json'), true);
+});

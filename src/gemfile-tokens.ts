@@ -10,7 +10,8 @@ export const gemfileTokens = (content: string): string[] => {
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (['?', '/', '%'].includes(token)) {
       const index = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsRegexp(tokens[index], tokens[previousSignificantToken(tokens, index - 1)])) {
+      const previous = tokens[previousSignificantToken(tokens, index - 1)];
+      if (expectsRegexp(tokens[index], previous) || opensWarnRegexp(content, match.index, tokens, index, previous)) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
           : regexpEnd(content, match.index, tokenPattern);
@@ -45,6 +46,23 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const opensWarnRegexp = (
+  content: string, start: number, tokens: string[], index: number, previous = '\n',
+): boolean =>
+  tokens[index] === 'warn' && ['\n', ';', 'do'].includes(previous) &&
+  index < tokens.length - 1 && content[start] === '/' && /\S/.test(content[start + 1] ?? '') &&
+  !hasWarnBinding(tokens, index);
+
+const hasWarnBinding = (tokens: string[], end: number): boolean => {
+  let parameters = false;
+  return tokens.slice(0, end).filter((token) => !isSpacing(token)).some((token, index, significant) => {
+    const previous = significant[index - 1];
+    if (token === '|') parameters = !parameters && (previous === 'do' || previous === '{');
+    return token === 'warn' && (parameters ||
+      (previous !== '.' && significant[index + 1] === '=' && significant[index + 2] !== '='));
+  });
+};
 
 const opensSingletonClass = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
