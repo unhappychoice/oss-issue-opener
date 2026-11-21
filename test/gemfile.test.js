@@ -357,6 +357,31 @@ gem 'rack', path: '/x'`;
   });
 });
 
+test('preserves group exclusions when assigning the result of a command with a multiline regexp', () => {
+  const gemfile = `group :test do
+  result = warn /prefix
+class FakeClass
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves group exclusions after assigning the result of compact local division', () => {
+  const gemfile = `group :test do
+  warn = 4
+  result = warn /2
+  gem 'rspec'
+end
+gem 'rack', path: '/x'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   ['left, right', 'left'],
   ['left, middle, *rest', 'middle'],
