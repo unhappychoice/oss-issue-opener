@@ -234,3 +234,29 @@ gem 'rack', path: '/.rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const multilineRegexps = [
+  'matcher = /prefix\nclass RegexText\nsuffix/',
+  '/prefix\nend\nmodule RegexText\nsuffix/',
+  'matcher = enabled && /prefix\\/\nclass RegexText\nsuffix/i',
+  'matcher = cached || %r{prefix{2}\nmodule RegexText\nsuffix}',
+  'matcher = %r#prefix\nclass RegexText\nsuffix#',
+  'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /other/',
+  'matcher = enabled ? /other/ : /prefix\nmodule RegexText\nsuffix/',
+  'matcher = /prefix#{ %q!}/! }\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/',
+];
+
+multilineRegexps.forEach((expression) => {
+  test(`preserves Gemfile group boundaries around ${JSON.stringify(expression)}`, () => {
+    const gemfile = `group :test do
+${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
