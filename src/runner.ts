@@ -32,20 +32,23 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
   for (const org of ORGS) {
     console.log(`\n━━━ Organization: ${org} ━━━`);
 
+    const repos: Repository[] = [];
     await attempt(`${org}: repository investigation`, failures, async () => {
-      const repos = await deps.listOrgRepos(org);
-      console.log(`  Found ${repos.length} repositories`);
-
-      const issuesByRepo = await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo) => {
-        totalRepos++;
-        const issues: PendingIssue[] = [];
-        await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
-          issues.push(...await checkRepo(repo, deps, failures));
-        });
-        return issues;
-      });
-      allIssues.push(...issuesByRepo.flat());
+      for await (const repo of deps.listOrgRepos(org)) {
+        repos.push(repo);
+      }
     });
+    console.log(`  Found ${repos.length} repositories`);
+
+    const issuesByRepo = await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo) => {
+      totalRepos++;
+      const issues: PendingIssue[] = [];
+      await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
+        issues.push(...await checkRepo(repo, deps, failures));
+      });
+      return issues;
+    });
+    allIssues.push(...issuesByRepo.flat());
   }
 
   if (allIssues.length > 0) {
@@ -117,6 +120,9 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
         return [];
       } else if (releaseStatus.status === 'incomplete') {
         log('⚠️', 'Release: incomplete');
+        return [];
+      } else if (releaseStatus.status !== 'pending') {
+        log('⚪', `Release: ${releaseStatus.status}`);
         return [];
       }
       log('📦', 'Release: pending');

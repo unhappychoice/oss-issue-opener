@@ -126,17 +126,28 @@ const loadKotlin: DependencyLoader = async (file, contents) => {
   const aliases = gradleCatalogAliases(content);
   if (aliases.length > 0) {
     const catalog = await file('gradle/libs.versions.toml', true);
-    coordinates.push(...gradleCatalogCoordinates(catalog, new Set(aliases)));
+    coordinates.push(...gradleCatalogCoordinates(catalog, aliases));
   }
   return async (pkg) => coordinates.some((coordinate) =>
     coordinate === pkg || coordinate.startsWith(`${pkg}:`)
   );
 };
 
-const gradleCatalogCoordinates = (content: string, aliases: Set<string>): string[] => {
+const gradleAccessor = (alias: string): string => alias.replace(/[-_]/g, '.');
+
+const gradleCatalogCoordinates = (content: string, aliases: string[]): string[] => {
   try {
-    return Object.entries(asTable(parse(content).libraries)).flatMap(([alias, value]) => {
-      if (!aliases.has(alias.replace(/[-_]/g, '.'))) return [];
+    const catalog = parse(content);
+    const bundles = new Map<string, unknown>(Object.entries(asTable(catalog.bundles)).map(([alias, members]) =>
+      [`bundles.${gradleAccessor(alias)}`, members]
+    ));
+    const libraries = new Set(aliases.flatMap((alias) => {
+      if (!alias.startsWith('bundles.')) return [alias];
+      const members = bundles.get(alias);
+      return Array.isArray(members) ? members.filter((member) => typeof member === 'string').map(gradleAccessor) : [];
+    }));
+    return Object.entries(asTable(catalog.libraries)).flatMap(([alias, value]) => {
+      if (!libraries.has(gradleAccessor(alias))) return [];
       if (typeof value === 'string') return [value];
       const { module, group, name } = asTable(value);
       if (typeof module === 'string') return [module];

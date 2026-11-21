@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import {
-  getCheckRuns, getCommitStatus, getDefaultBranch, getLatestRelease,
+  getCheckRuns, getCommitStatus, getDefaultBranchHead, getLatestRelease,
   getOctokit, listOpenIssues,
 } from '../dist/github.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
@@ -39,10 +39,12 @@ const pendingIssue = () => buildCIFailureIssue('owner/repo', []);
   });
 });
 
-test('returns null when default branch retrieval fails', async () => {
-  mock.method(getOctokit().repos, 'get', async () => { throw new Error('HTTP 503'); });
+test('reports a missing branch when repository metadata has no default branch name', async () => {
+  const { repos } = getOctokit();
+  mock.method(repos, 'get', async () => ({ data: { default_branch: null } }));
 
-  assert.equal(await getDefaultBranch('owner', 'repo'), null);
+  assert.deepEqual(await getDefaultBranchHead('owner', 'repo'), { status: 'no-branch' });
+  assert.equal(repos.getBranch.mock.callCount(), 0);
 });
 
 test('preserves the request error when check runs retrieval fails', async () => {

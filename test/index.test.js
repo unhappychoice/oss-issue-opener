@@ -59,7 +59,8 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
   assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
 });
 
-const runPartialCICLI = (endpoint, hasFailure) => {
+const runCLIWithCIFailures = (endpoint, hasFailure) => {
+  const failListing = endpoint === 'listing';
   const sha = 'a'.repeat(40);
   const preload = `
     const endpoint = ${JSON.stringify(endpoint)};
@@ -68,21 +69,28 @@ const runPartialCICLI = (endpoint, hasFailure) => {
       if (origin !== 'https://api.github.com') throw new Error('Unexpected origin: ' + origin);
       if (options.method === 'POST' && pathname === '/repos/unhappychoice/oss-issue-opener/issues') {
         const issue = JSON.parse(options.body);
-        if (issue.title === '[CI Failure] unhappychoice/example' && issue.body.includes('- build')) {
+        if (['[CI Failure] unhappychoice/example', '[CI Failure] irasutoya-tools/example'].includes(issue.title) && issue.body.includes('- build')) {
           return Response.json({ number: 532, labels: ['ci-failure'] }, { status: 201 });
         }
       }
       if (options.method === 'GET') {
         if (pathname === '/users/unhappychoice/repos') {
-          return Response.json([{ full_name: 'unhappychoice/example', default_branch: 'main' }]);
+          if (${failListing} && searchParams.get('page') === '2') {
+            return Response.json({ message: 'Repository listing unavailable' }, { status: 503 });
+          }
+          const headers = ${failListing} ? { link: '<https://api.github.com/users/unhappychoice/repos?page=2>; rel="next"' } : {};
+          return Response.json([{ full_name: 'unhappychoice/example', default_branch: 'main' }], { headers });
+        }
+        if (${failListing} && pathname === '/users/irasutoya-tools/repos') {
+          return Response.json([{ full_name: 'irasutoya-tools/example', default_branch: 'main' }]);
         }
         if (pathname.startsWith('/users/')) {
           return Response.json(pathname.endsWith('/repos') ? [] : { type: 'User' });
         }
-        if (pathname === '/repos/unhappychoice/example/branches/main') {
+        if (pathname.endsWith('/example/branches/main')) {
           return Response.json({ commit: { sha: '${sha}', commit: { tree: { sha: 'head-tree' } } } });
         }
-        if (pathname === '/repos/unhappychoice/example/commits/${sha}/status') {
+        if (pathname.endsWith('/example/commits/${sha}/status')) {
           if (endpoint === 'statuses') {
             if (searchParams.get('page') === '2') {
               return Response.json({ message: 'CI page unavailable' }, { status: 503 });
@@ -91,13 +99,13 @@ const runPartialCICLI = (endpoint, hasFailure) => {
               state: ${hasFailure} && index === 0 ? 'failure' : 'success', context: index === 0 ? 'build' : 'lint-' + index,
             })) });
           }
-          return Response.json({ statuses: endpoint === 'first-check-page'
+          return Response.json({ statuses: (endpoint === 'first-check-page' || endpoint === 'listing')
             ? [{ state: 'failure', context: 'build' }] : [] });
         }
-        if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-suites') {
+        if (pathname.endsWith('/example/commits/${sha}/check-suites')) {
           return Response.json({ total_count: 0, check_suites: [] });
         }
-        if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-runs') {
+        if (pathname.endsWith('/example/commits/${sha}/check-runs')) {
           if (endpoint === 'first-check-page' || searchParams.get('page') === '2') {
             return Response.json({ message: 'CI page unavailable' }, { status: 503 });
           }
@@ -106,7 +114,7 @@ const runPartialCICLI = (endpoint, hasFailure) => {
             Object.defineProperty(response, 'url', { value: url });
             return response;
           };
-          if (endpoint === 'statuses') return respond({ total_count: 0, check_runs: [] });
+          if (endpoint === 'statuses' || endpoint === 'listing') return respond({ total_count: 0, check_runs: [] });
           const next = new URL(url);
           next.searchParams.set('page', '2');
           return respond({
@@ -138,7 +146,7 @@ const runPartialCICLI = (endpoint, hasFailure) => {
   ['check-runs', false],
 ].forEach(([endpoint, hasFailure]) => {
   test(`CLI exits with status 1 after a ${endpoint} error with ${hasFailure ? 'a confirmed failure' : 'no confirmed failures'}`, () => {
-    const result = runPartialCICLI(endpoint, hasFailure);
+    const result = runCLIWithCIFailures(endpoint, hasFailure);
 
     assert.ifError(result.error);
     assert.equal(result.status, 1);
@@ -150,6 +158,20 @@ const runPartialCICLI = (endpoint, hasFailure) => {
       assert.match(result.stdout, /CI failures: 0/);
     }
     assert.match(result.stderr, /CI page unavailable/);
+    assert.match(result.stderr, /status: 503/);
     assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
   });
+});
+
+test('CLI scans earlier listing pages and subsequent accounts after a listing page fails', () => {
+  const result = runCLIWithCIFailures('listing');
+
+  assert.ifError(result.error);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
+  assert.match(result.stdout, /\[created\] \[CI Failure\] irasutoya-tools\/example/, result.stderr);
+  assert.match(result.stderr, /\[failed\] unhappychoice: repository investigation/);
+  assert.match(result.stderr, /Repository listing unavailable/);
+  assert.match(result.stderr, /status: 503/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
 });

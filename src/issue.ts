@@ -3,6 +3,57 @@ import type { DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './t
 import { ISSUE_REPO } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
+const ISSUE_BODY_LIMIT = 65_536;
+
+export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => {
+  const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
+  const links = `\n\n**Repository**: https://github.com/${repo}
+**Actions**: https://github.com/${repo}/actions`;
+  const items = failedChecks.map(formatFailedCheck);
+  return {
+    type: 'ci-failure',
+    repo,
+    title: `[CI Failure] ${repo}`,
+    body: formatIssueBody(intro, items, links),
+  };
+};
+
+export const buildPendingReleaseIssue = (
+  repo: string,
+  changedSources: string[],
+  dependencyUpdates: DependencyUpdate[],
+  compareUrl: string
+): PendingIssue => {
+  const sources = formatChangedSources(changedSources);
+  const intro = `Changes since last release:\n\n${sources}`;
+  const links = `\n\n**Diff**: ${compareUrl}
+**Releases**: https://github.com/${repo}/releases`;
+  const items = dependencyUpdates.map(({ pkg, from, to }) =>
+    `- ${formatCodeSpan(pkg)} ${formatCodeSpan(from)} -> ${formatCodeSpan(to)}`);
+  const heading = items.length ? `${sources ? '\n' : ''}**Dependency updates:**\n` : '';
+  return {
+    type: 'pending-release',
+    repo,
+    title: `[Pending Release] ${repo}`,
+    body: formatIssueBody(intro + heading, items, links),
+  };
+};
+
+const formatIssueBody = (intro: string, items: string[], links: string): string => {
+  const available = ISSUE_BODY_LIMIT - intro.length - links.length;
+  const list = items.join('\n');
+  if (list.length <= available) return intro + list + links;
+
+  let shown = items.length;
+  let lengthWithSeparator = list.length + 1;
+  let summary: string;
+  do {
+    shown -= 1;
+    lengthWithSeparator -= items[shown].length + 1;
+    summary = `- ... and ${items.length - shown} more`;
+  } while (shown > 0 && lengthWithSeparator + summary.length > available);
+  return intro + [...items.slice(0, shown), summary].join('\n') + links;
+};
 
 const escapeMarkdown = (s: string): string => s.replace(/[`[\]()]/g, '\\$&');
 
@@ -22,66 +73,22 @@ const parseHttpUrl = (url: string): string | null => {
   }
 };
 
-const formatFailedChecks = (checks: FailedCheck[]): string =>
-  checks
-    .map((c) => {
-      const name = escapeMarkdown(c.name);
-      const url = c.url ? parseHttpUrl(c.url) : null;
-      return url ? `- [${name}](${url})` : `- ${name}`;
-    })
-    .join('\n');
-
-const formatPendingReleaseReasons = (changedSources: string[], dependencyUpdates: DependencyUpdate[]): string => {
-  const reasons: string[] = [];
-
-  if (changedSources.length > 0) {
-    reasons.push('**Source code changes:**');
-    changedSources.slice(0, 5).forEach((f) => reasons.push(`- \`${escapeMarkdown(f)}\``));
-    if (changedSources.length > 5) {
-      reasons.push(`- ... and ${changedSources.length - 5} more files`);
-    }
-    reasons.push('');
-  }
-
-  if (dependencyUpdates.length > 0) {
-    reasons.push('**Dependency updates:**');
-    dependencyUpdates.forEach(({ pkg, from, to }) => {
-      reasons.push(`- ${formatCodeSpan(pkg)} ${formatCodeSpan(from)} -> ${formatCodeSpan(to)}`);
-    });
-  }
-
-  return reasons.join('\n');
+const formatFailedCheck = (check: FailedCheck): string => {
+  const name = escapeMarkdown(check.name);
+  const url = check.url ? parseHttpUrl(check.url) : null;
+  return url ? `- [${name}](${url})` : `- ${name}`;
 };
 
-export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => ({
-  type: 'ci-failure',
-  repo,
-  title: `[CI Failure] ${repo}`,
-  body: `CI is failing on the default branch.
+const formatChangedSources = (changedSources: string[]): string => {
+  if (changedSources.length === 0) return '';
 
-**Failed checks:**
-${formatFailedChecks(failedChecks)}
-
-**Repository**: https://github.com/${repo}
-**Actions**: https://github.com/${repo}/actions`,
-});
-
-export const buildPendingReleaseIssue = (
-  repo: string,
-  changedSources: string[],
-  dependencyUpdates: DependencyUpdate[],
-  compareUrl: string
-): PendingIssue => ({
-  type: 'pending-release',
-  repo,
-  title: `[Pending Release] ${repo}`,
-  body: `Changes since last release:
-
-${formatPendingReleaseReasons(changedSources, dependencyUpdates)}
-
-**Diff**: ${compareUrl}
-**Releases**: https://github.com/${repo}/releases`,
-});
+  const lines = ['**Source code changes:**'];
+  changedSources.slice(0, 5).forEach((file) => lines.push(`- \`${escapeMarkdown(file)}\``));
+  if (changedSources.length > 5) {
+    lines.push(`- ... and ${changedSources.length - 5} more files`);
+  }
+  return lines.join('\n') + '\n';
+};
 
 const sortIssues = (issues: PendingIssue[]): PendingIssue[] =>
   [...issues].sort((a, b) => a.type.localeCompare(b.type) || a.repo.localeCompare(b.repo));

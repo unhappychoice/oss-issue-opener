@@ -104,7 +104,8 @@ const sha = 'a'.repeat(40);
       return respond('check_runs', runs);
     });
 
-    assert.deepEqual(await checkCIStatus('owner', 'repo', async () => ({ sha, treeSha: 'head-tree' })), {
+    const getHead = async () => ({ status: 'found', head: { sha, treeSha: 'head-tree' } });
+    assert.deepEqual(await checkCIStatus('owner', 'repo', getHead), {
       status: 'failure',
       failedChecks: [{ name: failure.name, url: failure.html_url }],
       ...(failLaterPage ? { endpointErrors: [pageError] } : {}),

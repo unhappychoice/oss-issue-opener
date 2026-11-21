@@ -293,10 +293,15 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
-  ['build.gradle.kts', 'implementation(libs.guava)', true],
-  ['build.gradle.kts', 'implementation(libs.guava.get())', true],
-  ['build.gradle', 'implementation libs.guava', true],
-  ['build.gradle', 'testImplementation(libs.guava)', false],
+  ['build.gradle.kts', 'implementation(libs.guava.core)', true],
+  ['build.gradle.kts', 'implementation(libs.guava.core.get())', true],
+  ['build.gradle', 'implementation libs.guava.core', true],
+  ['build.gradle', 'testImplementation(libs.guava.core)', false],
+  ['build.gradle.kts', 'implementation(libs.bundles.runtime.core)', true],
+  ['build.gradle', 'api libs.bundles.runtime.core', true],
+  ['build.gradle.kts', 'testImplementation(libs.bundles.runtime.core)', false],
+  ['build.gradle.kts', 'implementation(libs.bundles.missing)', false],
+  ['build.gradle.kts', 'api(libs.bundles.invalid)', false],
 ].forEach(([manifest, declaration, production]) => {
   test(`checks catalog-only Guava updates with ${declaration}`, async (t) => {
     const catalog = 'gradle/libs.versions.toml';
@@ -306,7 +311,13 @@ test('detects source changes without dependency updates', async (t) => {
     stubRepository(t, `Bump ${pkg} from ${from} to ${to}`, [catalog]);
     const files = {
       [manifest]: `dependencies { ${declaration} }`,
-      [catalog]: `[libraries]\nguava = "${pkg}:${to}"`,
+      [catalog]: `[libraries]
+        guava-core = "${pkg}:${to}"
+        other_lib = "org.example:other:1.0"
+        [bundles]
+        runtime_core = ["other_lib", "guava-core"]
+        invalid = "guava-core"
+      `,
     };
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
       data: { content: Buffer.from(files[path] ?? '').toString('base64') },
@@ -325,7 +336,7 @@ test('detects source changes without dependency updates', async (t) => {
   ['npm development dependency', ['package-lock.json'], false, 'up-to-date'],
   ['npm production dependency', ['package-lock.json'], true, 'pending'],
   ['no dependency paths', ['README.md'], true, 'up-to-date'],
-  ['unavailable paths', undefined, true, 'up-to-date'],
+  ['an empty file list', [], true, 'up-to-date'],
   ['multiple production ecosystems in the bump', ['package-lock.json', 'Gemfile.lock'], true, 'up-to-date'],
   ['multiple ecosystems in the bump with only one production match', ['package-lock.json', 'Cargo.lock'], true, 'up-to-date'],
   ['an undetected ecosystem', ['Cargo.lock'], true, 'up-to-date'],
@@ -447,4 +458,21 @@ test('reports an incomplete release check when its only bump lookup fails', asyn
     status: 'incomplete',
     lookupErrors: [failure],
   });
+});
+
+test('reports an incomplete release check at the commit file cap', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 21 to 22');
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
+    if (page === undefined) return { data: { sha: ref } };
+    const files = Array.from({ length: 100 }, (_, index) => ({
+      filename: page === 1 && index === 0 ? 'package-lock.json' : `docs/${page}-${index}.md`,
+    }));
+    return { data: { files }, headers: { link: page < 30 ? '<next>; rel="next"' : '' } };
+  });
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'incomplete',
+    lookupErrors: [new Error('Cannot establish complete commit files for owner/repo@commit: reached the 3000-file limit')],
+  });
+  assert.equal(getCommit.mock.callCount(), 31);
 });
