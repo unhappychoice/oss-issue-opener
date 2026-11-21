@@ -13,7 +13,7 @@ const checks = [
   { name: 'lint', source: 'status', url: '' },
 ];
 const body = buildCIFailureIssue(repo, checks).body;
-const alert = { number: 1, title: 'Renamed alert', user: { login: author }, labels: ['ci-failure'], body };
+const alert = { number: 1, title: 'Renamed alert', state: 'open', user: { login: author }, labels: ['ci-failure'], body };
 const setAutoClose = (t, value) => {
   const previous = process.env.AUTO_CLOSE_CI_ALERTS;
   process.env.AUTO_CLOSE_CI_ALERTS = value;
@@ -35,7 +35,8 @@ const workflows = [
 const passedLint = { context: 'lint', state: 'success' };
 
 const setup = (t, {
-  alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError, workflowError,
+  alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
+  workflowError, currentAlert = (issue) => issue,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -71,6 +72,11 @@ const setup = (t, {
     if (commentError) throw commentError;
     comments.push({ user: { login: author }, body: params.body });
     events.push(['comment', params]);
+  });
+  t.mock.method(client.issues, 'get', async (params) => {
+    assert.deepEqual(params, { owner: author, repo: 'oss-issue-opener', issue_number: params.issue_number });
+    const issue = alerts.find(({ number }) => number === params.issue_number);
+    return { data: currentAlert(issue, comments.length) };
   });
   t.mock.method(client.issues, 'update', async (params) => {
     events.push(['close', params]);
@@ -114,6 +120,29 @@ test('closes only a matching open alert and records the checked commit once', as
     ['close', { ...issue, state: 'closed', state_reason: 'completed' }],
     'list',
   ]);
+});
+
+[
+  ['label removed', { labels: [] }],
+  ['metadata removed', { body: 'Edited alert' }],
+  ['repository changed', { body: buildCIFailureIssue('owner/another', checks).body }],
+  ['unverified check added', { body: buildCIFailureIssue(repo, [
+    ...checks, { name: 'deploy', source: 'status', url: '' },
+  ]).body }],
+  ['already closed', { state: 'closed' }],
+  ['author changed', { user: null }],
+  ['pull request', { pull_request: {} }],
+].forEach(([name, changes]) => {
+  [0, 1].forEach((afterComments) => {
+    test(`skips remaining recovery writes with ${name} after ${afterComments} comments`, async (t) => {
+      const { run, events } = setup(t, {
+        currentAlert: (issue, comments) => comments >= afterComments ? { ...issue, ...changes } : issue,
+      });
+      await run(true);
+      assert.deepEqual(events.map((event) => typeof event === 'string' ? event : event[0]),
+        afterComments ? ['list', 'comment'] : ['list']);
+    });
+  });
 });
 
 [

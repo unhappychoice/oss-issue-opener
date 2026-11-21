@@ -47,29 +47,43 @@ export const closeRecoveredCIAlerts = async (
 ): Promise<void> => {
   const failures: Error[] = [];
   for (const alert of alerts) {
-    const { number, user, labels, body } = alert;
-    if (user?.login !== issueOwner || !labels.some((label) =>
-      (typeof label === 'string' ? label : label.name) === 'ci-failure')) continue;
-
-    const marker = body?.trimEnd().split('\n').at(-1)?.match(/^<!-- oss-issue-opener:ci:v1 ([\w.-]+\/[\w.-]+) ([\w-]+(?: [\w-]+)*) -->$/);
-    if (!marker) continue;
-    const [, repo, checks] = marker;
+    const { number } = alert;
+    const recorded = recordedChecks(alert);
+    if (!recorded) continue;
+    const { repo, checks } = recorded;
     const recovery = recoveries.get(repo);
     if (!recovery || !/^[a-f0-9]{40}$/i.test(recovery.sha)) continue;
     const passed = new Set(recovery.passedChecks.map(recoveryCheckKey));
-    if (!checks.split(' ').every((check) => passed.has(check))) continue;
+    if (!checks.every((check) => passed.has(check))) continue;
 
     try {
       const url = `https://github.com/${repo}/commit/${recovery.sha}`;
-      await completeIssue(issueOwner, issueRepo, number, issueOwner,
-        `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`);
-      console.log(`  [closed] ${alert.title} (#${number})`);
+      const closed = await completeIssue(issueOwner, issueRepo, number, issueOwner,
+        `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`,
+        (issue) => {
+          const current = recordedChecks(issue);
+          return current?.repo === repo && current.checks.every((check) => passed.has(check));
+        });
+      if (closed) console.log(`  [closed] ${alert.title} (#${number})`);
     } catch (cause) {
       failures.push(new Error(`Failed to complete CI alert #${number}`, { cause }));
       console.error(`  [failed] Completing CI alert #${number}`, cause);
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, 'CI alert closure failed');
+};
+
+const recordedChecks = (
+  issue: Awaited<ReturnType<typeof listCIAlerts>>[number]
+): { repo: string; checks: string[] } | undefined => {
+  const { state, user, labels, body, pull_request } = issue;
+  if (state !== 'open' || pull_request || user?.login !== issueOwner || !labels.some((label) =>
+    (typeof label === 'string' ? label : label.name) === 'ci-failure')) return undefined;
+
+  const marker = body?.trimEnd().split('\n').at(-1)?.match(/^<!-- oss-issue-opener:ci:v1 ([\w.-]+\/[\w.-]+) ([\w-]+(?: [\w-]+)*) -->$/);
+  if (!marker) return undefined;
+  const [, repo, checks] = marker;
+  return { repo, checks: checks.split(' ') };
 };
 
 const recoveryMarker = (repo: string, checks: FailedCheck[]): string => {
