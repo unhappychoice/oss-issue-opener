@@ -9,9 +9,19 @@ export type CIStatusType = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-bra
 
 export type CISource = 'status' | 'check';
 
-export interface FailedCheck {
+export interface CheckIdentity {
   name: string;
   source: CISource;
+  workflowId?: number;
+}
+
+export const recoveryCheckKey = ({ name, source, workflowId }: CheckIdentity): string | undefined => {
+  if (source === 'check' && workflowId === undefined) return undefined;
+  const identity = source === 'check' ? [source, name, workflowId] : [source, name];
+  return Buffer.from(JSON.stringify(identity)).toString('base64url');
+};
+
+export interface FailedCheck extends CheckIdentity {
   url: string;
 }
 
@@ -19,7 +29,7 @@ export interface CIStatus {
   status: CIStatusType;
   failedChecks: FailedCheck[];
   endpointErrors?: unknown[];
-  recovery?: { sha: string; passedChecks: Pick<FailedCheck, 'name' | 'source'>[] };
+  recovery?: { sha: string; passedChecks: CheckIdentity[] };
 }
 
 export type IssueType = 'ci-failure' | 'pending-release';

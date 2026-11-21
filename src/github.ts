@@ -130,7 +130,11 @@ export async function* getCheckRuns(
     startup_failure: 'failure',
   };
 
+  let workflows: Map<number, number> | undefined;
   for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
+    if (!workflows && checkRuns.some((check) => check.app?.slug === 'github-actions')) {
+      workflows = await listWorkflowIds(owner, repo, ref);
+    }
     yield checkRuns.map((c) => ({
       state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
         ? conclusionStates[c.conclusion] : 'pending',
@@ -138,11 +142,32 @@ export async function* getCheckRuns(
       passed: c.status === 'completed' && c.conclusion === 'success',
       context: c.name,
       url: c.html_url ?? '',
+      workflowId: c.app?.slug === 'github-actions' && c.check_suite ? workflows?.get(c.check_suite.id) : undefined,
     }));
   }
 }
 
-export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean };
+export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowId?: number | undefined };
+
+async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
+  const workflows = new Map<number, number>();
+  try {
+    // GitHub caps filtered workflow-run listings at 1,000 results.
+    for (let page = 1; page <= 10; page++) {
+      const { data: { workflow_runs } } = await getOctokit().actions.listWorkflowRunsForRepo({
+        owner, repo, head_sha, per_page: 100, page,
+      });
+      for (const { check_suite_id, workflow_id } of workflow_runs) {
+        if (check_suite_id && workflow_id > 0) workflows.set(check_suite_id, workflow_id);
+      }
+      if (workflow_runs.length < 100) break;
+    }
+    return workflows;
+  } catch {
+    // Workflow identity is required for recovery but optional for failure reporting.
+    return new Map();
+  }
+}
 
 async function* listCheckRunPages(owner: string, repo: string, ref: string) {
   const client = getOctokit();

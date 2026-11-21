@@ -1,13 +1,13 @@
+import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
+import { recoveryCheckKey } from './types.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
 // Share the lookup budget across repository scans, including paginated lookups.
-const COMMIT_FILE_CONCURRENCY = 16;
-const waitingLookups: (() => void)[] = [];
-let activeLookups = 0;
+const limitCommitFileLookup = createConcurrencyLimiter(16);
 
 export const checkCIStatus = async (
   owner: string,
@@ -30,7 +30,7 @@ export const checkCIStatus = async (
 
   const failedChecks = filtered
     .filter((s) => s.state === 'failure' || s.state === 'error')
-    .map((s) => ({ name: s.context, url: s.url, source: s.source }));
+    .map((s) => ({ ...checkIdentity(s), url: s.url }));
   const hasPending = filtered.some((s) => s.state === 'pending' || typeof s.context !== 'string' || s.context.length === 0);
 
   if (endpointErrors.length > 0) {
@@ -40,11 +40,21 @@ export const checkCIStatus = async (
   if (failedChecks.length > 0 || hasPending) {
     return { status: failedChecks.length > 0 ? 'failure' : 'pending', failedChecks };
   }
-  const unpassed = new Set(filtered.filter(({ passed }) => !passed).map(({ source, context }) => JSON.stringify([source, context])));
-  const passedChecks = filtered.filter(({ source, context }) => !unpassed.has(JSON.stringify([source, context])))
-    .map(({ context, source }) => ({ name: context, source }));
+  const checks = filtered.map((result) => {
+    const identity = checkIdentity(result);
+    return { identity, key: recoveryCheckKey(identity), passed: result.passed };
+  });
+  const unpassed = new Set(checks.filter(({ passed }) => !passed).map(({ key }) => key));
+  const unidentified = new Set(checks.filter(({ key, passed }) => !key && !passed).map(({ identity }) => identity.name));
+  const passedChecks = checks.filter(({ identity, key }) =>
+    key && !unpassed.has(key) && (identity.source === 'status' || !unidentified.has(identity.name))
+  ).map(({ identity }) => identity);
   return { status: 'success', failedChecks, recovery: { sha, passedChecks } };
 };
+
+const checkIdentity = ({ context, source, workflowId }: CIResult) => ({
+  name: context, source, ...(workflowId === undefined ? {} : { workflowId }),
+});
 
 const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
   const statuses: CIResult[] = [];
@@ -152,26 +162,14 @@ const findDependencyUpdates = async (
 
 const isEligibleBump = async (
   owner: string, repo: string, sha: string, productionTypes: ProjectType[]
-): Promise<boolean> => {
-  if (activeLookups >= COMMIT_FILE_CONCURRENCY) {
-    await new Promise<void>((resolve) => waitingLookups.push(resolve));
-  } else {
-    activeLookups++;
-  }
-
-  try {
-    const affected = new Set<ProjectType>();
-    for await (const paths of getCommitFilePages(owner, repo, sha)) {
-      for (const type of getDependencyProjectTypes(paths)) {
-        if (!productionTypes.includes(type)) return false;
-        affected.add(type);
-        if (affected.size > 1) return false;
-      }
+): Promise<boolean> => limitCommitFileLookup(async () => {
+  const affected = new Set<ProjectType>();
+  for await (const paths of getCommitFilePages(owner, repo, sha)) {
+    for (const type of getDependencyProjectTypes(paths)) {
+      if (!productionTypes.includes(type)) return false;
+      affected.add(type);
+      if (affected.size > 1) return false;
     }
-    return affected.size === 1;
-  } finally {
-    const next = waitingLookups.shift();
-    if (next) next();
-    else activeLookups--;
   }
-};
+  return affected.size === 1;
+});

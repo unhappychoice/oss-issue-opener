@@ -1,3 +1,4 @@
+import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
@@ -24,7 +25,7 @@ export const createDependencyChecker = (
   const file: ReadManifest = (path, optional) => {
     if (!files.has(path)) {
       const download = () => getFileContent(owner, repo, path, ref, optional);
-      files.set(path, path.endsWith('.gemspec') ? queueGemspecDownload(download) : download());
+      files.set(path, path.endsWith('.gemspec') ? limitGemspecDownload(download) : download());
     }
     return files.get(path)!;
   };
@@ -47,24 +48,7 @@ export const isProductionDependency = (
   getContents?: () => Promise<string[]>
 ): Promise<boolean> => createDependencyChecker(owner, repo, type, getContents)(pkg);
 
-const GEMSPEC_CONCURRENCY = 8;
-const waitingGemspecDownloads: (() => void)[] = [];
-let activeGemspecDownloads = 0;
-
-const queueGemspecDownload = async (download: () => Promise<string>): Promise<string> => {
-  if (activeGemspecDownloads < GEMSPEC_CONCURRENCY) {
-    activeGemspecDownloads++;
-  } else {
-    await new Promise<void>((resolve) => waitingGemspecDownloads.push(resolve));
-  }
-  try {
-    return await download();
-  } finally {
-    const next = waitingGemspecDownloads.shift();
-    if (next) next(); // Hand the slot directly to the next queued download.
-    else activeGemspecDownloads--;
-  }
-};
+const limitGemspecDownload = createConcurrencyLimiter(8);
 
 const loadRuby: DependencyLoader = async (file, contents) => {
   const names = await contents();

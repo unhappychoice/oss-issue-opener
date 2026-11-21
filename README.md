@@ -155,9 +155,11 @@ The scanner considers open `ci-failure` issues authored by the destination repos
 owner that carry scanner-generated recovery metadata for the scanned repository.
 The existing alert must be present when the scan starts. Its recorded check runs and
 commit statuses must each explicitly pass on the checked default-branch commit,
-and the overall CI scan must succeed. A missing, pending, skipped, neutral, or
+and the overall CI scan must succeed. GitHub Actions jobs must match both the
+recorded job name and workflow ID. A missing, pending, skipped, neutral, or
 unreadable recorded check leaves the issue open. The scanner comments with a link
 to the verified commit and closes the issue as completed.
 
-Alerts created before recovery metadata was added, or whose complete check list
-cannot fit in the metadata, require manual closure. Linear links do not affect eligibility.
+Alerts require manual closure when the recovery metadata is missing, when a check
+run has no verified GitHub Actions workflow ID, or when the complete check list
+cannot fit in the metadata. Linear links do not affect eligibility.

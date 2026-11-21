@@ -84,8 +84,7 @@ test('shares four suite lookups across repositories and yields runs in suite ord
       failedChecks: conclusion !== 'success'
         ? [{ name: `check-${total}`, url: `https://github.com/owner/repo/actions/runs/${total}`, source: 'check' }]
         : [],
-      ...(conclusion === 'success' ? { recovery: { sha, passedChecks: Array.from({ length: total }, (_, i) =>
-        ({ name: `check-${i + 1}`, source: 'check' })) } } : {}),
+      ...(conclusion === 'success' ? { recovery: { sha, passedChecks: [] } } : {}),
     });
     assert.deepEqual(requests, requestCount === 1 ? [firstUrl] : [firstUrl, nextUrl]);
   });

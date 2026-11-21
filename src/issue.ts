@@ -1,6 +1,6 @@
 import { completeIssue, createIssue, listOpenIssueDetails, listOpenIssues } from './github.js';
 import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
-import { ISSUE_REPO } from './types.js';
+import { ISSUE_REPO, recoveryCheckKey } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 const ISSUE_BODY_LIMIT = 65_536;
@@ -56,7 +56,7 @@ export const closeRecoveredCIAlerts = async (
     const [, repo, checks] = marker;
     const recovery = recoveries.get(repo);
     if (!recovery || !/^[a-f0-9]{40}$/i.test(recovery.sha)) continue;
-    const passed = new Set(recovery.passedChecks.map(checkKey));
+    const passed = new Set(recovery.passedChecks.map(recoveryCheckKey));
     if (!checks.split(' ').every((check) => passed.has(check))) continue;
 
     try {
@@ -72,13 +72,12 @@ export const closeRecoveredCIAlerts = async (
   if (failures.length > 0) throw new AggregateError(failures, 'CI alert closure failed');
 };
 
-const checkKey = ({ name, source }: Pick<FailedCheck, 'name' | 'source'>): string =>
-  Buffer.from(JSON.stringify([source, name])).toString('base64url');
-
 const recoveryMarker = (repo: string, checks: FailedCheck[]): string => {
-  const keys = [...new Set(checks.map(checkKey))].join(' ');
+  const identities = checks.map(recoveryCheckKey);
+  const keys = [...new Set(identities)].join(' ');
   const marker = `\n\n<!-- oss-issue-opener:ci:v1 ${repo} ${keys} -->`;
-  return keys && marker.length <= ISSUE_BODY_LIMIT / 2 ? marker : `\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`;
+  return identities.every(Boolean) && keys && marker.length <= ISSUE_BODY_LIMIT / 2
+    ? marker : `\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`;
 };
 
 const formatIssueBody = (intro: string, items: string[], links: string): string => {
