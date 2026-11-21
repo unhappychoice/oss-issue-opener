@@ -148,11 +148,37 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
   }
 
   for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
-    for (const suite of suites) {
-      for await (const { data: runs } of client.paginate.iterator(client.checks.listForSuite, {
-        owner, repo, check_suite_id: suite.id, per_page: 100,
-      })) yield runs;
+    for (let start = 0; start < suites.length; start += CHECK_SUITE_CONCURRENCY) {
+      const batch = suites.slice(start, start + CHECK_SUITE_CONCURRENCY);
+      const results = await Promise.all(batch.map(({ id }) => loadCheckSuite(client, owner, repo, id)));
+      for (const result of results) {
+        yield* result.pages;
+        if (result.failure) throw result.failure.error;
+      }
     }
+  }
+}
+
+const CHECK_SUITE_CONCURRENCY = 4;
+let activeCheckSuites = 0;
+const waitingCheckSuites: (() => void)[] = [];
+
+async function loadCheckSuite(client: Octokit, owner: string, repo: string, check_suite_id: number) {
+  const iterator = client.paginate.iterator(client.checks.listForSuite, { owner, repo, check_suite_id, per_page: 100 });
+  const pages: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'][] = [];
+  if (activeCheckSuites < CHECK_SUITE_CONCURRENCY) activeCheckSuites++;
+  else await new Promise<void>((resolve) => waitingCheckSuites.push(resolve));
+
+  try {
+    for await (const { data } of iterator) pages.push(data);
+    return { pages };
+  } catch (error) {
+    return { pages, failure: { error } };
+  } finally {
+    // Hand the occupied slot directly to the next waiting suite.
+    const next = waitingCheckSuites.shift();
+    if (next) next();
+    else activeCheckSuites--;
   }
 }
 
