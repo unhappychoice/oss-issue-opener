@@ -455,3 +455,21 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  ['a multiline percent string', 'message = %q{prefix{nested}\nclass LiteralText\ngem "ignored"\nsuffix}'],
+  ['a multiline Kernel.warn regexp', 'Kernel.warn /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+].forEach(([description, statement]) => {
+  test(`preserves group exclusions around ${description}`, () => {
+    const gemfile = `group :test do
+  warn = 12
+  ${statement}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});

@@ -14,7 +14,17 @@ export const characterLiteralEnd = (content: string, start: number): number | un
   return character.test(content) ? character.lastIndex : undefined;
 };
 
-export const regexpEnd = (content: string, start: number, tokenPattern: RegExp): number | undefined => {
+export const rubyLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {
+  if (content[start] === '/') return regexpEnd(content, start, expression);
+  const opening = /%([qQwWiIrxs]?)([^\p{L}\p{N}\s])/uy;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  if (match[1] === 'r') return regexpEnd(content, start, expression);
+  return literalEnd(content, opening.lastIndex, match[2], !/^[qwis]$/.test(match[1]), expression);
+};
+
+const regexpEnd = (content: string, start: number, tokenPattern: RegExp): number | undefined => {
   const opening = /\/|%r([^\p{L}\p{N}\s])/uy;
   opening.lastIndex = start;
   const match = opening.exec(content);
@@ -67,7 +77,7 @@ const interpolationEnd = (content: string, start: number, expression: RegExp): n
     if (regexpExpected && canOpenLiteral(token)) {
       const end = token === '?'
         ? characterLiteralEnd(content, tokenStart)
-        : interpolationLiteralEnd(content, tokenStart, expression);
+        : rubyLiteralEnd(content, tokenStart, expression);
       if (end !== undefined) {
         offset = end;
         regexpExpected = false;
@@ -79,14 +89,4 @@ const interpolationEnd = (content: string, start: number, expression: RegExp): n
     previous = token;
   }
   return undefined;
-};
-
-const interpolationLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {
-  if (content[start] === '/') return regexpEnd(content, start, expression);
-  const opening = /%([qQwWiIrxs]?)([^\p{L}\p{N}\s])/uy;
-  opening.lastIndex = start;
-  const match = opening.exec(content);
-  if (!match) return undefined;
-  if (match[1] === 'r') return regexpEnd(content, start, expression);
-  return literalEnd(content, opening.lastIndex, match[2], !/^[qwis]$/.test(match[1]), expression);
 };

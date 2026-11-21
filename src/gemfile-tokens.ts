@@ -1,4 +1,4 @@
-import { canOpenLiteral, characterLiteralEnd, expectsRegexp, regexpEnd } from './gemfile-regexp.js';
+import { canOpenLiteral, characterLiteralEnd, expectsRegexp, rubyLiteralEnd } from './gemfile-regexp.js';
 import { hasGemfileBinding } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
@@ -11,12 +11,13 @@ export const gemfileTokens = (content: string): string[] => {
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (canOpenLiteral(token)) {
       const index = previousSignificantToken(tokens, tokens.length - 1);
-      const previous = tokens[previousSignificantToken(tokens, index - 1)];
-      const warnRegexp = token === '/' && opensWarnRegexp(content, match.index, tokens, index, previous);
+      const previousIndex = previousSignificantToken(tokens, index - 1);
+      const previous = tokens[previousIndex];
+      const warnRegexp = token === '/' && opensWarnRegexp(content, match.index, tokens, index, previousIndex);
       if (expectsRegexp(tokens[index], previous) || warnRegexp) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
-          : regexpEnd(content, match.index, tokenPattern);
+          : rubyLiteralEnd(content, match.index, tokenPattern);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
           pattern.lastIndex = end;
@@ -50,11 +51,14 @@ export const gemfileTokens = (content: string): string[] => {
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
 
 const opensWarnRegexp = (
-  content: string, start: number, tokens: string[], index: number, previous = '\n',
-): boolean =>
-  tokens[index] === 'warn' && ['\n', ';', 'do'].includes(previous) &&
-  index < tokens.length - 1 && /\S/.test(content[start + 1] ?? '') &&
-  !hasGemfileBinding(tokens.slice(0, index), 'warn');
+  content: string, start: number, tokens: string[], index: number, previousIndex: number,
+): boolean => {
+  const previous = tokens[previousIndex] ?? '\n';
+  return tokens[index] === 'warn' && index < tokens.length - 1 && /\S/.test(content[start + 1] ?? '') &&
+    (previous === '.'
+      ? tokens[previousSignificantToken(tokens, previousIndex - 1)] === 'Kernel'
+      : ['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), 'warn'));
+};
 
 const opensSingletonClass = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
