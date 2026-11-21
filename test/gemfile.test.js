@@ -210,8 +210,28 @@ gem 'rack'`;
   });
 });
 
-test('recognizes a production gem after division following a parenthesized assignment', () => {
-  const gemfile = "puts=(8)\nputs /2\ngem 'rack', path: '/rack'";
+['puts=(8)', 'puts = 8'].forEach((assignment) => {
+  test(`recognizes a production gem after division following ${assignment}`, () => {
+    const gemfile = `${assignment}\nputs /2\ngem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('ignores scope keywords inside a multiline regexp passed as a command argument', () => {
+  const gemfile = `group :test do
+  puts /example
+class Phantom
+/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('recognizes a production gem after division with spaces on both sides', () => {
+  const gemfile = "puts / 2\ngem 'rack', path: '/rack'";
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 

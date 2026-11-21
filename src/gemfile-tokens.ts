@@ -2,11 +2,13 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const assignedNames = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
+    if ((token === '/' || token === '%') &&
+      (expectsRegexp(tokens) || (token === '/' && expectsCommandRegexp(tokens, content[match.index + 1], assignedNames)))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -26,6 +28,11 @@ export const gemfileTokens = (content: string): string[] => {
       pending.push({ delimiter, indented });
       tokens.push('""');
       continue;
+    }
+    if (token === '=' && content[match.index + 1] !== '=') {
+      assignedNames.add(tokens[previousSignificantToken(tokens, tokens.length - 1)] ?? '');
+    } else if (/^\w+=$/.test(token)) {
+      assignedNames.add(token.slice(0, -1));
     }
     tokens.push(token);
     if (token === '\n') {
@@ -70,6 +77,15 @@ const expectsRegexp = (tokens: string[]): boolean => {
   return /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:|[+*^&|<>%-])$/.test(token) ||
     (/^(?:!|do|if|elsif|unless|when|return)$/.test(token) &&
       tokens[previousSignificantToken(tokens, index - 1)] !== '.');
+};
+
+const expectsCommandRegexp = (tokens: string[], next: string | undefined, assignedNames: Set<string>): boolean => {
+  if (!next || /\s/.test(next) || !/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
+  const index = previousSignificantToken(tokens, tokens.length - 1);
+  const name = tokens[index] ?? '';
+  const previous = tokens[previousSignificantToken(tokens, index - 1)] ?? '\n';
+  return /^[a-z_]\w*[!?]?$/.test(name) && !assignedNames.has(name) &&
+    ['\n', ';', 'do', '='].includes(previous);
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
