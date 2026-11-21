@@ -226,7 +226,7 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['[warn]', '[0, warn]', '[0, *warn]'].forEach((pattern) => {
+['[warn]', '[0, warn]', '[0, *warn]', '[[warn]]', '[0, [1, [2, *warn]]]'].forEach((pattern) => {
   test(`recognizes division after an array pattern binds warn with ${pattern}`, () => {
     const gemfile = `group :test do
   module TestHelpers
@@ -253,7 +253,7 @@ matcher = /suffix/`;
 test('recognizes a warn regexp after a pinned array pattern expression', () => {
   const gemfile = `group :test do
   case values
-  in [^([warn])]
+  in [^([[warn]])]
     warn /prefix
 class RegexpText
 gem "ignored"

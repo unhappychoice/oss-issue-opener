@@ -107,15 +107,16 @@ const assignsForTargets = (statement: string[], name: string): boolean => {
 
 const bindsArrayPatternTarget = (statement: string[], name: string): boolean => {
   if (statement[0] !== 'in' || statement[1] !== '[') return false;
-  let depth = 1;
+  const delimiters = ['['];
   for (let index = 2; index < statement.length; index++) {
     const token = statement[index];
-    if (depth === 1 && token === name &&
+    if (token === name &&
       ['[', ',', '*'].includes(statement[index - 1]) &&
-      [',', ']'].includes(statement[index + 1])) return true;
-    if (['[', '(', '{'].includes(token)) depth++;
-    if ([']', ')', '}'].includes(token)) depth--;
-    if (depth === 0) return false;
+      [',', ']'].includes(statement[index + 1]) &&
+      delimiters.every((delimiter) => delimiter === '[')) return true;
+    if (['[', '(', '{'].includes(token)) delimiters.push(token);
+    if ([']', ')', '}'].includes(token)) delimiters.pop();
+    if (delimiters.length === 0) return false;
   }
   return false;
 };
