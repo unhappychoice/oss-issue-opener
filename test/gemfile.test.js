@@ -234,6 +234,25 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['a slash regexp', ' /prefix\nclass FakeClass\n/x'],
+  ['a percent regexp', ' %r{prefix\nclass FakeClass\n}x'],
+  ['division with space after the slash', ' / 2'],
+  ['division with no space before the slash', '/2'],
+].forEach(([description, suffix]) => {
+  test(`preserves group exclusions when warn is followed by ${description}`, () => {
+    const gemfile = `group :test do
+  warn${suffix}
+  gem 'rspec'
+end
+gem 'rack'
+pattern = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['if', 'unless'].forEach((keyword) => {
   test(`ignores class text in a multiline regexp used as an ${keyword} condition`, () => {
     const gemfile = `group :test do
