@@ -36,12 +36,12 @@ const scanGemfile = (content: string) => {
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const commandPercentRegexp = commandArgument && token === '%' && content.startsWith('%r', match.index);
+    const commandPercentLiteral = commandArgument && token === '%' && content.charAt(pattern.lastIndex) !== '=';
     if ((literalExpected && (token === '/' || token === '%')) ||
-      commandPercentRegexp ||
+      commandPercentLiteral ||
       (commandArgument && token === '/' && /\S/.test(content.charAt(pattern.lastIndex)))) {
       const end = literalEnd(content, match.index);
-      if (end !== undefined && (literalExpected || commandPercentRegexp || isCommandRegexpEnd(content, match.index, end))) {
+      if (end !== undefined && (literalExpected || commandPercentLiteral || isCommandRegexpEnd(content, match.index, end))) {
         token = content.slice(match.index, end);
         pattern.lastIndex = end;
       }
@@ -121,7 +121,7 @@ const expectsLiteral = (token: string, previous: string): boolean =>
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%[rqQwW]([^\w\s])/y;
+  const opening = /\/|(%[rqQwW]?)([^\w\s]|_)/y;
   opening.lastIndex = start;
   const root = opening.exec(content);
   if (!root) return undefined;
@@ -130,7 +130,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
   const interpolated = /\\[\s\S]|#\{|[\s\S]/y;
   const plain = /\\[\s\S]|[\s\S]/y;
   const options = /[imxounes]*/y;
-  const frames = [literalFrame(root[1] ? root[0].slice(0, 2) : '/', root[1] ?? '/')];
+  const frames = [literalFrame(root[1] ?? '/', root[2] ?? '/')];
   let offset = opening.lastIndex;
 
   while (offset < content.length) {
@@ -165,7 +165,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
       opening.lastIndex = offset - 1;
       const match = opening.exec(content);
       if (match) {
-        frames.push(literalFrame(match[0].slice(0, match[1] ? 2 : 1), match[1] ?? '/'));
+        frames.push(literalFrame(match[1] ?? '/', match[2] ?? '/'));
         offset = opening.lastIndex;
       }
     }

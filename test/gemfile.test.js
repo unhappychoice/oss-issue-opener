@@ -290,6 +290,7 @@ gem 'rack'`;
 [
   ['an unparenthesized slash regexp', ' /2\nclass FakeClass\n/x'],
   ['an unparenthesized percent regexp', ' %r!prefix\nclass FakeClass\nsuffix!x'],
+  ['an unparenthesized bare percent string', ' %!prefix\nclass FakeClass\nsuffix!'],
   ['a parenthesized slash regexp', '(/prefix\nclass FakeClass\n/x)'],
   ['a parenthesized percent regexp', '(%r{prefix\nclass FakeClass\n}x)'],
   ['division with space after the slash', ' / 2'],
@@ -467,6 +468,9 @@ gem 'rack'`;
 
 [
   ['a percent string and division', '/prefix#{%q!}!; 4 / 2}suffix/'],
+  ['a bare percent string with an escaped delimiter', '%!prefix\\!\nclass FakeClass\nsuffix!'],
+  ['an interpolated bare percent string with paired delimiters', '%{prefix{#{/a.b/i}\nmodule FakeModule\n}suffix}'],
+  ['a bare percent string in regexp interpolation', '/prefix#{%!}!; 4 / 2}\nclass FakeClass\n/'],
   ['a non-interpolated paired percent string', '/prefix#{%q{#{}}; 4 / 2}suffix/'],
   ['an interpolated paired percent string containing a regexp', '/prefix#{%Q{#{/a.b/i}}; 4 / 2}suffix/'],
   ['a regexp in a ternary branch', 'true ? /prefix#{%q!}!; 4 / 2}suffix/ : /fallback/'],
