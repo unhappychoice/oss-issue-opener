@@ -64,16 +64,24 @@ Both `npm run start` and `npm run check` run the scan and create issues;
 `npm run check` builds first. There is no dry-run mode. Existing open issues with
 the same title and matching `ci-failure` or `pending-release` label are skipped.
 
-## Local Development
+## Quick Start
 
-For a complete first-run walkthrough, see the [getting started guide](docs/getting-started.md).
+Install Node.js 26 and prepare a GitHub token as described in [Setup](#setup).
+The scan can create issues in `unhappychoice/oss-issue-opener`. To scan your own
+repositories and create issues in your own destination, update `ORGS` and
+`ISSUE_REPO` in `src/types.ts` before running `npm run check`.
 
 ```bash
-npm install
-npm run build
-npm test
-GH_TOKEN=your_token npm run start
+git clone https://github.com/unhappychoice/oss-issue-opener.git
+cd oss-issue-opener
+npm ci
+GH_TOKEN=your_token npm run check
 ```
+
+`npm run check` builds the scanner and runs it. Look for `[created]` in the
+output for new notifications and `[skip]` for matching open issues. Open the
+destination repository's Issues tab to see the failed checks or pending release
+details. For a complete walkthrough, see the [getting started guide](docs/getting-started.md).
 
 ## Manual Run
 
@@ -102,7 +110,18 @@ lookup error and exits with a nonzero status after processing the batch.
 1. Gets the latest non-draft release tag (falling back to the latest repository tag when no published release exists); skips repositories without a tag
 2. Compares that tag with the default branch
 3. Detects all ecosystems with root manifests and checks source file changes using each ecosystem's source paths (`src/` or `lib/` for Node/TypeScript). When no recognized manifest (`Cargo.toml`, `package.json`, `*.gemspec`/`Gemfile`, `build.gradle(.kts)`, `go.mod`, `Package.swift`) is found, the repository is treated as an unrecognized ecosystem: any change under `src/` counts as a source change
-4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits such as `chore(deps): bump X from A to B`). The commit's changed manifest and lockfile paths must identify exactly one detected ecosystem, and the release comparison must include a changed dependency file for that ecosystem. The scanner then checks whether the bumped package is a production dependency in that ecosystem. Bumps with no matching paths or paths identifying multiple ecosystems are skipped. If a commit page omits its file list or the lookup reaches the 3,000-file limit, the scanner records a lookup failure and still reports any confirmed release changes
+4. Parses dependency bump commit subjects (`Bump X from A to B` or Conventional Commits
+   such as `chore(deps): bump X from A to B`). For each bump, the scanner checks
+   production dependency membership at the comparison head in detected ecosystems with a
+   changed dependency file in the release comparison. It fetches the bump commit's
+   changed paths only if at least one ecosystem has a production match. For example, in
+   a Node-only repository with a changed `package-lock.json`, a package listed only in
+   `devDependencies` is skipped after reading `package.json`, without a commit-file
+   request. For a surviving bump to count as an update, its changed manifest or lockfile
+   paths must identify exactly one ecosystem, and that ecosystem must have a production
+   match for the package. If a commit page omits its file list or the lookup reaches the
+   3,000-file limit, the scanner records a lookup failure and still reports any
+   confirmed release changes
 5. Creates an issue if source files changed or production dependencies were updated, including both reasons when applicable
 
 Source changes alone qualify: for example, a change to `src/index.ts` with the commit

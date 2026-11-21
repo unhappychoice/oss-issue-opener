@@ -41,7 +41,7 @@ cases.forEach(([name, manifest, pkg, expected]) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg: 'constructor', from: '1.0.0', to: '2.0.0' }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });

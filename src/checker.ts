@@ -1,5 +1,5 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
-import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
@@ -70,7 +70,7 @@ export const checkPendingRelease = async (
   if (result.status !== 'found') return { status: result.status };
 
   const { baseSha, headSha, files, getCommits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, result.head
+    owner, repo, `refs/tags/${latestTag}`, result.head
   );
   if (files.length === 0) return { status: 'up-to-date' };
 
@@ -132,8 +132,7 @@ const findDependencyUpdates = async (
   }));
   const lookups = await Promise.allSettled(candidates.filter(({ productionTypes }) => productionTypes.length > 0)
     .map(async ({ sha, bump, productionTypes }) => {
-      const affected = getDependencyProjectTypes(await limitCommitFileLookup(() => getCommitFiles(owner, repo, sha)));
-      return affected.length === 1 && productionTypes.includes(affected[0]) ? [bump] : [];
+      return await isEligibleBump(owner, repo, sha, productionTypes) ? [bump] : [];
     }));
   return {
     dependencyUpdates: lookups.flatMap((lookup) => lookup.status === 'fulfilled' ? lookup.value : []),
@@ -143,3 +142,17 @@ const findDependencyUpdates = async (
     ],
   };
 };
+
+const isEligibleBump = async (
+  owner: string, repo: string, sha: string, productionTypes: ProjectType[]
+): Promise<boolean> => limitCommitFileLookup(async () => {
+  const affected = new Set<ProjectType>();
+  for await (const paths of getCommitFilePages(owner, repo, sha)) {
+    for (const type of getDependencyProjectTypes(paths)) {
+      if (!productionTypes.includes(type)) return false;
+      affected.add(type);
+      if (affected.size > 1) return false;
+    }
+  }
+  return affected.size === 1;
+});

@@ -104,7 +104,7 @@ cases.forEach(([name, content, pkg, expected]) => {
       status: 'pending',
       changedSources: [],
       dependencyUpdates: [{ pkg, from: '1.0.0', to: '1.1.0' }],
-      compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+      compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
     } : { status: 'up-to-date' });
   });
 });

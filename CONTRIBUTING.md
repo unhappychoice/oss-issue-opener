@@ -20,6 +20,7 @@ npm run test:coverage # build and test with coverage (requires Node.js >= 26)
 
 The build enables TypeScript strict mode, exact optional property types, and checks
 for missing return paths, switch fallthrough, unused locals, and unused parameters.
+It also type-checks dependency declaration files.
 These checks also run in CI because the coverage command builds first.
 
 The pull request and `main` branch CI job runs `npm run lint` and `npm run test:coverage` on Node.js 26.
