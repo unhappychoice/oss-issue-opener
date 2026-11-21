@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gradleDependencies, stripGradleComments } from '../dist/gradle.js';
+import { gradleCatalogAliases, gradleDependencies, stripGradleComments } from '../dist/gradle.js';
 
 test('Gradle comments preserve line endings and separate adjacent tokens', () => {
   const content = 'implementation/* hidden */("runtime")\r\n/* outer\n/* nested */\napi("test")\n*/';
@@ -76,6 +76,35 @@ test('Gradle keeps constraint scope across Groovy slashy strings', () => {
   }`;
   assert.equal(stripGradleComments(content), content);
   assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+});
+
+test('Gradle distinguishes slashy strings, division, and comments across long whitespace runs', () => {
+  const gap = ' \t'.repeat(50_000);
+  const blankLines = '\r\n'.repeat(50_000);
+  const inlineComment = '/* nested /* block */ comment */';
+  const lineComment = '// api("org.example:comment:1.0")';
+  const divisionComment = '/* division */';
+  const pattern = String.raw`/{ api('org.example:string:1.0'); \/\/ }/`;
+  const content = `dependencies {
+    constraints {
+      implementation('org.example:constraint:1.0') { because${gap}/reason }/ }
+      def pattern = ${inlineComment}${gap}${pattern}
+    }
+    def ratio = 8${gap}/ 2 ${divisionComment}
+    def scale = becauseFactor${gap}/ 2 ${divisionComment}
+    def value =${gap}${lineComment}
+      1
+    ${blankLines}${gap}api('org.example:runtime:1.0')
+    ${gap}implementation(libs.runtime.core)
+  }`;
+  const stripped = [inlineComment, lineComment, divisionComment].reduce(
+    (code, comment) => code.replaceAll(comment, ' '.repeat(comment.length)),
+    content
+  );
+
+  assert.equal(stripGradleComments(content), stripped);
+  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+  assert.deepEqual(gradleCatalogAliases(content), ['runtime.core']);
 });
 
 test('Gradle keeps constraint scope across Groovy dollar slashy strings', () => {
