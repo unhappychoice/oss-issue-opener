@@ -66,9 +66,9 @@ const scanGemfile = (content: string) => {
         (token.endsWith('=') || isAssignment(content, pattern.lastIndex))) {
         assignedLocals.add(name);
       }
-      commandArgument = isCommandName(token) && !scopes.at(-1)!.has(token) &&
-        /^(?:\n|;|do)$/.test(previous) &&
-        /[^\S\n]/.test(content.charAt(pattern.lastIndex));
+      const yieldArgument = token === 'yield' && !['.', ':', '@', '$'].includes(previous);
+      const methodArgument = isCommandName(token) && !scopes.at(-1)!.has(token) && /^(?:\n|;|do)$/.test(previous);
+      commandArgument = (yieldArgument || methodArgument) && /[^\S\n]/.test(content.charAt(pattern.lastIndex));
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       literalExpected = expectsLiteral(token, previous);
       previous = token;

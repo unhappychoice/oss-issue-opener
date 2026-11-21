@@ -539,7 +539,27 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', 'case', 'when', 'not', 'return', 'while', 'until'].forEach((method) => {
+[
+  ['slash regexp', '/prefix\nclass FakeClass\n/x'],
+  ['percent regexp', '%r{prefix\nclass FakeClass\n}x'],
+  ['division', '/ 2'],
+].forEach(([description, expression]) => {
+  test(`preserves group exclusions after yield with ${description}`, () => {
+    const gemfile = `group :test do
+  def matcher
+    result = yield ${expression}
+  end
+  gem 'rspec'
+end
+gem 'rack'
+pattern = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['if', 'case', 'when', 'not', 'return', 'while', 'until', 'yield'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
