@@ -314,3 +314,34 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+for (const [opener, closer] of [
+  ['group :test do |puts|', 'end'],
+  ['group(:test) { |prefix, puts; scratch|', '}'],
+  ['group :test do |(prefix, puts)|', 'end'],
+  ['group :test do |puts = 12|', 'end'],
+  ['group :test do |prefix = [1, 2], puts = 12|', 'end'],
+  ['group :test do |puts: 12|', 'end'],
+  ['group :test do |; puts|', 'end'],
+]) {
+  test(`keeps division by a block local within ${opener}`, () => {
+    const gemfile = `${opener}
+  module TestHelpers
+    class TestHelper; end
+  end
+  puts /2
+  gem 'rspec'
+${closer}
+gem 'rack', path: '/rack'
+group :test do
+  puts /first
+class Fake
+gem 'ignored'
+last/
+end`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+}

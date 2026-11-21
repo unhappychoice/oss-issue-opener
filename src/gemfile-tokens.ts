@@ -12,7 +12,9 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
     const kind = gemfileScopeKind(statement);
     const scope = scopes.at(-1)!;
     if (kind === 'shared') scopes.push(scope);
-    if (kind === 'block') scopes.push(new Set(scope));
+    if (kind === 'block') {
+      scopes.push(new Set([...scope, ...readBlockLocals(content, pattern.lastIndex)]));
+    }
     if (kind === 'isolated') scopes.push(new Set());
     onStatement?.(statement);
   });
@@ -71,6 +73,38 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const readBlockLocals = (content: string, start: number): string[] => {
+  const opening = /(?:\s|#[^\n]*\n)*\|(?!\|)/y;
+  opening.lastIndex = start;
+  if (!opening.test(content)) return [];
+
+  const pattern = new RegExp(tokenPattern, 'y');
+  pattern.lastIndex = opening.lastIndex;
+  const locals: string[] = [];
+  let depth = 0;
+  let binding = true;
+  let defaultDepth: number | undefined;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    const token = match[0];
+    if (token === '|' && depth === 0) return locals;
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    if ((token === ',' || token === ';') && (defaultDepth === undefined || depth <= defaultDepth)) {
+      defaultDepth = undefined;
+      binding = true;
+    }
+    if (token === '=' || token.startsWith(':')) defaultDepth ??= depth;
+    const name = token.replace(/=$/, '');
+    if (binding && /^\w+$/.test(name)) {
+      if (regexpCommands.has(name)) locals.push(name);
+      if (name !== token) defaultDepth = depth;
+      binding = false;
+    }
+  }
+  return [];
+};
 
 const opensSingletonClass = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
