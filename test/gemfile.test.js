@@ -224,3 +224,38 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const multilineRegexps = [
+  '/\nclass Phantom\n/',
+  '%r{\nclass Phantom\n}',
+  '%r{\nclass Phantom\\}\n{nested}\n}im',
+  '/\nclass Phantom\n#{/[}]/.source + %q[}/]}\n/',
+  '/\nend\n/',
+  '/\ndo\n/',
+];
+
+multilineRegexps.forEach((regexp) => {
+  test(`ignores scope keywords inside ${JSON.stringify(regexp)}`, () => {
+    const gemfile = `group :test do
+  pattern = ${regexp}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('ignores a multiline regexp in a ternary branch', () => {
+  const gemfile = `group :development do
+  pattern = enabled ? /
+class Phantom
+/ : nil
+  gem 'debug'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'debug'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
