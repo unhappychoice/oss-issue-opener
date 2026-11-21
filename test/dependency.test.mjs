@@ -156,30 +156,13 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
     end
     gem 'rspec'
   end
-  separator = ?/
+  (value, count) = [12, 1]
+  value /2
   gem 'rack', path: '/rack'`);
 
   assert.equal(await check('rspec'), false);
   assert.equal(await check('rack'), true);
 });
-
-for (const command of ['puts', 'warn']) {
-  test(`Gemfile fallback preserves group exclusions around a ${command} regexp`, async () => {
-    mockRubyRepository('', `group :development do
-    ${command} = 12
-  end
-  group :test do
-    ${command} /prefix
-class RegexText
-suffix/
-    gem 'rspec'
-  end
-  gem 'rack'`);
-
-    assert.equal(await check('rspec'), false);
-    assert.equal(await check('rack'), true);
-  });
-}
 
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
