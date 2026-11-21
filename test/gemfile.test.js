@@ -253,6 +253,14 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('recognizes a production gem after division of a local named warn', () => {
+  const gemfile = `warn = 4
+warn /2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('preserves multiline regexp calls across local scope boundaries', () => {
   const gemfile = `group :test do
   puts = 4
@@ -279,6 +287,8 @@ gem 'rack'`;
 
 const multilineRegexps = [
   'puts /prefix\nclass RegexText\nsuffix/',
+  'warn /prefix\nclass RegexText\nsuffix/',
+  'self.warn %r{prefix\nmodule RegexText\nsuffix}',
   'puts =~ /check/\nputs /prefix\nend\nsuffix/',
   'self.puts %r{prefix\nmodule RegexText\nsuffix}',
   'matcher = /prefix\nclass RegexText\nsuffix/',

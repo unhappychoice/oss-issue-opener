@@ -103,11 +103,11 @@ const canStartRegexp = (tokens: string[], content: string, start: number): boole
   const token = tokens[index] ?? '\n';
   const previous = tokens[previousSignificantToken(tokens, index - 1)];
   return expectsRegexp(token, previous) ||
-    (token === 'puts' && index < tokens.length - 1 && !/\s/.test(content[start + 1] ?? '') &&
-      (previous === '.' || !hasLocalPuts(tokens)));
+    ((token === 'puts' || token === 'warn') && index < tokens.length - 1 &&
+      !/\s/.test(content[start + 1] ?? '') && (previous === '.' || !hasLocal(tokens, token)));
 };
 
-const hasLocalPuts = (tokens: string[]): boolean => {
+const hasLocal = (tokens: string[], name: string): boolean => {
   const scopes = [{ assigned: false }];
   for (const statement of splitGemfileStatements(tokens)) {
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
@@ -117,7 +117,7 @@ const hasLocalPuts = (tokens: string[]): boolean => {
     } else if (opensGemfileBlock(statement)) {
       scopes.push(statement.includes('do') ? { assigned: current.assigned } : current);
     }
-    if (statement[0] === 'puts' && statement[1] === '=' && statement[2] !== '=') {
+    if (statement[0] === name && statement[1] === '=' && statement[2] !== '=') {
       current.assigned = true;
     }
   }
