@@ -1,11 +1,21 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const regexp = /\/(?:\\[\s\S]|[^\\/])*\/[imxounes]*/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === '/' && canStartRegexp(tokens)) {
+      regexp.lastIndex = match.index;
+      const literal = regexp.exec(content);
+      if (literal) {
+        tokens.push(literal[0]);
+        pattern.lastIndex = regexp.lastIndex;
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       // A singleton class uses the shift token where the pattern can match a heredoc opener.
       if (opensSingletonClass(tokens)) {
@@ -27,6 +37,11 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const canStartRegexp = (tokens: string[]): boolean => {
+  const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)] ?? '\n';
+  return /^(?:\n|;|=|=>|~|\(|\[|,|\?|:|do|if|elsif|unless|when)$/.test(previous);
 };
 
 const opensSingletonClass = (tokens: string[]): boolean => {

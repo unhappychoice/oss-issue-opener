@@ -224,3 +224,24 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('ignores class declarations inside a multiline regexp in an excluded group', () => {
+  const gemfile = String.raw`group :test do
+  pattern = /path\/name
+class RegexText
+  /ix
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves a production gem between division operators', () => {
+  const gemfile = `ratio = total / count
+gem 'rack'
+another_ratio = total / size`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
