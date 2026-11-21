@@ -15,7 +15,7 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
     if (kind === 'block') {
       scopes.push(new Set([...scope, ...readBlockLocals(content, pattern.lastIndex)]));
     }
-    if (kind === 'isolated') scopes.push(new Set());
+    if (kind === 'isolated') scopes.push(new Set(readMethodLocals(statement)));
     onStatement?.(statement);
   });
   const emit = (token: string): void => {
@@ -74,21 +74,33 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
+const readMethodLocals = (statement: string[]): string[] => {
+  if (statement[0] !== 'def') return [];
+  const parameters = statement.slice(statement[2] === '.' ? 4 : 2);
+  return readParameterLocals(parameters[0] === '(' ? parameters.slice(1, -1) : parameters);
+};
+
 const readBlockLocals = (content: string, start: number): string[] => {
   const opening = /(?:\s|#[^\n]*\n)*\|(?!\|)/y;
   opening.lastIndex = start;
   if (!opening.test(content)) return [];
 
-  const pattern = new RegExp(tokenPattern, 'y');
+  const pattern = new RegExp(tokenPattern, 'gy');
   pattern.lastIndex = opening.lastIndex;
+  return readParameterLocals(matchedTokens(content, pattern), '|');
+};
+
+function* matchedTokens(content: string, pattern: RegExp): Iterable<string> {
+  for (const [token] of content.matchAll(pattern)) yield token;
+}
+
+const readParameterLocals = (tokens: Iterable<string>, terminator?: string): string[] => {
   const locals: string[] = [];
   let depth = 0;
   let binding = true;
   let defaultDepth: number | undefined;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(content)) !== null) {
-    const token = match[0];
-    if (token === '|' && depth === 0) return locals;
+  for (const token of tokens) {
+    if (token === terminator && depth === 0) return locals;
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
     if ((token === ',' || token === ';') && (defaultDepth === undefined || depth <= defaultDepth)) {
@@ -103,7 +115,7 @@ const readBlockLocals = (content: string, start: number): string[] => {
       binding = false;
     }
   }
-  return [];
+  return terminator === undefined ? locals : [];
 };
 
 const opensSingletonClass = (tokens: string[]): boolean => {

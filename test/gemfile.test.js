@@ -315,6 +315,30 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+for (const signature of ['helper(puts)', 'helper puts', 'self.helper(prefix, *warn)']) {
+  test(`keeps division by a method parameter within def ${signature}`, () => {
+    const parameter = signature.includes('warn') ? 'warn' : 'puts';
+    const gemfile = `group :test do
+  module TestHelpers
+    def ${signature}
+      ${parameter} /2
+    end
+  end
+  gem 'rspec'
+end
+${parameter} /first
+class Fake
+gem 'ignored'
+end
+last/
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
+
 for (const [opener, closer] of [
   ['group :test do |puts|', 'end'],
   ['group(:test) { |prefix, puts; scratch|', '}'],
