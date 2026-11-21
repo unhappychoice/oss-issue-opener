@@ -209,3 +209,35 @@ gem 'rack'`;
     });
   });
 });
+
+[
+  ['slash regexp', "pattern = /first\\/part\nclass Fake\nmodule Fake\ngem 'ignored'\nlast/im"],
+  ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
+  ['ternary regexp branches', "pattern = enabled ? /first\nclass Fake\nlast/ : /first\nend\nlast/"],
+  ['nested regexp and percent string interpolation', "pattern = /#{[/a\\/b/, %q(}/), { key: 1 }]}\nclass Fake\ngem 'ignored'\nlast/"],
+].forEach(([description, expression]) => {
+  test(`ignores Gemfile scope tokens inside ${description}`, () => {
+    const gemfile = `group :test do
+${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves group boundaries around division and modulo', () => {
+  const gemfile = `group :test do
+  count = 12 / 3
+  remainder = count % 3
+  gem 'rspec'
+end
+gem 'rack'
+other = 12 / 4`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
