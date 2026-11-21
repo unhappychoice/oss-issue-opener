@@ -112,7 +112,9 @@ const hasLocal = (tokens: string[], name: string): boolean => {
   for (const statement of splitGemfileStatements(tokens)) {
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
     const current = scopes.at(-1)!;
-    if (opensNamespace(statement) || opensMethod(statement)) {
+    if (opensMethod(statement)) {
+      scopes.push({ assigned: hasMethodParameter(statement, name) });
+    } else if (opensNamespace(statement)) {
       scopes.push({ assigned: false });
     } else if (opensGemfileBlock(statement)) {
       scopes.push(statement.includes('do') ? { assigned: current.assigned } : current);
@@ -131,12 +133,30 @@ const opensNamespace = (tokens: string[]): boolean =>
 const opensMethod = (tokens: string[]): boolean =>
   tokens[0] === 'def' && !isEndlessMethod(tokens);
 
+const hasMethodParameter = (tokens: string[], name: string): boolean => {
+  const start = methodNameEnd(tokens);
+  let depth = 0;
+  let atParameter = true;
+  for (const token of tokens.slice(start + Number(tokens[start] === '('))) {
+    if (depth === 0) {
+      if (token === ')') break;
+      if (atParameter && (token === name || token === `${name}=`)) return true;
+      atParameter = token === ',' || (atParameter && (token === '*' || token === '&'));
+    }
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+  }
+  return false;
+};
+
+const methodNameEnd = (tokens: string[]): number => tokens[2] === '.' ? 4 : 2;
+
 const isEndlessMethod = (tokens: string[]): boolean => {
   let depth = 0;
   return tokens.some((token, index) => {
     if (token === '(') depth++;
     if (token === ')') depth--;
-    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    const nameEnd = methodNameEnd(tokens);
     return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };

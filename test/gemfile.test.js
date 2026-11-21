@@ -261,6 +261,37 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['ratio(puts)', 'ratio puts', 'self.ratio(value = [1, 2], puts: 4)'].forEach((signature) => {
+  test(`recognizes a production gem after dividing a parameter in def ${signature}`, () => {
+    const gemfile = `group :test do
+  def ${signature}
+    puts /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps parameter names local to their method', () => {
+  const gemfile = `group :test do
+  def ratio(puts)
+    puts /2
+  end
+  puts /prefix
+end
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('preserves multiline regexp calls across local scope boundaries', () => {
   const gemfile = `group :test do
   puts = 4
