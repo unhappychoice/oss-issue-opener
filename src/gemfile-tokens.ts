@@ -14,7 +14,7 @@ export const gemfileTokens = (content: string): string[] => {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previous = tokens[index];
       const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
-      const qualified = ['.', ':', '@', '$'].includes(qualifier);
+      const qualified = ['.', ':'].includes(qualifier);
       if (token === '=' || compoundAssignment) {
         if (compoundAssignment || !/^[=~]/.test(content[pattern.lastIndex] ?? '')) {
           assignments.forEach((scopes, name) => {
@@ -26,7 +26,7 @@ export const gemfileTokens = (content: string): string[] => {
           });
         }
       } else if (expectsRegexp(previous, qualifier) ||
-        (startsCommandRegexp(previous, qualifier, content, match.index) &&
+        (startsCommandRegexp(previous, content, match.index) &&
           (qualified || !hasLocalBinding(tokens, previous, assignments.get(previous)!)))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : literalEnd(content, match.index);
         if (end !== undefined) {
@@ -60,7 +60,7 @@ export const gemfileTokens = (content: string): string[] => {
 
 const compoundAssignmentPattern = /^(?:\|\||&&|\*\*|<<|>>|[+*/%&|^-])=$/;
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|(?:\|\||&&|\*\*|<<|>>|[+*/%&|^-])=|&&|\|\||[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|(?:@@?|\$)[A-Za-z_]\w*|\w+=(?=\s*\()|\w+[!?]?|=>|(?:\|\||&&|\*\*|<<|>>|[+*/%&|^-])=|&&|\|\||[^\S\n]+|\n|./;
 
 const expectsRegexp = (token = '\n', previous?: string): boolean =>
   compoundAssignmentPattern.test(token) || /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
@@ -70,9 +70,9 @@ const commandNames = ['puts', 'warn'] as const;
 type CommandName = typeof commandNames[number];
 
 const startsCommandRegexp = (
-  previous: string | undefined, qualifier: string | undefined, content: string, start: number,
+  previous: string | undefined, content: string, start: number,
 ): previous is CommandName => {
-  if ((previous !== 'puts' && previous !== 'warn') || qualifier === '@' || qualifier === '$') return false;
+  if (previous !== 'puts' && previous !== 'warn') return false;
   const argument = /[ \t](?:\/\S|%r)/y;
   argument.lastIndex = start - 1;
   return argument.test(content);

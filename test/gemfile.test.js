@@ -263,6 +263,7 @@ const regexpExpressions = [
   ['nested regexp inside interpolation', 'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/'],
   ['block end and gem declaration', "matcher = /prefix\nend\ngem 'ignored'\nsuffix/"],
   ['division inside interpolation', 'matcher = /prefix#{ 8 / 2 }\nclass RegexText\nsuffix/'],
+  ['division of an instance variable inside interpolation', 'matcher = /prefix#{ @return /2 }\nclass RegexText\nsuffix/'],
   ['character literal inside interpolation', 'matcher = /prefix#{ ?/ }\nclass RegexText\nsuffix/'],
 ];
 
@@ -290,9 +291,9 @@ test('preserves gem declarations after dividing a local variable named warn', ()
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['@puts', '@@puts', '$puts'].forEach((variable) => {
+['@puts', '@@puts', '$puts', '@return', '@@return', '$return'].forEach((variable) => {
   test(`preserves gem declarations after dividing ${variable}`, () => {
-    const gemfile = `${variable} /2\ngem 'rack', path: '/rack'`;
+    const gemfile = `ratio = ${variable} /2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
