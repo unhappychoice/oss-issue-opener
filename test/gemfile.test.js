@@ -365,6 +365,26 @@ gem 'rack'`;
   });
 });
 
+[
+  ['slash', '/prefix\nclass FakeClass\n/x'],
+  ['percent', '%r{prefix\nclass FakeClass\n}x'],
+].forEach(([delimiter, pattern]) => {
+  test(`ignores class text in a multiline ${delimiter} regexp in a when clause`, () => {
+    const gemfile = `group :test do
+  case ENV['FEATURE']
+  when ${pattern}
+    gem 'conditional'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'conditional'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['&&', '||', 'and', 'or'].forEach((operator) => {
   test(`ignores class text in a multiline regexp after ${operator}`, () => {
     const gemfile = `group :test do
@@ -380,16 +400,18 @@ gem 'rack'`;
   });
 });
 
-test('recognizes division after a method named if', () => {
-  const gemfile = `group :test do
-  result = settings.if / 2
+['if', 'when'].forEach((method) => {
+  test(`recognizes division after a method named ${method}`, () => {
+    const gemfile = `group :test do
+  result = settings.${method} / 2
   gem 'rspec'
 end
 gem 'rack'
 pattern = /suffix/`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [
