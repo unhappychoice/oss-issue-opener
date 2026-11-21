@@ -227,6 +227,7 @@ another_ratio = 8 / 2`;
 });
 
 [
+  'warn', 'warn if true', 'warn unless false', 'warn then',
   '[warn]', '[0, warn]', '[0, *warn]', '[[warn]]', '[0, [1, [2, *warn]]]',
   '{warn:}', '{other: 0, warn:}', '[{warn:}]', '{nested: {warn:}}',
 ].forEach((pattern) => {

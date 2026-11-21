@@ -111,8 +111,11 @@ const assignsForTargets = (statement: string[], name: string): boolean => {
 };
 
 const bindsPatternTarget = (statement: string[], name: string): boolean => {
-  if (statement[0] !== 'in' || !['[', '{'].includes(statement[1])) return false;
-  const delimiters = [statement[1]];
+  if (statement[0] !== 'in') return false;
+  const [, pattern, next] = statement;
+  if (pattern === name && (next === undefined || ['if', 'unless', 'then'].includes(next))) return true;
+  if (!['[', '{'].includes(pattern)) return false;
+  const delimiters = [pattern];
   for (let index = 2; index < statement.length; index++) {
     const token = statement[index];
     if (token === name && !delimiters.includes('(') &&
