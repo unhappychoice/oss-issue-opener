@@ -88,8 +88,9 @@ const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): bo
   }
   const tokens = statements.flatMap((statement) => [...statement, ';']);
   const parameterEnd = parent && tokens[0] === '|' ? tokens.indexOf('|', 1) : -1;
-  return tokens.some((token, index) => token === name &&
-    (index < parameterEnd || (!/^[.@$]$/.test(tokens[index - 1] ?? '') && assignsLocal(tokens, index))));
+  return tokens.some((token, index) => (token === name && index < parameterEnd) ||
+    (!/^[.@$]$/.test(tokens[index - 1] ?? '') &&
+      (token === `${name}=` || (token === name && assignsLocal(tokens, index)))));
 };
 
 const bindsRescueTarget = (statement: string[], name: string): boolean =>

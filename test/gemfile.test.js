@@ -530,9 +530,26 @@ matcher = /suffix/`;
   assert.equal(isProductionGem(gemfile, 'json'), true);
 });
 
-['@', '@@', '$'].forEach((prefix) => {
+test('recognizes division after a compact local assignment with a parenthesized value', () => {
+  const gemfile = `warn=(12)
+group :test do
+  module TestHelpers
+    class Runner; end
+  end
+  gem 'rspec'
+end
+warn /2
+gem 'rack'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['@', '@@', '$', 'receiver.'].forEach((prefix) => {
   test(`distinguishes a warn regexp argument from assignment to ${prefix}warn`, () => {
     const gemfile = `${prefix}warn = 12
+${prefix}warn=(12)
 group :test do
   warn /prefix
 class RegexText
