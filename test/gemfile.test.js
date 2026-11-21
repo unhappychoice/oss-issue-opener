@@ -423,7 +423,20 @@ gem 'rack'`;
   });
 });
 
-['if', 'when'].forEach((method) => {
+test('ignores class text in a multiline regexp after not', () => {
+  const gemfile = `group :test do
+  not /prefix
+class FakeClass
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['if', 'when', 'not'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
