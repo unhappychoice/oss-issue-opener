@@ -127,7 +127,7 @@ const isAssignment = (content: string, start: number): boolean => {
 
 const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|\{|,|\?|:)$/.test(token) ||
-  (/^(?:if|elsif|unless|while|until|case|when|then|else|and|or|not|return|defined\?)$/.test(token) && !['.', ':', '@', '$'].includes(previous));
+  (/^(?:if|elsif|unless|while|until|case|when|in|then|else|and|or|not|return|defined\?)$/.test(token) && !['.', ':', '@', '$'].includes(previous));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 

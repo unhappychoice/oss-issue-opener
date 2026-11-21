@@ -552,19 +552,21 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 
-  test(`ignores class text in a multiline ${delimiter} regexp in a when clause`, () => {
-    const gemfile = `group :test do
+  ['when', 'in'].forEach((clause) => {
+    test(`ignores class text in a multiline ${delimiter} regexp after the ${clause} keyword`, () => {
+      const gemfile = `group :test do
   case ENV['FEATURE']
-  when ${pattern}
+  ${clause} ${pattern}
     gem 'conditional'
   end
   gem 'rspec'
 end
 gem 'rack'`;
 
-    assert.equal(isProductionGem(gemfile, 'conditional'), false);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(isProductionGem(gemfile, 'conditional'), false);
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
   });
 
   test(`ignores class text in a multiline ${delimiter} regexp after else`, () => {
@@ -667,7 +669,7 @@ pattern = /suffix/`;
   });
 });
 
-['if', 'case', 'when', 'not', 'return', 'while', 'until', 'yield', 'then', 'defined?'].forEach((method) => {
+['if', 'case', 'when', 'in', 'not', 'return', 'while', 'until', 'yield', 'then', 'defined?'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
