@@ -70,11 +70,26 @@ Errors reading releases, tags, or comparisons propagate to the runner as
 investigation failures. This includes incomplete recursive trees during a
 comparison. Successful release and tag reads without a baseline yield `no-tag`.
 
-The root listing and file content helpers still fall back to an empty list or
-empty string on read errors, which can affect ecosystem detection and dependency
-checks. If the runner needs a separate default-branch lookup and that lookup
-fails, the helper returns `null`. CI then reports `no-branch`, and the release
-check reports `up-to-date` if it already found a release or tag.
+Root listing request errors propagate, including HTTP 404. Required file reads
+also propagate all request errors. An explicitly optional file, such as the
+Gradle version catalog, yields empty content on HTTP 404 and propagates other
+request errors. A root listing failure during project-type detection fails the
+release investigation. Manifest read failures during dependency checks are
+recorded as lookup errors, and the runner still queues any notification based
+on confirmed release changes.
+
+The shared head lookup uses the branch name from the repository listing when
+available and fetches repository metadata otherwise. If that metadata has no
+default branch name or the metadata request returns HTTP 404, the helper
+returns `no-branch`. If a branch name is available and the branch request returns
+HTTP 404, the helper returns `no-head`, and CI reports `no-ci` without fetching
+commit statuses or check runs. CI reports `no-branch` when the helper returns
+`no-branch`. With a release or tag baseline, the release checker reports the
+helper's `no-branch` or `no-head` result and skips the comparison.
+
+Other errors from repository metadata or branch requests, such as HTTP 503,
+reject the shared lookup. The runner records the rejection for CI and for the
+release investigation if it found a baseline and reached the head lookup.
 
 ## Where to start a change
 
