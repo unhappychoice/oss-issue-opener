@@ -248,8 +248,13 @@ export const compareCommits = async (
   head: BranchHead
 ): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommit[]> }> => {
   const { repos } = getOctokit();
-  const { data: baseCommit } = await repos.getCommit({ owner, repo, ref: base });
-  const endpoints = { owner, repo, base: baseCommit.sha, head: head.sha };
+  const { data: resolvedBase } = await repos.getCommit({
+    owner, repo, ref: base, headers: { accept: 'application/vnd.github.sha' },
+  });
+  if (typeof resolvedBase !== 'string') {
+    throw new Error(`Expected a commit SHA for ${owner}/${repo}@${base}`);
+  }
+  const endpoints = { owner, repo, base: resolvedBase, head: head.sha };
   const { base: baseSha, head: headSha } = endpoints;
   if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => [] };
 

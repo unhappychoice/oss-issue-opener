@@ -397,7 +397,7 @@ test('shares default branch heads per repository and refreshes them on each scan
     [...Array(2)].flatMap(() => ['first', 'broken', 'last'].map((repo) => ({ owner: 'owner', repo }))));
   const expectedHeads = ['main', 'next'].flatMap((branch) => ['first', 'broken', 'last'].map((repo) => commitSha(`${repo}/${branch}`)));
   assert.equal(getBranch.mock.callCount(), expectedHeads.length);
-  assert.deepEqual(repos.getCommit.mock.calls.map(({ arguments: [{ ref }] }) => ref), Array(6).fill('tags/v1'));
+  assert.deepEqual(repos.getCommit.mock.calls.map(({ arguments: [{ ref }] }) => ref), Array(6).fill('refs/tags/v1'));
   assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
   assert.deepEqual(getOctokit().paginate.iterator.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
   const pages = compared.mock.calls.map(({ arguments: [{ head, page }] }) => [head, page]);
@@ -411,7 +411,7 @@ test('shares default branch heads per repository and refreshes them on each scan
     });
     issues.filter(({ type }) => type === 'pending-release').forEach(({ body, repo }) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${commitSha(`${repo.split('/')[1]}/${scan === 0 ? 'main' : 'next'}`)}`));
+      assert.ok(body.includes(`/compare/${commitSha('refs/tags/v1')}...${commitSha(`${repo.split('/')[1]}/${scan === 0 ? 'main' : 'next'}`)}`));
     });
   });
 });
@@ -433,7 +433,7 @@ test('shares the default branch when release comparison is empty', async () => {
 
 test('reports up to date without comparing or listing root contents when both refs resolve to the same commit', async () => {
   const repos = stubInvestigations();
-  const resolve = mock.method(repos, 'getCommit', async () => ({ data: { sha: headSha('repo') } }));
+  const resolve = mock.method(repos, 'getCommit', async () => ({ data: headSha('repo') }));
   const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
   const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
   const { deps, batches } = setup({
@@ -447,7 +447,7 @@ test('reports up to date without comparing or listing root contents when both re
 
   await runChecks(deps);
 
-  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1']);
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['refs/tags/v1']);
   assert.equal(repos.getBranch.mock.callCount(), 1);
   assert.equal(compare.mock.callCount(), 0);
   assert.equal(contents.mock.callCount(), 0);
@@ -591,7 +591,7 @@ for (const hasSourceChange of [true, false]) {
 test('submits confirmed release notifications before reporting incomplete bump file lists', async () => {
   const repos = stubInvestigations();
   mock.method(repos, 'getCommit', async ({ ref, page }) => {
-    if (page === undefined) return { data: { sha: commitSha(ref) } };
+    if (page === undefined) return { data: commitSha(ref) };
     if (ref === 'failed' && page === 2) return { data: {} };
     if (ref === 'failed') {
       return { data: { files: [{ filename: 'package-lock.json' }] }, headers: { link: '<next>; rel="next"' } };
@@ -648,7 +648,7 @@ test('submits confirmed release notifications before reporting incomplete bump f
     const failure = Object.assign(new Error('package.json HTTP 503'), { status: 503 });
     const hasGoBump = extraFiles.includes('go.sum');
     mock.method(repos, 'getCommit', async ({ ref, page }) => ({ data: page === undefined
-      ? { sha: commitSha(ref) }
+      ? commitSha(ref)
       : { files: [{ filename: ref === 'go-bump' ? 'go.sum' : 'package-lock.json' }] },
     }));
     mock.method(repos, 'compareCommits', async () => ({ data: {
@@ -697,7 +697,7 @@ test('notifies about a production bump at the compared head after the default br
   mock.method(repos, 'getCommit', async ({ ref }) => ({
     data: ref === 'bump'
       ? { files: [{ filename: 'package.json' }] }
-      : { sha: commitSha(ref) },
+      : commitSha(ref),
   }));
   mock.method(repos, 'compareCommits', async ({ head }) => {
     assert.equal(head, pinnedHead);
@@ -850,7 +850,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     });
     batches[0].filter(({ type }) => type === 'pending-release').forEach(({ body }, index) => {
       assert.ok(body.includes('src/example.ts'));
-      assert.ok(body.includes(`/compare/${commitSha('tags/v1')}...${shas[index]}`));
+      assert.ok(body.includes(`/compare/${commitSha('refs/tags/v1')}...${shas[index]}`));
     });
   });
 });
