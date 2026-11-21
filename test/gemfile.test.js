@@ -212,6 +212,8 @@ gem 'rack'`;
 
 const regexpExpressions = [
   ['slash literal', 'matcher = /prefix\nclass RegexText\nsuffix/'],
+  ['slash literal passed to puts', 'puts /prefix\nclass RegexText\nsuffix/'],
+  ['percent regexp passed to puts', 'puts %r{prefix\nmodule RegexText\nsuffix}'],
   ['return before a slash literal', 'def matcher\n  return /prefix\nclass RegexText\nsuffix/\nend'],
   ['return before a percent regexp', 'def matcher\n  return %r{prefix\nclass RegexText\nsuffix}\nend'],
   ['escaped delimiter and options', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
@@ -242,6 +244,11 @@ gem 'rack'`;
 
 test('preserves gem declarations between division expressions', () => {
   const gemfile = "ratio = 8 /2\ngem 'rack'\nratio /2";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves gem declarations after dividing a local variable named puts', () => {
+  const gemfile = "puts = 8\nputs / 2\ngem 'rack', path: '/rack'";
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 

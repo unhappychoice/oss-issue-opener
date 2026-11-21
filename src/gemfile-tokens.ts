@@ -8,7 +8,8 @@ export const gemfileTokens = (content: string): string[] => {
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '/' || token === '%' || token === '?') {
       const index = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsRegexp(tokens[index], tokens[previousSignificantToken(tokens, index - 1)])) {
+      if (expectsRegexp(tokens[index], tokens[previousSignificantToken(tokens, index - 1)]) ||
+        startsPutsRegexp(tokens[index], content, match.index)) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
@@ -44,6 +45,13 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 const expectsRegexp = (token = '\n', previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|case|when|return)$/.test(token));
+
+const startsPutsRegexp = (previous: string | undefined, content: string, start: number): boolean => {
+  if (previous !== 'puts') return false;
+  const argument = /[ \t](?:\/\S|%r)/y;
+  argument.lastIndex = start - 1;
+  return argument.test(content);
+};
 
 const characterLiteralEnd = (content: string, start: number): number | undefined => {
   const pattern = /\?(?:\\[^\r\n]|[^\s\\])/uy;
