@@ -27,9 +27,13 @@ export const methodParameters = (tokens: string[]): string[] => {
 export const multipleAssignmentTargets = (tokens: string[]): string[] => {
   const equals = tokens.indexOf('=');
   if (equals < 0) return [];
-  const targets = tokens.slice(0, equals).join(' ');
-  if (!/^(?:\* )?[a-z_]\w*(?: , (?:\* )?[a-z_]\w*)+(?: ,(?: \*)?)?$/.test(targets)) return [];
-  return targets.match(/[a-z_]\w*/g) ?? [];
+  const targets = tokens.slice(0, equals);
+  if (!targets.includes(',') && !targets.includes('*')) return [];
+  const localName = /^[a-z_]\w*$/;
+  const valid = targets.every((token, index) =>
+    ['(', ')', ',', '*'].includes(token) ||
+    (localName.test(token) && [')', ',', undefined].includes(targets[index + 1])));
+  return valid ? targets.filter((token) => localName.test(token)) : [];
 };
 
 export class GemfileStatements {

@@ -332,12 +332,15 @@ gem 'rack', path: '/x'`;
   ['left, right', 'left'],
   ['left, middle, *rest', 'middle'],
   ['left,\n  right', 'left'],
-].forEach(([targets, name]) => {
+  ['(left, right)', 'left'],
+  ['((left, right), *rest)', 'right', '[[4, 6], 8]'],
+  ['(left,\n  right)', 'left'],
+].forEach(([targets, name, values = '[4, 6, 8]']) => {
   test(`detects a production gem after compact division following ${JSON.stringify(targets)} assignment`, () => {
     const gemfile = `group :test do
   module Helpers
     class Helper
-      ${targets} = [4, 6, 8]
+      ${targets} = ${values}
       ${name} /2
     end
   end
