@@ -177,9 +177,12 @@ const currentLocalScope = (tokens: string[]) => {
   const scopes: (typeof topLevel)[] = [];
   splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
+    if (statement[0] === '|' && hasPutsParameter(statement.slice(1, -1))) {
+      scopes[scopes.length - 1] = { ...(scopes.at(-1) ?? topLevel), putsParameter: true };
+    }
     if (opensScope(statement)) {
       scopes.push(opensLocalScope(statement)
-        ? { index, putsParameter: statement[0] === 'def' && hasPutsParameter(statement) }
+        ? { index, putsParameter: declaresMethodPutsParameter(statement) }
         : scopes.at(-1) ?? topLevel);
     }
   });
@@ -188,12 +191,17 @@ const currentLocalScope = (tokens: string[]) => {
 
 const declaresPutsParameter = (tokens: string[]): boolean => {
   const statement = splitGemfileStatements(tokens).at(-1);
-  return statement?.[0] === 'def' && hasPutsParameter(statement);
+  return statement !== undefined && declaresMethodPutsParameter(statement);
 };
 
-const hasPutsParameter = (statement: string[]): boolean => {
+const declaresMethodPutsParameter = (statement: string[]): boolean => {
+  if (statement[0] !== 'def') return false;
   const parameters = statement.slice(statement[2] === '.' ? 4 : 2);
   if (parameters[0] === '(') parameters.shift();
+  return hasPutsParameter(parameters);
+};
+
+const hasPutsParameter = (parameters: string[]): boolean => {
   let depth = 0;
   let atParameterStart = true;
   for (const token of parameters) {
@@ -201,7 +209,7 @@ const hasPutsParameter = (statement: string[]): boolean => {
     if (atParameterStart && ['*', '&'].includes(token)) continue;
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
-    atParameterStart = depth === 0 && token === ',';
+    atParameterStart = depth === 0 && (token === ',' || token === ';');
   }
   return false;
 };

@@ -2,8 +2,24 @@ export const splitGemfileStatements = (tokens: string[]): string[][] => {
   const result: string[][] = [];
   let current: string[] = [];
   let depth = 0;
+  let blockParameters = false;
   tokens.forEach((token) => {
     if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
+    if (blockParameters) {
+      if (token === '|') {
+        result.push([...current, token]);
+        current = [];
+        blockParameters = false;
+      } else if (token !== '\n') {
+        current.push(token);
+      }
+      return;
+    }
+    if (token === '|' && current.length === 0 && result.at(-1)?.at(-1) === 'do') {
+      current.push(token);
+      blockParameters = true;
+      return;
+    }
     if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
       if (current.length) result.push(current);
       current = [];
@@ -38,8 +54,8 @@ export const splitGemfileStatements = (tokens: string[]): string[][] => {
 };
 
 export const opensScope = (tokens: string[]): boolean =>
-  opensLocalScope(tokens) || tokens.includes('do') ||
-  /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '');
+  tokens[0] !== '|' && (opensLocalScope(tokens) || tokens.includes('do') ||
+    /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? ''));
 
 export const opensLocalScope = (tokens: string[]): boolean =>
   (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||

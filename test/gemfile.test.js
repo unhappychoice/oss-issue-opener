@@ -272,6 +272,29 @@ test('preserves gem declarations after a slash character literal', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  '[8].each do |puts|\n  puts /2\nend',
+  '[8].each do |count, puts|\n  if true\n    puts /2\n  end\nend',
+  '[8].each { |puts| puts /2 }',
+  '[8].each do |count,\nputs|\n  puts /2\nend',
+].forEach((block) => {
+  test(`recognizes division by a block parameter in ${block}`, () => {
+    assert.equal(isProductionGem(`${block}\ngem 'rack', path: '/rack'`, 'rack'), true);
+
+    const gemfile = `${block}
+group :test do
+  puts /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  });
+});
+
 ['render(puts)', 'render puts', 'render(count, puts = 8)'].forEach((signature) => {
   test(`preserves gem declarations after dividing a parameter in def ${signature}`, () => {
     const gemfile = `def ${signature}
