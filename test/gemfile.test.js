@@ -264,6 +264,23 @@ other = 12 / 4`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+for (const variable of ['@puts', '@@puts', '$warn']) {
+  test(`keeps division after ${variable} separate from the following gem path`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper; end
+  end
+  ${variable} = 12
+  ${variable} /2
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
+
 for (const command of ['puts', 'warn']) {
   for (const assignment of [
     `${command} = 12`,
