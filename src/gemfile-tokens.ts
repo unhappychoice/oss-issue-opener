@@ -1,4 +1,4 @@
-import { GemfileStatements, gemfileScope } from './gemfile-statements.js';
+import { GemfileStatements, gemfileScope, methodParameters } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => scanGemfile(content).tokens;
 
@@ -21,7 +21,7 @@ const scanGemfile = (content: string) => {
     if (statement[0] !== 'def') assignedLocals.forEach((name) => parent.add(name));
     assignedLocals.clear();
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
-    if (scope === 'isolated') scopes.push(new Set());
+    if (scope === 'isolated') scopes.push(new Set(methodParameters(statement)));
     if (scope === 'control') scopes.push(parent);
     if (scope === 'block') {
       scopes.push(new Set([...parent, ...blockParameters(content, pattern.lastIndex)]));

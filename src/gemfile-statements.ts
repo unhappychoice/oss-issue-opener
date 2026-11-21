@@ -4,6 +4,26 @@ export const gemfileScope = (tokens: string[]): 'isolated' | 'block' | 'control'
   return tokens.includes('do') ? 'block' : undefined;
 };
 
+export const methodParameters = (tokens: string[]): string[] => {
+  if (tokens[0] !== 'def') return [];
+  const start = methodParameterStart(tokens);
+  const parenthesized = tokens[start] === '(';
+  const parameters: string[] = [];
+  let depth = 0;
+  let expectsName = true;
+  for (const token of tokens.slice(start + Number(parenthesized))) {
+    if (parenthesized && depth === 0 && token === ')') break;
+    if (depth === 0 && token === ',') expectsName = true;
+    else if (depth === 0 && expectsName && !['*', '&'].includes(token)) {
+      if (/^[a-z_]\w*$/.test(token)) parameters.push(token);
+      expectsName = false;
+    }
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+  }
+  return parameters;
+};
+
 export class GemfileStatements {
   private current: string[] = [];
   private depth = 0;
@@ -51,7 +71,10 @@ const isEndlessMethod = (tokens: string[]): boolean => {
   return tokens.some((token, index) => {
     if (token === '(') depth++;
     if (token === ')') depth--;
-    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    const nameEnd = methodParameterStart(tokens);
     return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };
+
+const methodParameterStart = (tokens: string[]): number =>
+  tokens[2] === '.' ? 4 : 2;

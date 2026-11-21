@@ -324,10 +324,35 @@ gem 'rack', path: '/x'`;
 });
 
 [
+  'helper(warn)',
+  'helper warn',
+  'self.helper(value = [1, 2], warn: 4)',
+].forEach((signature) => {
+  test(`detects a production gem after compact division of a parameter in def ${signature}`, () => {
+    const gemfile = `group :test do
+  module Helpers
+    class Helper
+      def ${signature}
+        warn /2
+      end
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+pattern = / suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+[
   ['a class', 'class Helper\n  warn = 4\nend'],
   ['a module', 'module Helpers\n  warn = 4\nend'],
   ['a singleton class', 'class <<self\n  warn = 4\nend'],
   ['a method', 'def helper\n  warn = 4\nend'],
+  ['a method parameter', 'def helper(warn)\n  warn /2\nend'],
   ['a block assignment', '[4].each do\n  warn = 4\nend'],
   ['a block parameter', '[4].each do |warn|\n  warn /2\nend'],
 ].forEach(([description, definition]) => {
