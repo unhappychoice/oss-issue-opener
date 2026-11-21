@@ -2,7 +2,7 @@ export const isCompoundAssignment = (token: string): boolean =>
   /^(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=$/.test(token);
 
 export const expectsRegexp = (token = '\n', previous?: string): boolean =>
-  isCompoundAssignment(token) || /^(?:\n|;|=|=>|~|\+|-|\*|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
+  isCompoundAssignment(token) || /^(?:\n|;|=|=>|~|\+|-|\*|\/|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|and|or)$/.test(token));
 
 export const canOpenLiteral = (token: string): boolean =>
