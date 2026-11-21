@@ -477,6 +477,22 @@ gem 'rack'`;
   ['slash', '/prefix\nclass FakeClass\n/x'],
   ['percent', '%r!prefix\nclass FakeClass\n!x'],
 ].forEach(([delimiter, pattern]) => {
+  test(`ignores class text in a multiline ${delimiter} regexp used as the elsif condition`, () => {
+    const gemfile = `group :test do
+  if ENV['FEATURE']
+    gem 'conditional'
+  elsif ${pattern} =~ ENV['FALLBACK']
+    gem 'fallback'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'fallback'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+
   test(`ignores class text in a multiline ${delimiter} regexp used as the case expression`, () => {
     const gemfile = `group :test do
   case ${pattern}
