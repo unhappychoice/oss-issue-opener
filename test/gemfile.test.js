@@ -282,6 +282,53 @@ gem 'rack', path: '/x'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['a class', 'class Helper\n  warn = 4\nend'],
+  ['a module', 'module Helpers\n  warn = 4\nend'],
+  ['a singleton class', 'class <<self\n  warn = 4\nend'],
+  ['a method', 'def helper\n  warn = 4\nend'],
+  ['a block assignment', '[4].each do\n  warn = 4\nend'],
+  ['a block parameter', '[4].each do |warn|\n  warn /2\nend'],
+].forEach(([description, definition]) => {
+  test(`recognizes a warn regexp after ${description} with a local warn`, () => {
+    const gemfile = `group :test do
+${definition}
+  warn /prefix
+class FakeClass
+/x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('isolates namespace locals and restores the enclosing warn variable', () => {
+  const gemfile = `group :test do
+  if true
+    warn = 4
+  end
+  module Helpers
+    class Helper
+      warn /prefix
+end
+/x
+    end
+  end
+  [4].each do
+    warn /2
+  end
+  warn /2
+  gem 'rspec'
+end
+gem 'rack', path: '/x'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['if', 'unless'].forEach((keyword) => {
   test(`ignores class text in a multiline regexp used as an ${keyword} condition`, () => {
     const gemfile = `group :test do

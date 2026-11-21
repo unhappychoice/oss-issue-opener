@@ -1,11 +1,36 @@
-export const gemfileTokens = (content: string): string[] => {
+import { GemfileStatements, gemfileScope } from './gemfile-statements.js';
+
+export const gemfileTokens = (content: string): string[] => scanGemfile(content).tokens;
+
+export const gemfileStatements = (content: string): string[][] => scanGemfile(content).statements;
+
+const scanGemfile = (content: string) => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
   let literalExpected = true;
   let warnArgument = false;
-  let localWarn = false;
+  const statements: string[][] = [];
+  const scopes = [{ localWarn: false }];
+  let assignsWarn = false;
+  const parser = new GemfileStatements((statement) => {
+    statements.push(statement);
+    const parent = scopes.at(-1)!;
+    const scope = gemfileScope(statement);
+    if (assignsWarn && statement[0] !== 'def') parent.localWarn = true;
+    assignsWarn = false;
+    if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
+    if (scope === 'isolated') scopes.push({ localWarn: false });
+    if (scope === 'control') scopes.push(parent);
+    if (scope === 'block') {
+      scopes.push({ localWarn: parent.localWarn || hasWarnBlockParameter(content, pattern.lastIndex) });
+    }
+  });
+  const append = (token: string): void => {
+    tokens.push(token);
+    parser.push(token);
+  };
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
@@ -21,7 +46,7 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (classHeader && token.startsWith('<<')) {
       pattern.lastIndex = match.index + 2;
-      tokens.push('<<');
+      append('<<');
       classHeader = false;
       previous = '<<';
       literalExpected = false;
@@ -31,9 +56,9 @@ export const gemfileTokens = (content: string): string[] => {
     if (!isSpacing(token)) {
       if (token === 'warn' || token === 'warn=') {
         const bare = !['.', ':', '@', '$'].includes(previous);
-        localWarn ||= bare && (token === 'warn=' || isAssignment(content, pattern.lastIndex));
+        assignsWarn ||= bare && (token === 'warn=' || isAssignment(content, pattern.lastIndex));
       }
-      warnArgument = !localWarn && token === 'warn' && /^(?:\n|;|do)$/.test(previous) &&
+      warnArgument = !scopes.at(-1)!.localWarn && token === 'warn' && /^(?:\n|;|do)$/.test(previous) &&
         /[^\S\n]/.test(content.charAt(pattern.lastIndex));
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       literalExpected = expectsLiteral(token, previous);
@@ -43,17 +68,18 @@ export const gemfileTokens = (content: string): string[] => {
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
       pending.push({ delimiter, indented });
-      tokens.push('""');
+      append('""');
       continue;
     }
-    tokens.push(token);
+    append(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
         pattern.lastIndex = heredocEnd(content, pattern.lastIndex, delimiter, indented);
       });
     }
   }
-  return tokens;
+  parser.finish();
+  return { tokens, statements };
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
@@ -63,6 +89,12 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 const isCommandRegexpEnd = (content: string, start: number, end: number): boolean =>
   !/[\w'"`]/.test(content.charAt(end)) &&
   !/\n[\t ]*end\b[^\n]*\n[\s\S]*?^[\t ]*#[^\n]*\/[imxounes]*$/m.test(content.slice(start, end));
+
+const hasWarnBlockParameter = (content: string, start: number): boolean => {
+  const parameters = /\s*\|([^|]*)\|/y;
+  parameters.lastIndex = start;
+  return /(?:^|[,;(*&])\s*warn\s*(?:$|[,;)=:])/.test(parameters.exec(content)?.[1] ?? '');
+};
 
 const isAssignment = (content: string, start: number): boolean => {
   const assignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;
