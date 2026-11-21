@@ -215,6 +215,7 @@ const regexpExpressions = [
   ['slash literal passed to puts', 'puts /prefix\nclass RegexText\nsuffix/'],
   ['numeric prefix in a regexp passed to puts', 'puts /2\nclass RegexText\nsuffix/'],
   ['slash literal after comparing puts', 'puts == nil\nputs /prefix\nclass RegexText\nsuffix/'],
+  ['slash literal after assigning other locals', '(output, count) = [8, 1]\nputs /prefix\nclass RegexText\nsuffix/'],
   ['qualified puts after a local assignment', 'puts = 8\nKernel.puts /prefix\nclass RegexText\nsuffix/'],
   ['percent regexp passed to puts', 'puts %r{prefix\nmodule RegexText\nsuffix}'],
   ['return before a slash literal', 'def matcher\n  return /prefix\nclass RegexText\nsuffix/\nend'],
@@ -250,10 +251,12 @@ test('preserves gem declarations between division expressions', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['/ 2', '/2'].forEach((division) => {
-  test(`preserves gem declarations after a local variable named puts uses ${division}`, () => {
-    const gemfile = `puts = 8\nputs ${division}\ngem 'rack', path: '/rack'`;
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
+['puts = 8', '(puts, count) = [8, 1]', 'puts, count = [8, 1]'].forEach((assignment) => {
+  ['/ 2', '/2'].forEach((division) => {
+    test(`preserves gem declarations after ${assignment} and puts ${division}`, () => {
+      const gemfile = `${assignment}\nputs ${division}\ngem 'rack', path: '/rack'`;
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
   });
 });
 

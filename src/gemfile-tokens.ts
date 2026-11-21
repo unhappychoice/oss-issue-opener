@@ -13,7 +13,8 @@ export const gemfileTokens = (content: string): string[] => {
       const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
       const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
       if (token === '=') {
-        hasLocalPuts ||= barePuts && !/^[=~]/.test(content.slice(pattern.lastIndex, pattern.lastIndex + 1));
+        hasLocalPuts ||= !/^[=~]/.test(content.slice(pattern.lastIndex, pattern.lastIndex + 1)) &&
+          (barePuts || assignsParallelPuts(tokens, index));
       } else if (expectsRegexp(previous, qualifier) ||
         ((!hasLocalPuts || !barePuts) && startsPutsRegexp(previous, content, match.index))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
@@ -158,6 +159,14 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 };
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const assignsParallelPuts = (tokens: string[], end: number): boolean => {
+  let boundary = end;
+  while (boundary >= 0 && tokens[boundary] !== '\n' && tokens[boundary] !== ';') boundary--;
+  const target = tokens.slice(boundary + 1, end + 1).filter((token) => !isSpacing(token)).join(' ');
+  const match = /^(?:\( (\w+(?: , \w+)+) \)|(\w+(?: , \w+)+))$/.exec(target);
+  return (match?.[1] ?? match?.[2] ?? '').split(' , ').includes('puts');
+};
 
 const previousSignificantToken = (tokens: string[], index: number): number => {
   while (index >= 0 && isSpacing(tokens[index])) index--;
