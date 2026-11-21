@@ -63,6 +63,7 @@ export const hasGemfileBinding = (tokens: string[], name: string): boolean => {
 };
 
 const hasLocalBinding = (statements: string[][], name: string): boolean => {
+  if (statements.some((statement) => assignsMultipleTargets(statement, name))) return true;
   const tokens = statements.flatMap((statement) => [...statement, ';']);
   let parameters = false;
   return tokens.some((token, index) => {
@@ -71,6 +72,16 @@ const hasLocalBinding = (statements: string[][], name: string): boolean => {
     return token === name && (parameters ||
       (previous !== '.' && tokens[index + 1] === '=' && tokens[index + 2] !== '='));
   });
+};
+
+const assignsMultipleTargets = (statement: string[], name: string): boolean => {
+  const assignment = statement.indexOf('=');
+  if (assignment < 0 || statement[assignment + 1] === '=') return false;
+  const targets = statement.slice(0, assignment);
+  return targets.includes(',') && targets.every((token) => /^(?:\w+|[(),*.@$])$/.test(token)) &&
+    targets.some((token, index) => token === name &&
+      (index === 0 || ['(', ',', '*'].includes(targets[index - 1])) &&
+      (index === targets.length - 1 || [')', ','].includes(targets[index + 1])));
 };
 
 const methodDeclaresParameter = (tokens: string[], name: string): boolean => {

@@ -226,6 +226,28 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['warn, other', 'other, warn', 'other, (warn, third)', 'other, *warn'].forEach((targets) => {
+  test(`recognizes a production gem after dividing warn assigned by ${targets}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class Helper
+      ${targets} = 4, 8
+      warn /2
+      gem 'rspec'
+    end
+  end
+end
+gem 'rack'
+warn /prefix
+gem "ignored"
+suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
 ['class TestHelper', 'module TestHelpers', 'class <<self', 'result = class TestHelper'].forEach((definition) => {
   test(`resolves warn in its local scope across ${definition}`, () => {
     const gemfile = `warn = 12
