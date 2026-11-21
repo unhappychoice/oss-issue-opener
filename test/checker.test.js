@@ -404,7 +404,7 @@ test('detects source changes without dependency updates', async (t) => {
   });
 });
 
-test('shares the bump lookup limit across scans and keeps comparison order', async (t) => {
+test('shares the bump lookup limit across scans and holds slots across pages', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const repos = getOctokit().repos;
   const versions = Array.from({ length: 10 }, (_, index) => String(index));
@@ -418,12 +418,23 @@ test('shares the bump lookup limit across scans and keeps comparison order', asy
 
   const started = [];
   const first = Promise.withResolvers();
+  let nextPageStarted = false;
+  const finishFirst = Promise.withResolvers();
   const rest = Promise.withResolvers();
   t.mock.method(repos, 'getCommit', async ({ repo, ref, page }) => {
     if (page === undefined) return { data: { sha: ref } };
     const lookup = `${repo}/${ref}`;
-    started.push(lookup);
-    await (lookup === 'first/0' ? first.promise : rest.promise);
+    if (page === 1) started.push(lookup);
+    if (lookup === 'first/0' && page === 1) {
+      await first.promise;
+      return { data: { files: [] }, headers: { link: '<https://api.github.com/?page=2>; rel="next"' } };
+    }
+    if (lookup === 'first/0') {
+      nextPageStarted = true;
+      await finishFirst.promise;
+    } else {
+      await rest.promise;
+    }
     return { data: { files: [{ filename: 'package-lock.json' }] } };
   });
 
@@ -432,11 +443,16 @@ test('shares the bump lookup limit across scans and keeps comparison order', asy
     await new Promise(setImmediate);
     assert.equal(started.length, 16);
     assert.equal(new Set(started.map((lookup) => lookup.split('/')[0])).size, 2);
+    first.resolve();
+    await new Promise(setImmediate);
+    assert.equal(nextPageStarted, true);
+    assert.equal(started.length, 16);
     rest.resolve();
     await new Promise(setImmediate);
     assert.equal(started.length, 20);
   } finally {
     first.resolve();
+    finishFirst.resolve();
     rest.resolve();
     const results = await scans;
     for (const result of results) {

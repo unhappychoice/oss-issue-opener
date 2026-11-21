@@ -1,3 +1,4 @@
+import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
@@ -5,9 +6,7 @@ import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js'
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
 // Share the lookup budget across repository scans, including paginated lookups.
-const COMMIT_FILE_CONCURRENCY = 16;
-const waitingLookups: (() => void)[] = [];
-let activeLookups = 0;
+const limitCommitFileLookup = createConcurrencyLimiter(16);
 
 export const checkCIStatus = async (
   owner: string,
@@ -133,7 +132,7 @@ const findDependencyUpdates = async (
   }));
   const lookups = await Promise.allSettled(candidates.filter(({ productionTypes }) => productionTypes.length > 0)
     .map(async ({ sha, bump, productionTypes }) => {
-      const affected = getDependencyProjectTypes(await lookupCommitFiles(owner, repo, sha));
+      const affected = getDependencyProjectTypes(await limitCommitFileLookup(() => getCommitFiles(owner, repo, sha)));
       return affected.length === 1 && productionTypes.includes(affected[0]) ? [bump] : [];
     }));
   return {
@@ -143,20 +142,4 @@ const findDependencyUpdates = async (
       ...lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
     ],
   };
-};
-
-const lookupCommitFiles = async (owner: string, repo: string, sha: string): Promise<string[]> => {
-  if (activeLookups >= COMMIT_FILE_CONCURRENCY) {
-    await new Promise<void>((resolve) => waitingLookups.push(resolve));
-  } else {
-    activeLookups++;
-  }
-
-  try {
-    return await getCommitFiles(owner, repo, sha);
-  } finally {
-    const next = waitingLookups.shift();
-    if (next) next();
-    else activeLookups--;
-  }
 };
