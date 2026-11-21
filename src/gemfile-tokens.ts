@@ -119,12 +119,12 @@ const isAssignment = (content: string, start: number): boolean => {
 
 const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|\{|,|\?|:)$/.test(token) ||
-  (/^(?:if|unless|when|and|or|not|return)$/.test(token) && !['.', ':', '@', '$'].includes(previous));
+  (/^(?:if|unless|while|until|when|and|or|not|return)$/.test(token) && !['.', ':', '@', '$'].includes(previous));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|(%[rqQwWiI]?)([^\w\s]|_)/y;
+  const opening = /\/|(%[rqQwWiIx]?)([^\w\s]|_)/y;
   opening.lastIndex = start;
   const root = opening.exec(content);
   if (!root) return undefined;

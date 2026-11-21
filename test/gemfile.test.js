@@ -423,8 +423,8 @@ gem 'rack', path: '/x'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', 'unless'].forEach((keyword) => {
-  test(`ignores class text in a multiline regexp used as an ${keyword} condition`, () => {
+['if', 'unless', 'while', 'until'].forEach((keyword) => {
+  test(`ignores class text in a multiline regexp used as the ${keyword} condition`, () => {
     const gemfile = `group :test do
   ${keyword} /prefix
 class FakeClass
@@ -504,7 +504,7 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', 'when', 'not', 'return'].forEach((method) => {
+['if', 'when', 'not', 'return', 'while', 'until'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
@@ -528,6 +528,7 @@ class FakeClass
   ['an interpolated percent string', `%Q{prefix#{/a.b/i}
 module FakeModule
 suffix}`],
+  ['a percent command literal', '%x{echo #{%q!}!}\nclass FakeClass\n}'],
   ['a percent regexp with an escaped delimiter', String.raw`%r!prefix\!
 class FakeClass
 !x`],
