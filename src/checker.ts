@@ -14,14 +14,11 @@ export const checkCIStatus = async (
   repo: string,
   getHead = () => getDefaultBranchHead(owner, repo)
 ): Promise<CIStatus> => {
-  const head = await getHead().catch((error: unknown) => {
-    if (error instanceof Error && 'status' in error && error.status === 404) return null;
-    throw error;
-  });
-  if (head === undefined) return { status: 'no-branch', failedChecks: [] };
-  if (head === null) return { status: 'no-ci', failedChecks: [] };
+  const result = await getHead();
+  if (result.status === 'no-branch') return { status: 'no-branch', failedChecks: [] };
+  if (result.status === 'no-head') return { status: 'no-ci', failedChecks: [] };
 
-  const { sha } = head;
+  const { sha } = result.head;
   const results = await Promise.allSettled([
     getCommitStatus(owner, repo, sha),
     getCheckRuns(owner, repo, sha),
@@ -60,11 +57,11 @@ export const checkPendingRelease = async (
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const head = await getHead();
-  if (!head) return { status: 'up-to-date' };
+  const result = await getHead();
+  if (result.status !== 'found') return { status: result.status };
 
   const { baseSha, headSha, files, getCommits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, head
+    owner, repo, `tags/${latestTag}`, result.head
   );
   if (files.length === 0) return { status: 'up-to-date' };
 

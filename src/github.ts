@@ -53,25 +53,36 @@ export const getFileContent = async (
 const isNotFound = (error: unknown): boolean =>
   error instanceof Error && 'status' in error && error.status === 404;
 
-export const getDefaultBranch = async (owner: string, repo: string): Promise<string | null> => {
-  try {
-    const { data } = await getOctokit().repos.get({ owner, repo });
-    return data.default_branch;
-  } catch {
-    return null;
-  }
-};
-
 export type BranchHead = { sha: string; treeSha: string };
+
+export type DefaultBranchHead =
+  | { status: 'found'; head: BranchHead }
+  | { status: 'no-branch' }
+  | { status: 'no-head' };
 
 export const getDefaultBranchHead = async (
   owner: string, repo: string, listedBranch?: string | null
-): Promise<BranchHead | undefined> => {
+): Promise<DefaultBranchHead> => {
   const branch = listedBranch || await getDefaultBranch(owner, repo);
-  if (!branch) return undefined;
+  if (!branch) return { status: 'no-branch' };
 
-  const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
-  return { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha };
+  try {
+    const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
+    return { status: 'found', head: { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha } };
+  } catch (error) {
+    if (isNotFound(error)) return { status: 'no-head' };
+    throw error;
+  }
+};
+
+const getDefaultBranch = async (owner: string, repo: string): Promise<string | null> => {
+  try {
+    const { data } = await getOctokit().repos.get({ owner, repo });
+    return data.default_branch;
+  } catch (error) {
+    if (isNotFound(error)) return null;
+    throw error;
+  }
 };
 
 export const getCommitStatus = async (

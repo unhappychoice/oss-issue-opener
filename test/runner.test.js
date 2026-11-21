@@ -40,6 +40,49 @@ const expectFailures = async (deps, expected) => {
   });
 };
 
+[
+  ['repository metadata', 'get', 503],
+  ['listed branch head', 'getBranch', 503],
+  ['repository metadata', 'get', 404, 'no-branch', 'no-branch'],
+  ['listed branch head', 'getBranch', 404, 'no-ci', 'no-head'],
+].forEach(([lookup, method, status, ciStatus, releaseStatus]) => {
+  test(`handles HTTP ${status} from the shared ${lookup} lookup with a release baseline`, async () => {
+    const cause = Object.assign(new Error(`HTTP ${status}`), { status });
+    initMockOctokit('test-token');
+    const { repos } = getOctokit();
+    const request = mock.method(repos, method, async () => { throw cause; });
+    mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+    const repository = method === 'get' ? { fullName: 'owner/repo' } : { fullName: 'owner/repo', defaultBranch: 'main' };
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [repository] : [],
+      checkCIStatus,
+      checkPendingRelease,
+    });
+
+    if (status === 503) {
+      await assert.rejects(runChecks(deps), (error) => {
+        assert.ok(error instanceof AggregateError);
+        assert.deepEqual(error.errors.map(({ message }) => message).sort(), [
+          'Failed owner/repo: CI investigation', 'Failed owner/repo: release investigation',
+        ]);
+        error.errors.forEach((failure) => assert.equal(failure.cause, cause));
+        return true;
+      });
+    } else {
+      await runChecks(deps);
+      const logs = console.log.mock.calls.map(({ arguments: [line] }) => line.trim());
+      assert.ok(logs.includes(`⚪ CI: ${ciStatus}`));
+      assert.ok(logs.includes(`⚪ Release: ${releaseStatus}`));
+      assert.equal(console.error.mock.callCount(), 0);
+    }
+
+    assert.equal(request.mock.callCount(), 1);
+    assert.equal(repos.getCommit.mock.callCount(), 0);
+    assert.deepEqual(batches, []);
+    assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Release: up to date')));
+  });
+});
+
 test('preserves GitHub read failures and waits for the remaining notifications', async () => {
   const checksFailure = new Error('Check runs HTTP 503');
   const statusesFailure = new Error('Commit statuses HTTP 503');
@@ -342,8 +385,8 @@ test('shares failed branch lookups without retrying or creating notifications', 
   const compared = mock.method(repos, 'compareCommits', async () => assert.fail('No branch to compare'));
   const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
 
-  await runChecks(deps);
-  await runChecks(deps);
+  await assert.rejects(runChecks(deps), AggregateError);
+  await assert.rejects(runChecks(deps), AggregateError);
 
   assert.equal(lookup.mock.callCount(), 6);
   assert.equal(compared.mock.callCount(), 0);

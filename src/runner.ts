@@ -118,6 +118,9 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
       } else if (releaseStatus.status === 'incomplete') {
         log('⚠️', 'Release: incomplete');
         return [];
+      } else if (releaseStatus.status !== 'pending') {
+        log('⚪', `Release: ${releaseStatus.status}`);
+        return [];
       }
       log('📦', 'Release: pending');
       return [buildPendingReleaseIssue(fullName, releaseStatus.changedSources, releaseStatus.dependencyUpdates, releaseStatus.compareUrl)];
