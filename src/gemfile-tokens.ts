@@ -64,13 +64,13 @@ const regexpEnd = (content: string, start: number): number | undefined => {
 };
 
 const interpolationEnd = (content: string, start: number): number | undefined => {
-  const parts = /%q([^\w\s])|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|#[^\n]*|[{}]|[^%'"#{}]+|[%'"]/y;
+  const parts = /%([qQ])([^\w\s])|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|#[^\n]*|[{}]|[^%'"#{}]+|[%'"]/y;
   parts.lastIndex = start;
   let depth = 1;
   let match: RegExpExecArray | null;
   while ((match = parts.exec(content)) !== null) {
     if (match[1]) {
-      const end = literalEnd(content, parts.lastIndex, match[1], false);
+      const end = literalEnd(content, parts.lastIndex, match[2], match[1] === 'Q');
       if (end === undefined) return undefined;
       parts.lastIndex = end;
     }

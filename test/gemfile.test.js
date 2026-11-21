@@ -273,6 +273,8 @@ gem 'rack'`;
 [
   '"/"',
   ' %q!}!.ord / 2 ',
+  ' %Q!}!.ord / 2 ',
+  '%Q!#{%q!}!}!',
   '%q!a/(b! + ")"',
   '%q(a/(b))',
 ].forEach((expression) => {
