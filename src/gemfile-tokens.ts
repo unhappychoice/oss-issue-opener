@@ -11,7 +11,7 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex++;
       continue;
     }
-    if ((token === '/' || token === '%') && canStartRegexp(tokens)) {
+    if ((token === '/' || token === '%') && canStartRegexp(tokens, content.slice(match.index, match.index + 2))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -42,10 +42,11 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const canStartRegexp = (tokens: string[]): boolean => {
+const canStartRegexp = (tokens: string[], opener = ''): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
   const previous = tokens[index] ?? '\n';
   if (/^(?:\n|;|=|=>|&&|\|\||~|\(|\[|,|\?|:)$/.test(previous)) return true;
+  if (previous === 'warn') return index < tokens.length - 1 && /^\/\S$/.test(opener);
   return /^(?:!|not|do|if|elsif|unless|when|return)$/.test(previous) &&
     !['.', '::'].includes(tokens[previousSignificantToken(tokens, index - 1)]);
 };
@@ -57,10 +58,9 @@ const regexpEnd = (content: string, start: number): number | undefined => {
   if (!match) return undefined;
   const end = literalEnd(content, opener.lastIndex, match[1] ?? '/', true);
   if (end === undefined) return undefined;
-  const options = /[imxounes]*/y;
+  const options = /[imxounes]*(?!\w)/y;
   options.lastIndex = end;
-  options.exec(content);
-  return options.lastIndex;
+  return options.test(content) ? options.lastIndex : undefined;
 };
 
 const interpolationEnd = (content: string, start: number): number | undefined => {

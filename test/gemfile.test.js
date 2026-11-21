@@ -238,6 +238,29 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('preserves group boundaries after warn receives a multiline regexp', () => {
+  const gemfile = `group :test do
+  warn /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['/ 2', '/2'].forEach((division) => {
+  test(`preserves a production gem after dividing a local variable named warn with ${division}`, () => {
+    const gemfile = `warn = 8
+ratio = warn ${division}
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves a production gem between division operators', () => {
   const gemfile = `ratio = total / count
 gem 'rack'
