@@ -7,8 +7,9 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '/' || token === '%') {
-      const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)] ?? '\n';
-      if (expectsRegexp(previous)) {
+      const previous = previousSignificantToken(tokens, tokens.length - 1);
+      const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
+      if (expectsRegexp(tokens[previous] ?? '\n', qualifier)) {
         const end = regexpEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
@@ -64,7 +65,8 @@ const heredocEnd = (content: string, start: number, delimiter: string, indented:
   return content.length;
 };
 
-const expectsRegexp = (previous: string): boolean =>
+const expectsRegexp = (previous: string, qualifier: string | undefined): boolean =>
+  qualifier !== '.' &&
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:|do|if|elsif|unless|when|return)$/.test(previous);
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
@@ -87,6 +89,7 @@ const literalFrame = (content: string, start: number, inInterpolation: boolean) 
     depth: 1,
     braces: 0,
     previous: '{',
+    qualifier: undefined as string | undefined,
   };
 };
 
@@ -104,7 +107,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     if (frame.braces > 0) {
       expression.lastIndex = offset;
       const token = expression.exec(content)?.[0] ?? char;
-      const nested = (token === '/' || token === '%') && expectsRegexp(frame.previous)
+      const nested = (token === '/' || token === '%') && expectsRegexp(frame.previous, frame.qualifier)
         ? literalFrame(content, offset, true)
         : undefined;
       if (nested) {
@@ -115,7 +118,10 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       }
       if (token === '{') frame.braces++;
       if (token === '}') frame.braces--;
-      if (!/^(?:[^\S\n]+|\\\r?\n|#)/.test(token)) frame.previous = token;
+      if (!/^(?:[^\S\n]+|\\\r?\n|#)/.test(token)) {
+        frame.qualifier = frame.previous;
+        frame.previous = token;
+      }
       offset += token.length;
     } else if (char === frame.closing) {
       offset++;
@@ -132,6 +138,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     } else if (frame.interpolates && char === '#' && content[offset + 1] === '{') {
       frame.braces = 1;
       frame.previous = '{';
+      frame.qualifier = undefined;
       offset += 2;
     } else {
       if (char === frame.delimiter) frame.depth++;

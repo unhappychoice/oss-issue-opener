@@ -215,6 +215,7 @@ gem 'rack'`;
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
   ['ternary regexp branches', "pattern = enabled ? /first\nclass Fake\nlast/ : /first\nend\nlast/"],
   ['nested regexp and percent string interpolation', "pattern = /#{[/a\\/b/, %q(}/), { key: 1 }]}\nclass Fake\ngem 'ignored'\nlast/"],
+  ['division after a method name in regexp interpolation', "pattern = /#{receiver.if / 2}\nend\ngem 'ignored'\nlast/"],
 ].forEach(([description, expression]) => {
   test(`ignores Gemfile scope tokens inside ${description}`, () => {
     const gemfile = `group :test do
@@ -232,6 +233,7 @@ gem 'rack'`;
 test('preserves group boundaries around division and modulo', () => {
   const gemfile = `group :test do
   count = 12 / 3
+  count = receiver.if / 2
   remainder = count % 3
   gem 'rspec'
 end
