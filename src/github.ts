@@ -2,9 +2,19 @@ import { Octokit } from '@octokit/rest';
 import type { Repository } from './types.js';
 
 let octokit: Octokit;
+const REQUEST_TIMEOUT_MS = 30_000;
 
-export const initOctokit = (token: string): void => {
+export const initOctokit = (token: string, requestTimeoutMs = REQUEST_TIMEOUT_MS): void => {
   octokit = new Octokit({ auth: token });
+  octokit.hook.wrap('request', (request, options) => {
+    const deadline = AbortSignal.timeout(requestTimeoutMs);
+    const callerSignal = options.request?.signal;
+    const signal = callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline;
+    // The inner Octokit hooks share this request's options object.
+    options.request = { ...options.request, signal };
+    // Octokit can swallow body-read errors while parsing a response.
+    return Promise.resolve(request(options)).finally(() => signal.throwIfAborted());
+  });
 };
 
 export const getOctokit = (): Octokit => {
@@ -57,7 +67,8 @@ export const getDefaultBranch = async (owner: string, repo: string): Promise<str
   try {
     const { data } = await getOctokit().repos.get({ owner, repo });
     return data.default_branch;
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') throw error;
     return null;
   }
 };
