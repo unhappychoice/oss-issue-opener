@@ -135,6 +135,7 @@ const isPatternBinding = (statement: string[], index: number, delimiter: string 
   const previous = statement[index - 1];
   const next = statement[index + 1];
   if (delimiter === '{') {
+    if (previous === ':') return [',', '}'].includes(next);
     return ['{', ','].includes(previous) && next === ':' && [',', '}'].includes(statement[index + 2]);
   }
   return ['[', ',', '*'].includes(previous) && [',', ']'].includes(next);

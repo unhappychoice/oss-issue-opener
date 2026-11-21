@@ -270,6 +270,7 @@ gem 'rack'`;
   'warn', 'warn if true', 'warn unless false', 'warn then',
   '[warn]', '[0, warn]', '[0, *warn]', '[[warn]]', '[0, [1, [2, *warn]]]',
   '{warn:}', '{other: 0, warn:}', '[{warn:}]', '{nested: {warn:}}',
+  '{value: warn}', '{value: warn, other: 0}', '{nested: {value: warn}}',
 ].forEach((pattern) => {
   test(`recognizes division after a pattern binds warn with ${pattern}`, () => {
     const gemfile = `group :test do
@@ -294,7 +295,7 @@ matcher = /suffix/`;
   });
 });
 
-['[^([[warn]])]', '{warn: 4}', '[^({warn: 4})]'].forEach((pattern) => {
+['[^([[warn]])]', '{warn: 4}', '[^({warn: 4})]', '{value: ^warn}'].forEach((pattern) => {
   test(`recognizes a warn regexp after a pattern without a binding in ${pattern}`, () => {
     const gemfile = `group :test do
   case values
