@@ -1,6 +1,6 @@
 export const expectsRegexp = (token = '\n', previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return)$/.test(token));
+  (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|and|or)$/.test(token));
 
 export const characterLiteralEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\[^\n]|[^\s\\])/uy;

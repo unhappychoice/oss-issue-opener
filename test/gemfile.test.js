@@ -231,6 +231,8 @@ const regexpExpressions = [
   ['a preceding slash character literal', '?/\n  matcher = /prefix\nclass RegexText\nsuffix/'],
   ['an interpolated slash character literal', '/#{ ?/.ord / 2 }/'],
   ['unary negation', '!/prefix\nclass RegexText\nsuffix/'],
+  ['the right operand of or', 'false or /prefix\nclass RegexText\nsuffix/'],
+  ['the right operand of and', 'true and /prefix\nmodule RegexText\nsuffix/'],
   ['percent delimiters', '%r!prefix\nclass RegexText\nsuffix!'],
   ['paired percent delimiters', '%r{prefix{nested}\nclass RegexText\nsuffix}'],
   ['the first ternary branch', 'true ? /prefix\nclass RegexText\nsuffix/ : nil'],
@@ -254,7 +256,7 @@ gem 'rack'`;
   });
 });
 
-test('distinguishes a conditional regexp from division after a keyword-named method', () => {
+test('distinguishes a conditional regexp from division after keyword-named methods', () => {
   const gemfile = `group :test do
   if /prefix
 class RegexText
@@ -263,6 +265,8 @@ suffix/
   gem 'rspec'
 end
 ratio = receiver.if / 2
+ratio = receiver.or / 2
+ratio = receiver.and / 2
 gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
