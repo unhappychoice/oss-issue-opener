@@ -24,19 +24,29 @@ const stringFrame = (opening: number, start: number, hashes: string, quotes: str
 });
 
 const swiftTokenReader = (content: string): ((index: number) => string) => {
-  const code = /\s+|\/\/[^\r\n]*|\/\*|(#*)("""|")|[A-Za-z_]\w*|[^\s]/gy;
+  const code = /\s+|\/\/[^\r\n]*|\/\*|(#*)("""|")|(#+)\/|[A-Za-z_]\w*|[^\s]/gy;
   const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
+  const regex = /\\[\s\S]|\/(#+)/g;
 
   const unterminated = new Set<number>();
 
   const readToken = (index: number): string => {
     code.lastIndex = index;
-    const [token, hashes, quotes] = code.exec(content)!;
+    const [token, hashes, quotes, regexHashes] = code.exec(content)!;
     const start = code.lastIndex;
     if (token === '/*') return content.slice(index, blockCommentEnd(start));
+    if (regexHashes !== undefined) return content.slice(index, regexEnd(start, regexHashes.length));
     if (quotes === undefined || unterminated.has(index)) return token;
     const end = stringEnd(stringFrame(index, start, hashes, quotes));
     return end === undefined ? token : content.slice(index, end);
+  };
+
+  const regexEnd = (start: number, hashCount: number): number => {
+    regex.lastIndex = start;
+    for (let match = regex.exec(content); match; match = regex.exec(content)) {
+      if (match[1]?.length === hashCount) return regex.lastIndex;
+    }
+    return start;
   };
 
   const blockCommentEnd = (start: number): number => {
@@ -64,9 +74,10 @@ const swiftTokenReader = (content: string): ((index: number) => string) => {
       } else if (typeof frame === 'number') {
         const tokenStart = index;
         code.lastIndex = tokenStart;
-        const [token, hashes, quotes] = code.exec(content)!;
+        const [token, hashes, quotes, regexHashes] = code.exec(content)!;
         index = code.lastIndex;
         if (token === '/*') index = blockCommentEnd(index);
+        if (regexHashes !== undefined) index = regexEnd(index, regexHashes.length);
         if (token === '(') stack[top] = frame + 1;
         if (token === ')') {
           if (frame === 1) stack.pop();
