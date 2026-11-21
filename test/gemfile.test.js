@@ -212,6 +212,7 @@ gem 'rack'`;
 
 [
   ['slash regexp', "pattern = /first\\/part\nclass Fake\nmodule Fake\ngem 'ignored'\nlast/im"],
+  ['regexp passed to puts', "puts /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
   ['regexp after and', "true and /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp after or', "false or %r{first\nmodule Fake\ngem 'ignored'\nlast}"],
@@ -250,6 +251,9 @@ test('preserves group boundaries around division and modulo', () => {
   count = 12 / 3
   count = receiver.if / 2
   remainder = count % 3
+  puts = 12
+  count = puts / 2
+  count = puts/2
   gem 'rspec'
 end
 gem 'rack'

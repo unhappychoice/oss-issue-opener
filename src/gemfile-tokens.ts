@@ -9,7 +9,9 @@ export const gemfileTokens = (content: string): string[] => {
     if (token === '?' || token === '/' || token === '%') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
-      if (expectsExpression(tokens[previous] ?? '\n', qualifier)) {
+      const putsRegexp = token === '/' && tokens[previous] === 'puts' &&
+        /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
+      if (expectsExpression(tokens[previous] ?? '\n', qualifier) || putsRegexp) {
         const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
