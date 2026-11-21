@@ -293,10 +293,15 @@ test('detects source changes without dependency updates', async (t) => {
 });
 
 [
-  ['build.gradle.kts', 'implementation(libs.guava)', true],
-  ['build.gradle.kts', 'implementation(libs.guava.get())', true],
-  ['build.gradle', 'implementation libs.guava', true],
-  ['build.gradle', 'testImplementation(libs.guava)', false],
+  ['build.gradle.kts', 'implementation(libs.guava.core)', true],
+  ['build.gradle.kts', 'implementation(libs.guava.core.get())', true],
+  ['build.gradle', 'implementation libs.guava.core', true],
+  ['build.gradle', 'testImplementation(libs.guava.core)', false],
+  ['build.gradle.kts', 'implementation(libs.bundles.runtime.core)', true],
+  ['build.gradle', 'api libs.bundles.runtime.core', true],
+  ['build.gradle.kts', 'testImplementation(libs.bundles.runtime.core)', false],
+  ['build.gradle.kts', 'implementation(libs.bundles.missing)', false],
+  ['build.gradle.kts', 'api(libs.bundles.invalid)', false],
 ].forEach(([manifest, declaration, production]) => {
   test(`checks catalog-only Guava updates with ${declaration}`, async (t) => {
     const catalog = 'gradle/libs.versions.toml';
@@ -306,7 +311,13 @@ test('detects source changes without dependency updates', async (t) => {
     stubRepository(t, `Bump ${pkg} from ${from} to ${to}`, [catalog]);
     const files = {
       [manifest]: `dependencies { ${declaration} }`,
-      [catalog]: `[libraries]\nguava = "${pkg}:${to}"`,
+      [catalog]: `[libraries]
+        guava-core = "${pkg}:${to}"
+        other_lib = "org.example:other:1.0"
+        [bundles]
+        runtime_core = ["other_lib", "guava-core"]
+        invalid = "guava-core"
+      `,
     };
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
       data: { content: Buffer.from(files[path] ?? '').toString('base64') },
