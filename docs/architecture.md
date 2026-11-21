@@ -23,9 +23,16 @@ setup and check commands, see [Contributing](../CONTRIBUTING.md).
    the comparison head commit SHA for manifest detection and dependency checks.
    The runner logs `Types:` from the callback, so a successful scan can omit the
    line when there is no release or tag, no branch to compare, or no changed files.
-   The checker uses the detected types to check source paths. For each dependency bump commit,
-   it fetches changed paths by SHA and checks production dependencies when those
-   paths identify exactly one detected ecosystem.
+   The checker uses the detected types to check source paths. For each dependency
+   bump, it checks production dependency membership at the comparison head in
+   detected ecosystems with a changed dependency file in the release comparison.
+   It fetches the bump commit's changed paths by SHA only if at least one
+   ecosystem has a production match. In a Node-only repository with a changed
+   `package-lock.json`, a package listed only in `devDependencies` is skipped
+   after reading `package.json`, without a commit-file request. A surviving
+   bump counts as an update only if its changed manifest or lockfile paths
+   identify exactly one ecosystem and the package is a production dependency
+   in that ecosystem.
 5. [issue.ts](../src/issue.ts) builds `PendingIssue` objects. After all accounts
    have been scanned, the runner submits the collected issues as one batch.
    The batch sorts by issue type and repository name, reads existing open issues
