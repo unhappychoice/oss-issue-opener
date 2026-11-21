@@ -66,7 +66,7 @@ export const checkPendingRelease = async (
   if (files.length === 0) return { status: 'up-to-date' };
 
   let rootContents: Promise<string[]> | undefined;
-  const getPinnedContents = getContents ?? (() => rootContents ??= getRepoContents(owner, repo, '', headSha, head.treeSha));
+  const getPinnedContents = getContents ?? (() => rootContents ??= getRepoContents(owner, repo, '', headSha, result.head.treeSha));
   const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes(getPinnedContents) : projectTypes;
   const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
@@ -97,7 +97,12 @@ const findDependencyUpdates = async (
   getContents: GetContents
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
-  const commits = await getCommits();
+  let commits: ComparedCommit[];
+  try {
+    commits = await getCommits();
+  } catch (error) {
+    return { dependencyUpdates: [], lookupErrors: [error] };
+  }
   const checkers = types.map((type) => ({
     type,
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
