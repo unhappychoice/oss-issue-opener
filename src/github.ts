@@ -195,9 +195,14 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
 };
 
 export const getCommitFiles = async (owner: string, repo: string, ref: string): Promise<string[]> => {
+  const paths: string[] = [];
+  for await (const page of getCommitFilePages(owner, repo, ref)) paths.push(...page);
+  return paths;
+};
+
+export async function* getCommitFilePages(owner: string, repo: string, ref: string): AsyncGenerator<string[]> {
   const perPage = 100;
   const fileLimit = 3000;
-  const paths: string[] = [];
   let fileCount = 0;
   for (let page = 1; ; page++) {
     const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
@@ -208,10 +213,10 @@ export const getCommitFiles = async (owner: string, repo: string, ref: string): 
     if (fileCount >= fileLimit) {
       throw new Error(`Cannot establish complete commit files for ${owner}/${repo}@${ref}: reached the ${fileLimit}-file limit`);
     }
-    paths.push(...changedPaths(data.files));
-    if (!headers?.link?.includes('rel="next"')) return paths;
+    yield changedPaths(data.files);
+    if (!headers?.link?.includes('rel="next"')) return;
   }
-};
+}
 
 export type ComparedCommit = { sha: string; message: string };
 
