@@ -78,7 +78,7 @@ type BindingScope = {
 const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): boolean => {
   if (statements.some((statement) =>
     assignsForTargets(statement, name) || assignsMultipleTargets(statement, name) ||
-    bindsArrayPatternTarget(statement, name))) {
+    bindsArrayPatternTarget(statement, name) || bindsRescueTarget(statement, name))) {
     return true;
   }
   const tokens = statements.flatMap((statement) => [...statement, ';']);
@@ -86,6 +86,9 @@ const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): bo
   return tokens.some((token, index) => token === name &&
     (index < parameterEnd || (!/^[.@$]$/.test(tokens[index - 1] ?? '') && assignsLocal(tokens, index))));
 };
+
+const bindsRescueTarget = (statement: string[], name: string): boolean =>
+  statement[0] === 'rescue' && statement.at(-2) === '=>' && statement.at(-1) === name;
 
 const assignsLocal = (tokens: string[], index: number): boolean => {
   const operator = tokens[index + 1];

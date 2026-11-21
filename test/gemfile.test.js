@@ -548,3 +548,21 @@ matcher = /suffix/`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('recognizes a production gem after division by a rescue variable', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    begin
+      raise 'error'
+    rescue => warn
+      warn /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+another_ratio = 8 / 2`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
