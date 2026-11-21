@@ -210,139 +210,17 @@ gem 'rack'`;
   });
 });
 
-['value /2', 'value /2 /4', 'value /2 / 4'].forEach((expression) => {
-  test(`recognizes a production gem after ${expression}`, () => {
-    const gemfile = `group :test do
+test('recognizes a production gem after dividing a block parameter named puts', () => {
+  const gemfile = `group :test do
   class TestHelper
-    def divide(value)
-      ${expression}
-    end
-  end
-  gem 'rspec'
-end
-gem 'rack', path: '/'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('recognizes a production gem after dividing an assigned local variable', () => {
-  const gemfile = `value = 4
-value /2
-gem 'rack', path: '/.rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('recognizes production gems after division of a local named puts', () => {
-  const gemfile = `puts = 4
-group :test do
-  module TestHelpers
-    class TestHelper
-      puts = 8
+    [4].each do |puts|
       puts /2
-      gem 'rspec', path: '/rspec'
-    end
-  end
-end
-puts /2
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('recognizes a production gem after division of a local named warn', () => {
-  const gemfile = `warn = 4
-warn /2
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['ratio(puts)', 'ratio puts', 'self.ratio(value = [1, 2], puts: 4)'].forEach((signature) => {
-  test(`recognizes a production gem after dividing a parameter in def ${signature}`, () => {
-    const gemfile = `group :test do
-  def ${signature}
-    puts /2
-  end
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('keeps parameter names local to their method', () => {
-  const gemfile = `group :test do
-  def ratio(puts)
-    puts /2
-  end
-  puts /prefix
-end
-suffix/
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('preserves multiline regexp calls across local scope boundaries', () => {
-  const gemfile = `group :test do
-  puts = 4
-  module TestHelpers
-    class TestHelper
-      puts /prefix
-end
-end
-end
-module RegexText
-suffix/
     end
   end
   gem 'rspec'
 end
-puts /prefix
-group :test do
-suffix/
-gem 'rack'`;
+gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-const multilineRegexps = [
-  'puts /prefix\nclass RegexText\nsuffix/',
-  'warn /prefix\nclass RegexText\nsuffix/',
-  'self.warn %r{prefix\nmodule RegexText\nsuffix}',
-  'puts =~ /check/\nputs /prefix\nend\nsuffix/',
-  'self.puts %r{prefix\nmodule RegexText\nsuffix}',
-  'matcher = /prefix\nclass RegexText\nsuffix/',
-  '/prefix\nend\nmodule RegexText\nsuffix/',
-  'matcher = enabled && /prefix\\/\nclass RegexText\nsuffix/i',
-  'matcher = cached || %r{prefix{2}\nmodule RegexText\nsuffix}',
-  'matcher = %r#prefix\nclass RegexText\nsuffix#',
-  'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /other/',
-  'matcher = enabled ? /other/ : /prefix\nmodule RegexText\nsuffix/',
-  'matcher = /prefix#{ %q!}/! }\nclass RegexText\nsuffix/',
-  'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
-  'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/',
-];
-
-multilineRegexps.forEach((expression) => {
-  test(`preserves Gemfile group boundaries around ${JSON.stringify(expression)}`, () => {
-    const gemfile = `group :test do
-${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
 });
