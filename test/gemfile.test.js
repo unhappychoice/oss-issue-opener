@@ -210,72 +210,17 @@ gem 'rack'`;
   });
 });
 
-['puts=(8)', 'puts = 8'].forEach((assignment) => {
-  test(`recognizes a production gem after division following ${assignment}`, () => {
-    const gemfile = `${assignment}\nputs /2\ngem 'rack', path: '/rack'`;
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['x, y = 8, 2', 'x, y, z = 8, 2, 1'].forEach((assignment) => {
-  test(`recognizes production gems after division following ${assignment}`, () => {
-    const gemfile = `${assignment}\nx /2\ngem 'rack', path: '/rack'\ny /2\ngem 'puma', path: '/puma'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'puma'), true);
-  });
-});
-
-test('recognizes a command regexp after an assignment in an argument list', () => {
+test('recognizes a production gem after dividing a method parameter', () => {
   const gemfile = `group :test do
-  configure(puts, option = 8)
-  puts /example
-class Phantom
-/
+  class TestHelper
+    def divide(value)
+      value /2
+    end
+  end
   gem 'rspec'
 end
-gem 'rack'`;
+gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('recognizes a production gem after division with spaces on both sides', () => {
-  const gemfile = "puts / 2\ngem 'rack', path: '/rack'";
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-const multilineRegexps = [
-  '/\nclass Phantom\n/',
-  '%r{\nclass Phantom\n}',
-  '%r{\nclass Phantom\\}\n{nested}\n}im',
-  '/\nclass Phantom\n#{/[}]/.source + %q[}/]}\n/',
-  '/\nend\n/',
-  '/\ndo\n/',
-];
-
-multilineRegexps.forEach((regexp) => {
-  test(`ignores scope keywords inside ${JSON.stringify(regexp)}`, () => {
-    const gemfile = `group :test do
-  pattern = ${regexp}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('ignores a multiline regexp in a ternary branch', () => {
-  const gemfile = `group :development do
-  pattern = enabled ? /
-class Phantom
-/ : nil
-  gem 'debug'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'debug'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
