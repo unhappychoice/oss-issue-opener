@@ -235,8 +235,8 @@ gem 'rack'`;
 });
 
 [
-  ['a slash regexp', ' /prefix\nclass FakeClass\n/x'],
-  ['a percent regexp', ' %r{prefix\nclass FakeClass\n}x'],
+  ['a parenthesized slash regexp', '(/prefix\nclass FakeClass\n/x)'],
+  ['a parenthesized percent regexp', '(%r{prefix\nclass FakeClass\n}x)'],
   ['division with space after the slash', ' / 2'],
   ['division with no space before the slash', '/2'],
 ].forEach(([description, suffix]) => {
@@ -251,6 +251,18 @@ pattern = /suffix/`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('detects a production gem after compact division of a local variable named warn', () => {
+  const gemfile = `group :test do
+  warn = 4
+  warn /2
+  gem 'rspec'
+end
+gem 'rack', path: '/x'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 ['if', 'unless'].forEach((keyword) => {
