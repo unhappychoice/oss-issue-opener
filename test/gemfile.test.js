@@ -227,6 +227,30 @@ another_ratio = 8 / 2`;
 });
 
 [
+  ['warn', '[4]'],
+  ['other, (warn, third)', '[[1, [4, 8]]]'],
+].forEach(([targets, values]) => {
+  test(`recognizes division inside and after a for loop binding ${targets}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    for ${targets} in ${values}
+      warn /2
+      gem 'rspec'
+    end
+    warn /2
+    gem 'minitest'
+  end
+end
+gem 'rack'
+matcher = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'minitest'), false);
+  });
+});
+
+[
   ['[4].each do |warn|', 'end'],
   ['[4].each { |warn|', '}'],
 ].forEach(([opening, closing]) => {

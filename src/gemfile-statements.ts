@@ -76,7 +76,9 @@ type BindingScope = {
 };
 
 const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): boolean => {
-  if (statements.some((statement) => assignsMultipleTargets(statement, name))) return true;
+  if (statements.some((statement) => assignsForTargets(statement, name) || assignsMultipleTargets(statement, name))) {
+    return true;
+  }
   const tokens = statements.flatMap((statement) => [...statement, ';']);
   const parameterEnd = parent && tokens[0] === '|' ? tokens.indexOf('|', 1) : -1;
   return tokens.some((token, index) => token === name &&
@@ -92,11 +94,20 @@ const assignsMultipleTargets = (statement: string[], name: string): boolean => {
   const assignment = statement.indexOf('=');
   if (assignment < 0 || statement[assignment + 1] === '=') return false;
   const targets = statement.slice(0, assignment);
-  return targets.includes(',') && targets.every((token) => /^(?:\w+|[(),*.@$])$/.test(token)) &&
-    targets.some((token, index) => token === name &&
-      (index === 0 || ['(', ',', '*'].includes(targets[index - 1])) &&
-      (index === targets.length - 1 || [')', ','].includes(targets[index + 1])));
+  return targets.includes(',') && includesLocalTarget(targets, name);
 };
+
+const assignsForTargets = (statement: string[], name: string): boolean => {
+  if (statement[0] !== 'for') return false;
+  const separator = statement.indexOf('in', 1);
+  return separator > 1 && includesLocalTarget(statement.slice(1, separator), name);
+};
+
+const includesLocalTarget = (targets: string[], name: string): boolean =>
+  targets.every((token) => /^(?:\w+|[(),*.@$])$/.test(token)) &&
+  targets.some((token, index) => token === name &&
+    (index === 0 || ['(', ',', '*'].includes(targets[index - 1])) &&
+    (index === targets.length - 1 || [')', ','].includes(targets[index + 1])));
 
 const methodDeclaresParameter = (tokens: string[], name: string): boolean => {
   const args = tokens.slice(tokens[2] === '.' ? 4 : 2);
