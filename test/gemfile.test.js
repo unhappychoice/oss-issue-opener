@@ -235,6 +235,7 @@ gem 'rack'`;
 });
 
 [
+  ['an unparenthesized slash regexp', ' /prefix\nclass FakeClass\n/x'],
   ['a parenthesized slash regexp', '(/prefix\nclass FakeClass\n/x)'],
   ['a parenthesized percent regexp', '(%r{prefix\nclass FakeClass\n}x)'],
   ['division with space after the slash', ' / 2'],
