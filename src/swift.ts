@@ -26,7 +26,8 @@ const stringFrame = (opening: number, start: number, hashes: string, quotes: str
 const swiftTokenReader = (content: string): ((index: number) => string) => {
   const code = /\s+|\/\/[^\r\n]*|\/\*|(#*)("""|")|(#+)\/|[A-Za-z_]\w*|[^\s]/gy;
   const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
-  const regex = /\\[\s\S]|\/(#+)/g;
+  const multilineRegexStart = /[ \t]*[\r\n]/y;
+  const regex = /\\[^\r\n]|\/(#+)|[\r\n]/g;
 
   const unterminated = new Set<number>();
 
@@ -42,9 +43,12 @@ const swiftTokenReader = (content: string): ((index: number) => string) => {
   };
 
   const regexEnd = (start: number, hashCount: number): number => {
+    multilineRegexStart.lastIndex = start;
+    const multiline = multilineRegexStart.test(content);
     regex.lastIndex = start;
     for (let match = regex.exec(content); match; match = regex.exec(content)) {
       if (match[1]?.length === hashCount) return regex.lastIndex;
+      if (!multiline && /[\r\n]/.test(match[0])) return match.index;
     }
     return start;
   };

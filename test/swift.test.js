@@ -85,3 +85,14 @@ test('Swift recovers from an unterminated extended regex', () => {
   const content = 'let pattern = ##/unfinished/#\n.package(path: "../actual")';
   assert.deepEqual(swiftDependencies(content), new Set(['actual']));
 });
+
+test('Swift stops an unterminated single-line extended regex at a line break', () => {
+  for (const newline of ['\n', '\r\n', '\r']) {
+    const content = [
+      'let unfinished = #/unfinished\\',
+      'let package = Package(dependencies: [.package(path: "../actual")])',
+      'let pattern = #/.package(id: "ghost")/#',
+    ].join(newline);
+    assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+  }
+});
