@@ -55,7 +55,9 @@ const expectFailures = async (deps, expected) => {
     mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
     const repository = method === 'get' ? { fullName: 'owner/repo' } : { fullName: 'owner/repo', defaultBranch: 'main' };
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [repository] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield repository;
+      },
       checkCIStatus,
       checkPendingRelease,
     });
@@ -328,7 +330,9 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
       } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,
@@ -625,7 +629,9 @@ test('submits confirmed release notifications before reporting incomplete bump f
       return { data: { content: Buffer.from('require example.com/runtime v1.1.0').toString('base64') } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,
