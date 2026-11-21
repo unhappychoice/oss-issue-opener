@@ -64,16 +64,24 @@ Both `npm run start` and `npm run check` run the scan and create issues;
 `npm run check` builds first. There is no dry-run mode. Existing open issues with
 the same title and matching `ci-failure` or `pending-release` label are skipped.
 
-## Local Development
+## Quick Start
 
-For a complete first-run walkthrough, see the [getting started guide](docs/getting-started.md).
+Install Node.js 26 and prepare a GitHub token as described in [Setup](#setup).
+The scan can create issues in `unhappychoice/oss-issue-opener`. To scan your own
+repositories and create issues in your own destination, update `ORGS` and
+`ISSUE_REPO` in `src/types.ts` before running `npm run check`.
 
 ```bash
-npm install
-npm run build
-npm test
-GH_TOKEN=your_token npm run start
+git clone https://github.com/unhappychoice/oss-issue-opener.git
+cd oss-issue-opener
+npm ci
+GH_TOKEN=your_token npm run check
 ```
+
+`npm run check` builds the scanner and runs it. Look for `[created]` in the
+output for new notifications and `[skip]` for matching open issues. Open the
+destination repository's Issues tab to see the failed checks or pending release
+details. For a complete walkthrough, see the [getting started guide](docs/getting-started.md).
 
 ## Manual Run
 

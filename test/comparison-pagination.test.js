@@ -37,30 +37,30 @@ test('detects a production bump after the first 250 commits', async (t) => {
     status: 'pending',
     changedSources: [],
     dependencyUpdates: [{ pkg: 'example', from: '1.0.0', to: '2.0.0' }],
-    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1')}...${commitSha('heads/main')}`,
   });
   assert.deepEqual(compare.mock.calls.map(({ arguments: [params] }) => params),
-    [1, 2, 3].map((page) => ({ owner: 'owner', repo: 'repo', base: commitSha('tags/v1'), head: commitSha('heads/main'), per_page: 100, page })));
+    [1, 2, 3].map((page) => ({ owner: 'owner', repo: 'repo', base: commitSha('refs/tags/v1'), head: commitSha('heads/main'), per_page: 100, page })));
 });
 
 test('detects the original final production bump and links to the scanned commits after the tag and branch move between pages', async (t) => {
   const repos = stubRelease(t);
   const originalHead = commitSha('heads/main');
-  const baseSha = commitSha('tags/v1');
-  const refs = new Map([['tags/v1', baseSha], ['heads/main', originalHead]]);
+  const baseSha = commitSha('refs/tags/v1');
+  const refs = new Map([['refs/tags/v1', baseSha], ['heads/main', originalHead]]);
   t.mock.method(repos, 'getBranch', async ({ branch }) => ({
     data: { commit: { sha: refs.get(`heads/${branch}`), commit: { tree: { sha: 'head-tree' } } } },
   }));
   const resolve = t.mock.method(repos, 'getCommit', async ({ ref }) => ({
     data: ref === 'bump'
       ? { files: [{ filename: 'package-lock.json' }] }
-      : { sha: refs.get(ref) },
+      : refs.get(ref),
   }));
   const compare = t.mock.method(repos, 'compareCommits', async ({ base, head, page }) => {
     const resolvedBase = refs.get(base) ?? base;
     const resolvedHead = refs.get(head) ?? head;
     if (page === 1) {
-      refs.set('tags/v1', commitSha('replacement-tag'));
+      refs.set('refs/tags/v1', commitSha('replacement-tag'));
       refs.set('heads/main', commitSha('replacement-head'));
       return { data: { files: [{ filename: 'package-lock.json' }], commits: commits(100) } };
     }
@@ -79,7 +79,7 @@ test('detects the original final production bump and links to the scanned commit
   const issue = buildPendingReleaseIssue('owner/repo', result.changedSources, result.dependencyUpdates, result.compareUrl);
   assert.equal(issue.body.split('\n').find((line) => line.startsWith('**Diff**:')),
     `**Diff**: https://github.com/owner/repo/compare/${baseSha}...${originalHead}`);
-  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['tags/v1', 'bump']);
+  assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['refs/tags/v1', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
   assert.deepEqual(manifest.mock.calls.map(({ arguments: [params] }) => params),
@@ -102,7 +102,7 @@ for (const path of ['docs/readme.md', 'src/index.ts', 'Gemfile.lock', null]) {
         status: 'pending',
         changedSources: [path],
         dependencyUpdates: [],
-        compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1')}...${commitSha('heads/main')}`,
+        compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1')}...${commitSha('heads/main')}`,
       }
       : { status: 'up-to-date' });
     assert.equal(compare.mock.callCount(), 1);

@@ -185,7 +185,7 @@ test('shares the root listing between project detection and the Ruby dependency 
         status: 'pending',
         changedSources: ['src/main.py'],
         dependencyUpdates: [],
-        compareUrl: `https://github.com/${owner}/${repo}/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+        compareUrl: `https://github.com/${owner}/${repo}/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
       } : { status: 'up-to-date' });
     });
   });

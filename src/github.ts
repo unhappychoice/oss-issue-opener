@@ -221,9 +221,14 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
 };
 
 export const getCommitFiles = async (owner: string, repo: string, ref: string): Promise<string[]> => {
+  const paths: string[] = [];
+  for await (const page of getCommitFilePages(owner, repo, ref)) paths.push(...page);
+  return paths;
+};
+
+export async function* getCommitFilePages(owner: string, repo: string, ref: string): AsyncGenerator<string[]> {
   const perPage = 100;
   const fileLimit = 3000;
-  const paths: string[] = [];
   let fileCount = 0;
   for (let page = 1; ; page++) {
     const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
@@ -234,10 +239,10 @@ export const getCommitFiles = async (owner: string, repo: string, ref: string): 
     if (fileCount >= fileLimit) {
       throw new Error(`Cannot establish complete commit files for ${owner}/${repo}@${ref}: reached the ${fileLimit}-file limit`);
     }
-    paths.push(...changedPaths(data.files));
-    if (!headers?.link?.includes('rel="next"')) return paths;
+    yield changedPaths(data.files);
+    if (!headers?.link?.includes('rel="next"')) return;
   }
-};
+}
 
 export type ComparedCommit = { sha: string; message: string };
 
@@ -248,8 +253,13 @@ export const compareCommits = async (
   head: BranchHead
 ): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommit[]> }> => {
   const { repos } = getOctokit();
-  const { data: baseCommit } = await repos.getCommit({ owner, repo, ref: base });
-  const endpoints = { owner, repo, base: baseCommit.sha, head: head.sha };
+  const { data: resolvedBase } = await repos.getCommit({
+    owner, repo, ref: base, headers: { accept: 'application/vnd.github.sha' },
+  });
+  if (typeof resolvedBase !== 'string') {
+    throw new Error(`Expected a commit SHA for ${owner}/${repo}@${base}`);
+  }
+  const endpoints = { owner, repo, base: resolvedBase, head: head.sha };
   const { base: baseSha, head: headSha } = endpoints;
   if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => [] };
 

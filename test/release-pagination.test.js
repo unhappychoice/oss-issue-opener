@@ -14,7 +14,7 @@ test('reports source changes against the published release when a draft points t
   t.mock.method(repos, 'listReleases', async () => ({ data: [draft, published] }));
   t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   const compare = t.mock.method(repos, 'compareCommits', async ({ base }) => ({ data: {
-    files: base === commitSha(`tags/${published.tag_name}`) ? [{ filename: 'src/index.ts' }] : [],
+    files: base === commitSha(`refs/tags/${published.tag_name}`) ? [{ filename: 'src/index.ts' }] : [],
     commits: [],
   } }));
 
@@ -22,9 +22,9 @@ test('reports source changes against the published release when a draft points t
     status: 'pending',
     changedSources: ['src/index.ts'],
     dependencyUpdates: [],
-    compareUrl: `https://github.com/owner/repo/compare/${commitSha('tags/v1.0.0')}...${commitSha('heads/main')}`,
+    compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1.0.0')}...${commitSha('heads/main')}`,
   });
-  assert.equal(compare.mock.calls[0].arguments[0].base, commitSha(`tags/${published.tag_name}`));
+  assert.equal(compare.mock.calls[0].arguments[0].base, commitSha(`refs/tags/${published.tag_name}`));
 });
 
 test('finds a published release on a later page and stops searching', async (t) => {
