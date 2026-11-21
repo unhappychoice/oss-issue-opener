@@ -16,8 +16,9 @@ const setup = (overrides = {}) => {
   const batches = [];
   const checked = [];
   const deps = {
-    listOrgRepos: async (org) => org === 'unhappychoice'
-      ? ['first', 'broken', 'last'].map((repo) => ({ fullName: `owner/${repo}` })) : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield* ['first', 'broken', 'last'].map((repo) => ({ fullName: `owner/${repo}` }));
+    },
     detectProjectTypes: async () => ['node'],
     checkCIStatus: async (_owner, repo) => {
       checked.push(repo);
@@ -39,6 +40,49 @@ const expectFailures = async (deps, expected) => {
     return true;
   });
 };
+
+[
+  ['repository metadata', 'get', 503],
+  ['listed branch head', 'getBranch', 503],
+  ['repository metadata', 'get', 404, 'no-branch', 'no-branch'],
+  ['listed branch head', 'getBranch', 404, 'no-ci', 'no-head'],
+].forEach(([lookup, method, status, ciStatus, releaseStatus]) => {
+  test(`handles HTTP ${status} from the shared ${lookup} lookup with a release baseline`, async () => {
+    const cause = Object.assign(new Error(`HTTP ${status}`), { status });
+    initMockOctokit('test-token');
+    const { repos } = getOctokit();
+    const request = mock.method(repos, method, async () => { throw cause; });
+    mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+    const repository = method === 'get' ? { fullName: 'owner/repo' } : { fullName: 'owner/repo', defaultBranch: 'main' };
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [repository] : [],
+      checkCIStatus,
+      checkPendingRelease,
+    });
+
+    if (status === 503) {
+      await assert.rejects(runChecks(deps), (error) => {
+        assert.ok(error instanceof AggregateError);
+        assert.deepEqual(error.errors.map(({ message }) => message).sort(), [
+          'Failed owner/repo: CI investigation', 'Failed owner/repo: release investigation',
+        ]);
+        error.errors.forEach((failure) => assert.equal(failure.cause, cause));
+        return true;
+      });
+    } else {
+      await runChecks(deps);
+      const logs = console.log.mock.calls.map(({ arguments: [line] }) => line.trim());
+      assert.ok(logs.includes(`⚪ CI: ${ciStatus}`));
+      assert.ok(logs.includes(`⚪ Release: ${releaseStatus}`));
+      assert.equal(console.error.mock.callCount(), 0);
+    }
+
+    assert.equal(request.mock.callCount(), 1);
+    assert.equal(repos.getCommit.mock.callCount(), 0);
+    assert.deepEqual(batches, []);
+    assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Release: up to date')));
+  });
+});
 
 test('preserves GitHub read failures and waits for the remaining notifications', async () => {
   const checksFailure = new Error('Check runs HTTP 503');
@@ -118,7 +162,9 @@ test('runs the CI and release investigations for a repository concurrently', asy
   let resolveCI;
   let releaseStartedBeforeCIFinished = false;
   const { deps } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo' }] : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo' };
+    },
     checkCIStatus: async () => new Promise((resolve) => {
       resolveCI = () => resolve({ status: 'success', failedChecks: [] });
     }),
@@ -175,10 +221,10 @@ test('continues other organizations and reports investigation and batch failures
   const creation = new Error('Issue creation unavailable');
   const organizations = [];
   const { deps } = setup({
-    listOrgRepos: async (org) => {
+    listOrgRepos: async function* (org) {
       organizations.push(org);
       if (org === 'unhappychoice') throw lookup;
-      return org === 'irasutoya-tools' ? [{ fullName: 'owner/repo' }] : [];
+      if (org === 'irasutoya-tools') yield { fullName: 'owner/repo' };
     },
     checkPendingRelease: async () => { throw comparison; },
     createIssuesInBatch: async (issues) => {
@@ -320,7 +366,9 @@ test('reports up to date without comparing or listing root contents when both re
   const compare = mock.method(repos, 'compareCommits', async () => assert.fail('Refs match'));
   const contents = mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
   const { deps, batches } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+    },
     checkCIStatus,
     checkPendingRelease,
     detectProjectTypes,
@@ -342,8 +390,8 @@ test('shares failed branch lookups without retrying or creating notifications', 
   const compared = mock.method(repos, 'compareCommits', async () => assert.fail('No branch to compare'));
   const { deps, batches } = setup({ checkCIStatus, checkPendingRelease });
 
-  await runChecks(deps);
-  await runChecks(deps);
+  await assert.rejects(runChecks(deps), AggregateError);
+  await assert.rejects(runChecks(deps), AggregateError);
 
   assert.equal(lookup.mock.callCount(), 6);
   assert.equal(compared.mock.callCount(), 0);
@@ -415,7 +463,9 @@ test('skips root listings when neither releases nor tags provide a baseline', as
       return { data: { content: '' } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
       checkPendingRelease,
       detectProjectTypes,
@@ -435,12 +485,14 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   });
 });
 
-test('submits confirmed release notifications before rejecting failed bump lookups', async () => {
+test('submits confirmed release notifications before reporting incomplete bump file lists', async () => {
   const repos = stubInvestigations();
-  const failure = Object.assign(new Error('Commit files HTTP 503'), { status: 503 });
   mock.method(repos, 'getCommit', async ({ ref, page }) => {
     if (page === undefined) return { data: { sha: commitSha(ref) } };
-    if (ref === 'failed') throw failure;
+    if (ref === 'failed' && page === 2) return { data: {} };
+    if (ref === 'failed') {
+      return { data: { files: [{ filename: 'package-lock.json' }] }, headers: { link: '<next>; rel="next"' } };
+    }
     return { data: { files: [{ filename: 'package-lock.json' }] } };
   });
   mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
@@ -459,8 +511,9 @@ test('submits confirmed release notifications before rejecting failed bump looku
   }));
   const repoNames = ['source', 'dependency', 'unconfirmed'];
   const { deps, batches } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice'
-      ? repoNames.map((repo) => ({ fullName: `owner/${repo}`, defaultBranch: 'main' })) : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield* repoNames.map((repo) => ({ fullName: `owner/${repo}`, defaultBranch: 'main' }));
+    },
     checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
     checkPendingRelease,
     detectProjectTypes,
@@ -470,7 +523,8 @@ test('submits confirmed release notifications before rejecting failed bump looku
     assert.ok(error instanceof AggregateError);
     assert.deepEqual(error.errors.map(({ message }) => message).sort(),
       repoNames.map((repo) => `Failed owner/${repo}: release investigation`).sort());
-    assert.ok(error.errors.every(({ cause }) => cause === failure));
+    assert.deepEqual(error.errors.map(({ cause }) => cause.message).sort(), repoNames
+      .map((repo) => `Cannot establish complete commit files for owner/${repo}@failed: missing files on page 2`).sort());
     assert.equal(batches.length, 1);
     assert.deepEqual(batches[0].map(({ repo, type }) => [repo, type]), [
       ['owner/source', 'pending-release'], ['owner/dependency', 'pending-release'],
@@ -478,6 +532,53 @@ test('submits confirmed release notifications before rejecting failed bump looku
     assert.match(batches[0][0].body, /src\/index\.ts/);
     assert.match(batches[0][1].body, /runtime.*1.*2/);
     return true;
+  });
+});
+
+[
+  ['source change', ['src/index.ts'], /src\/index\.ts/],
+  ['production bump in another ecosystem', ['go.sum'], /example\.com\/runtime.*1\.0\.0.*1\.1\.0/],
+  ['no confirmed reason', [], null],
+].forEach(([scenario, extraFiles, expectedReason]) => {
+  test(`reports a manifest read failure with ${scenario}`, async () => {
+    const repos = stubInvestigations();
+    const failure = Object.assign(new Error('package.json HTTP 503'), { status: 503 });
+    const hasGoBump = extraFiles.includes('go.sum');
+    mock.method(repos, 'getCommit', async ({ ref, page }) => ({ data: page === undefined
+      ? { sha: commitSha(ref) }
+      : { files: [{ filename: ref === 'go-bump' ? 'go.sum' : 'package-lock.json' }] },
+    }));
+    mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: ['package-lock.json', ...extraFiles].map((filename) => ({ filename })),
+      commits: [
+        { sha: 'node-bump', commit: { message: 'Bump lodash from 4.17.20 to 4.17.21' } },
+        ...(hasGoBump ? [{ sha: 'go-bump', commit: { message: 'Bump example.com/runtime from v1.0.0 to v1.1.0' } }] : []),
+      ],
+    } }));
+    mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(ref, headSha('repo'));
+      if (path === 'package.json') throw failure;
+      if (path === '') return { data: ['package.json', ...(hasGoBump ? ['go.mod'] : [])].map((name) => ({ name })) };
+      assert.equal(path, 'go.mod');
+      return { data: { content: Buffer.from('require example.com/runtime v1.1.0').toString('base64') } };
+    });
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    await expectFailures(deps, [['Failed owner/repo: release investigation', failure]]);
+    const status = expectedReason ? 'pending' : 'incomplete';
+    assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes(`Release: ${status}`)));
+    if (expectedReason) {
+      assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), [['pending-release']]);
+      assert.match(batches[0][0].body, expectedReason);
+      assert.doesNotMatch(batches[0][0].body, /lodash/);
+    } else {
+      assert.deepEqual(batches, []);
+    }
   });
 });
 
@@ -510,7 +611,9 @@ test('notifies about a production bump at the compared head after the default br
       : { content: Buffer.from(JSON.stringify(manifest)).toString('base64') } };
   });
   const { deps, batches } = setup({
-    listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+    },
     checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
     checkPendingRelease,
     detectProjectTypes,
@@ -577,7 +680,9 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
       return { data: { content: Buffer.from(manifests[path]).toString('base64') } };
     });
     const { deps, batches } = setup({
-      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      listOrgRepos: async function* (org) {
+        if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
+      },
       checkPendingRelease,
       detectProjectTypes,
     });

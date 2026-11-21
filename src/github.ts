@@ -15,9 +15,8 @@ export const getOctokit = (): Octokit => {
 // Forks are excluded: their releases and CI belong to the upstream project.
 const isMaintained = (repo: any): boolean => !repo.archived && !repo.private && !repo.fork;
 
-export const listOrgRepos = async (name: string): Promise<Repository[]> => {
+export async function* listOrgRepos(name: string): AsyncGenerator<Repository> {
   const { data: user } = await getOctokit().users.getByUsername({ username: name });
-  const repos: Repository[] = [];
 
   const [endpoint, params] =
     user.type === 'Organization'
@@ -25,10 +24,9 @@ export const listOrgRepos = async (name: string): Promise<Repository[]> => {
       : [getOctokit().repos.listForUser, { username: name, per_page: 100, type: 'owner' }];
 
   for await (const response of getOctokit().paginate.iterator(endpoint as any, params as any)) {
-    repos.push(...(response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch })));
+    yield* (response.data as any[]).filter(isMaintained).map((r) => ({ fullName: r.full_name, defaultBranch: r.default_branch }));
   }
-  return repos;
-};
+}
 
 export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
   const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
@@ -53,25 +51,36 @@ export const getFileContent = async (
 const isNotFound = (error: unknown): boolean =>
   error instanceof Error && 'status' in error && error.status === 404;
 
-export const getDefaultBranch = async (owner: string, repo: string): Promise<string | null> => {
-  try {
-    const { data } = await getOctokit().repos.get({ owner, repo });
-    return data.default_branch;
-  } catch {
-    return null;
-  }
-};
-
 export type BranchHead = { sha: string; treeSha: string };
+
+export type DefaultBranchHead =
+  | { status: 'found'; head: BranchHead }
+  | { status: 'no-branch' }
+  | { status: 'no-head' };
 
 export const getDefaultBranchHead = async (
   owner: string, repo: string, listedBranch?: string | null
-): Promise<BranchHead | undefined> => {
+): Promise<DefaultBranchHead> => {
   const branch = listedBranch || await getDefaultBranch(owner, repo);
-  if (!branch) return undefined;
+  if (!branch) return { status: 'no-branch' };
 
-  const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
-  return { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha };
+  try {
+    const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
+    return { status: 'found', head: { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha } };
+  } catch (error) {
+    if (isNotFound(error)) return { status: 'no-head' };
+    throw error;
+  }
+};
+
+const getDefaultBranch = async (owner: string, repo: string): Promise<string | null> => {
+  try {
+    const { data } = await getOctokit().repos.get({ owner, repo });
+    return data.default_branch;
+  } catch (error) {
+    if (isNotFound(error)) return null;
+    throw error;
+  }
 };
 
 export const getCommitStatus = async (
@@ -164,9 +173,13 @@ export const getCommitFiles = async (owner: string, repo: string, ref: string): 
   let fileCount = 0;
   for (let page = 1; ; page++) {
     const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
-    if (!data.files) return [];
+    if (!data.files) {
+      throw new Error(`Cannot establish complete commit files for ${owner}/${repo}@${ref}: missing files on page ${page}`);
+    }
     fileCount += data.files.length;
-    if (fileCount >= fileLimit) return [];
+    if (fileCount >= fileLimit) {
+      throw new Error(`Cannot establish complete commit files for ${owner}/${repo}@${ref}: reached the ${fileLimit}-file limit`);
+    }
     paths.push(...changedPaths(data.files));
     if (!headers?.link?.includes('rel="next"')) return paths;
   }

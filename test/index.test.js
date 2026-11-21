@@ -59,36 +59,47 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
   assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
 });
 
-test('CLI submits confirmed CI failures before exiting with status 1 for an endpoint error', () => {
+const runCLIWithCIFailures = (failListing) => {
   const sha = 'a'.repeat(40);
   const preload = `
     globalThis.fetch = async (url, options) => {
-      const { origin, pathname } = new URL(url);
+      const { origin, pathname, searchParams } = new URL(url);
       if (origin !== 'https://api.github.com') throw new Error('Unexpected origin: ' + origin);
       if (options.method === 'POST' && pathname === '/repos/unhappychoice/oss-issue-opener/issues') {
         const issue = JSON.parse(options.body);
-        if (issue.title === '[CI Failure] unhappychoice/example' && issue.body.includes('- build')) {
+        if (['[CI Failure] unhappychoice/example', '[CI Failure] irasutoya-tools/example'].includes(issue.title) && issue.body.includes('- build')) {
           return Response.json({ number: 532, labels: ['ci-failure'] }, { status: 201 });
         }
       }
       if (options.method === 'GET') {
         if (pathname === '/users/unhappychoice/repos') {
-          return Response.json([{ full_name: 'unhappychoice/example', default_branch: 'main' }]);
+          if (${failListing} && searchParams.get('page') === '2') {
+            return Response.json({ message: 'Repository listing unavailable' }, { status: 503 });
+          }
+          const headers = ${failListing} ? { link: '<https://api.github.com/users/unhappychoice/repos?page=2>; rel="next"' } : {};
+          return Response.json([{ full_name: 'unhappychoice/example', default_branch: 'main' }], { headers });
+        }
+        if (${failListing} && pathname === '/users/irasutoya-tools/repos') {
+          return Response.json([{ full_name: 'irasutoya-tools/example', default_branch: 'main' }]);
         }
         if (pathname.startsWith('/users/')) {
           return Response.json(pathname.endsWith('/repos') ? [] : { type: 'User' });
         }
-        if (pathname === '/repos/unhappychoice/example/branches/main') {
+        if (pathname.endsWith('/example/branches/main')) {
           return Response.json({ commit: { sha: '${sha}', commit: { tree: { sha: 'head-tree' } } } });
         }
-        if (pathname === '/repos/unhappychoice/example/commits/${sha}/status') {
+        if (pathname.endsWith('/example/commits/${sha}/status')) {
           return Response.json({ statuses: [{ state: 'failure', context: 'build' }] });
         }
-        if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-suites') {
+        if (pathname.endsWith('/example/commits/${sha}/check-suites')) {
           return Response.json({ total_count: 0, check_suites: [] });
         }
-        if (pathname === '/repos/unhappychoice/example/commits/${sha}/check-runs') {
-          return Response.json({ message: 'Check runs unavailable' }, { status: 503 });
+        if (pathname.endsWith('/example/commits/${sha}/check-runs')) {
+          if (!${failListing}) {
+            return Response.json({ message: 'Check runs unavailable' }, { status: 503 });
+          }
+          const response = Response.json({ total_count: 0, check_runs: [] });
+          return Object.defineProperty(response, 'url', { value: url });
         }
         if (['/releases', '/tags', '/issues'].some((suffix) => pathname.endsWith(suffix))) {
           return Response.json([]);
@@ -97,13 +108,30 @@ test('CLI submits confirmed CI failures before exiting with status 1 for an endp
       throw new Error('Unexpected GitHub request: ' + options.method + ' ' + url);
     };
   `;
-  const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, entryPoint], {
+  return spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, entryPoint], {
     env: { ...process.env, GH_TOKEN: 'test-token' }, encoding: 'utf8',
   });
+};
+
+test('CLI submits confirmed CI failures before exiting with status 1 for an endpoint error', () => {
+  const result = runCLIWithCIFailures(false);
 
   assert.ifError(result.error);
   assert.equal(result.status, 1);
   assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
   assert.match(result.stderr, /Check runs unavailable/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+});
+
+test('CLI scans earlier listing pages and subsequent accounts after a listing page fails', () => {
+  const result = runCLIWithCIFailures(true);
+
+  assert.ifError(result.error);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
+  assert.match(result.stdout, /\[created\] \[CI Failure\] irasutoya-tools\/example/, result.stderr);
+  assert.match(result.stderr, /\[failed\] unhappychoice: repository investigation/);
+  assert.match(result.stderr, /Repository listing unavailable/);
+  assert.match(result.stderr, /status: 503/);
   assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
 });

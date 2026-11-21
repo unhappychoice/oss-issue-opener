@@ -61,6 +61,56 @@ test('lists up to five changed source files and reports the remaining count', ()
   assert.equal(sourceSection(sources), `${expected}\n- ... and 2 more files`);
 });
 
+test('limits failed checks to whole list items and preserves notification links', () => {
+  const checks = Array.from({ length: 1_000 }, (_, index) => ({
+    name: `build-${index}`,
+    url: `https://example.com/checks/${index}/${'a'.repeat(50)}`,
+  }));
+  const { body } = buildCIFailureIssue('owner/repo', checks);
+  const [, section, links] = body.split('\n\n');
+  const [, ...items] = section.split('\n');
+  const summary = items.pop();
+
+  assert.ok(body.length <= 65_536);
+  assert.ok(items.length > 0 && items.length < checks.length);
+  assert.deepEqual(items, checks.slice(0, items.length).map(({ name, url }) => `- [${name}](${url})`));
+  assert.equal(summary, `- ... and ${checks.length - items.length} more`);
+  assert.equal(links, '**Repository**: https://github.com/owner/repo\n**Actions**: https://github.com/owner/repo/actions');
+});
+
+test('keeps a check at the body limit and omits it whole when it exceeds the limit', () => {
+  const repo = 'owner/repo';
+  const emptyBody = buildCIFailureIssue(repo, []).body;
+  const name = 'a'.repeat(65_536 - emptyBody.length - '- '.length);
+  const exact = buildCIFailureIssue(repo, [{ name }]).body;
+  const oversized = buildCIFailureIssue(repo, [{ name: `${name}a` }]).body;
+
+  assert.equal(exact.length, 65_536);
+  assert.equal(exact, emptyBody.replace('**Failed checks:**\n', `**Failed checks:**\n- ${name}`));
+  assert.equal(oversized, emptyBody.replace('**Failed checks:**\n', '**Failed checks:**\n- ... and 1 more'));
+});
+
+test('limits dependency updates while preserving confirmed source changes and links', () => {
+  const updates = Array.from({ length: 1_000 }, (_, index) => ({
+    pkg: `@example/runtime-dependency-${index}`,
+    from: '1.2.3-alpha.1234567',
+    to: '1.2.3-alpha.1234568',
+  }));
+  const compareUrl = 'https://github.com/owner/repo/compare/v1.2.3...main';
+  const { body } = buildPendingReleaseIssue('owner/repo', ['src/index.ts'], updates, compareUrl);
+  const [, sources, section, links] = body.split('\n\n');
+  const [, ...items] = section.split('\n');
+  const summary = items.pop();
+
+  assert.ok(body.length <= 65_536);
+  assert.equal(sources, '**Source code changes:**\n- `src/index.ts`');
+  assert.ok(items.length > 0 && items.length < updates.length);
+  assert.deepEqual(items, updates.slice(0, items.length).map(({ pkg, from, to }) =>
+    `- \` ${pkg} \` \` ${from} \` -> \` ${to} \``));
+  assert.equal(summary, `- ... and ${updates.length - items.length} more`);
+  assert.equal(links, `**Diff**: ${compareUrl}\n**Releases**: https://github.com/owner/repo/releases`);
+});
+
 test('continues after a failed creation and reports successes and failures', async (t) => {
   const cause = new Error('HTTP 503');
   const { attempts, logs, errors } = setup(t, async ({ title }) => {
