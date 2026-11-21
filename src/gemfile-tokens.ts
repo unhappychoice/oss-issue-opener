@@ -1,10 +1,11 @@
 import { gemfileScopeKind, readGemfileStatements } from './gemfile-statements.js';
 
-const regexpCommands = new Set(['puts', 'warn', 'print']);
-const localAssignment = /^[^\S\n]*(?:(?:\|\||&&|\*\*|<<|>>|[-+*/%&|^])=|=(?![=~>]))/;
+const commandIdentifier = /^(?!(?:self|nil|true|false|end|__FILE__|__LINE__|__ENCODING__)$)[a-z_]\w*[!?]?$/;
+const localAssignment = /[^\S\n]*(?:(?:\|\||&&|\*\*|<<|>>|[-+*/%&|^])=|=(?![=~>]))/;
 
 export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
+  const assignment = new RegExp(localAssignment.source, 'y');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const scopes = [new Set<string>()];
@@ -30,20 +31,21 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
     if (token === 'in' && statements.currentTokens()[0] === 'for') {
       const targets = statements.currentTokens().slice(1).join(' ');
       if (/^[a-zA-Z_]\w*(?: , [a-zA-Z_]\w*)*$/.test(targets)) {
-        targets.split(' , ').filter((name) => regexpCommands.has(name)).forEach((name) => scopes.at(-1)!.add(name));
+        targets.split(' , ').forEach((name) => scopes.at(-1)!.add(name));
       }
     }
     if ((token === '=' && !/[=~>]/.test(content[pattern.lastIndex] ?? '')) || /^\w+=$/.test(token)) {
       const targets = [...statements.currentTokens(), token.slice(0, -1)].join(' ').trimEnd();
       if (/^[a-zA-Z_]\w*(?: , [a-zA-Z_]\w*)+$/.test(targets)) {
-        targets.split(' , ').filter((name) => regexpCommands.has(name)).forEach((name) => scopes.at(-1)!.add(name));
+        targets.split(' , ').forEach((name) => scopes.at(-1)!.add(name));
       }
     }
     const commandName = token.replace(/=$/, '');
-    if (regexpCommands.has(commandName)) {
+    if (commandIdentifier.test(commandName)) {
+      assignment.lastIndex = pattern.lastIndex;
       const qualifier = tokens[previousSignificantToken(tokens, tokens.length - 1)];
       if (!['.', '@', '$', ':'].includes(qualifier ?? '') &&
-        (token !== commandName || localAssignment.test(content.slice(pattern.lastIndex)))) {
+        (token !== commandName || assignment.test(content))) {
         scopes.at(-1)!.add(commandName);
       }
     }
@@ -51,7 +53,8 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       const command = tokens[previous] ?? '';
-      const commandRegexp = token === '/' && regexpCommands.has(command) && !scopes.at(-1)!.has(command) &&
+      const commandRegexp = token === '/' && commandIdentifier.test(command) &&
+        (qualifier === '.' || !scopes.at(-1)!.has(command)) &&
         qualifier !== '@' && qualifier !== '$' &&
         /^[^\S\n]+$/.test(tokens.at(-1) ?? '') && /\S/.test(content[match.index + 1] ?? '');
       if (expectsExpression(tokens[previous] ?? '\n', qualifier) || commandRegexp) {
@@ -124,7 +127,7 @@ const readParameterLocals = (tokens: Iterable<string>, terminator?: string): str
     if (token === '=' || token.startsWith(':')) defaultDepth ??= depth;
     const name = token.replace(/=$/, '');
     if (binding && /^\w+$/.test(name)) {
-      if (regexpCommands.has(name)) locals.push(name);
+      locals.push(name);
       if (name !== token) defaultDepth = depth;
       binding = false;
     }

@@ -215,6 +215,7 @@ gem 'rack'`;
   ['regexp after unary bang', "pattern = !/first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp passed to puts', "puts /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp passed to print', "print /first\nclass Fake\ngem 'ignored'\nlast/"],
+  ['regexp passed to a custom helper', "helper /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
   ['regexp after and', "true and /first\nclass Fake\ngem 'ignored'\nlast/"],
   ['regexp after or', "false or %r{first\nmodule Fake\ngem 'ignored'\nlast}"],
@@ -282,7 +283,7 @@ gem 'rack', path: '/rack'`;
   });
 }
 
-for (const command of ['puts', 'warn', 'print']) {
+for (const command of ['puts', 'warn', 'print', 'helper']) {
   for (const assignment of [
     `${command} = 12`,
     `${command} ||= 12`,
