@@ -268,6 +268,7 @@ gem 'rack'`;
 
 [
   ['an unparenthesized slash regexp', ' /2\nclass FakeClass\n/x'],
+  ['an unparenthesized percent regexp', ' %r!prefix\nclass FakeClass\nsuffix!x'],
   ['a parenthesized slash regexp', '(/prefix\nclass FakeClass\n/x)'],
   ['a parenthesized percent regexp', '(%r{prefix\nclass FakeClass\n}x)'],
   ['division with space after the slash', ' / 2'],

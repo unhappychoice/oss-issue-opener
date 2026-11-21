@@ -36,10 +36,12 @@ const scanGemfile = (content: string) => {
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    const commandPercentRegexp = commandArgument && token === '%' && content.startsWith('%r', match.index);
     if ((literalExpected && (token === '/' || token === '%')) ||
+      commandPercentRegexp ||
       (commandArgument && token === '/' && /\S/.test(content.charAt(pattern.lastIndex)))) {
       const end = literalEnd(content, match.index);
-      if (end !== undefined && (literalExpected || isCommandRegexpEnd(content, match.index, end))) {
+      if (end !== undefined && (literalExpected || commandPercentRegexp || isCommandRegexpEnd(content, match.index, end))) {
         token = content.slice(match.index, end);
         pattern.lastIndex = end;
       }
