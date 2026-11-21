@@ -226,6 +226,25 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['def helper(warn)', 'def helper warn', 'def helper(warn = 4)', 'def self.helper(value, warn: 4)'].forEach((definition) => {
+  test(`distinguishes division by a method parameter from a later warn regexp after ${definition}`, () => {
+    const gemfile = `group :test do
+  ${definition}
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack'
+warn /prefix
+gem "ignored"
+suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
 const regexpExpressions = [
   ['slash delimiters', '/prefix\nclass RegexText\nend\ngem "ignored"\nsuffix/i'],
   ['a preceding slash character literal', '?/\n  matcher = /prefix\nclass RegexText\nsuffix/'],

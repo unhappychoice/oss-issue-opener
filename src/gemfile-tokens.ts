@@ -1,4 +1,5 @@
 import { characterLiteralEnd, expectsRegexp, regexpEnd } from './gemfile-regexp.js';
+import { hasGemfileBinding } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
@@ -52,17 +53,7 @@ const opensWarnRegexp = (
 ): boolean =>
   tokens[index] === 'warn' && ['\n', ';', 'do'].includes(previous) &&
   index < tokens.length - 1 && content[start] === '/' && /\S/.test(content[start + 1] ?? '') &&
-  !hasWarnBinding(tokens, index);
-
-const hasWarnBinding = (tokens: string[], end: number): boolean => {
-  let parameters = false;
-  return tokens.slice(0, end).filter((token) => !isSpacing(token)).some((token, index, significant) => {
-    const previous = significant[index - 1];
-    if (token === '|') parameters = !parameters && (previous === 'do' || previous === '{');
-    return token === 'warn' && (parameters ||
-      (previous !== '.' && significant[index + 1] === '=' && significant[index + 2] !== '='));
-  });
-};
+  !hasGemfileBinding(tokens.slice(0, index), 'warn');
 
 const opensSingletonClass = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
