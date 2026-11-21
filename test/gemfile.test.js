@@ -225,3 +225,46 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const regexpExpressions = [
+  ['slash delimiters', '/prefix\nclass RegexText\nend\ngem "ignored"\nsuffix/i'],
+  ['a preceding slash character literal', '?/\n  matcher = /prefix\nclass RegexText\nsuffix/'],
+  ['an interpolated slash character literal', '/#{ ?/.ord / 2 }/'],
+  ['unary negation', '!/prefix\nclass RegexText\nsuffix/'],
+  ['percent delimiters', '%r!prefix\nclass RegexText\nsuffix!'],
+  ['paired percent delimiters', '%r{prefix{nested}\nclass RegexText\nsuffix}'],
+  ['the first ternary branch', 'true ? /prefix\nclass RegexText\nsuffix/ : nil'],
+  ['the second ternary branch', 'false ? nil : /prefix\nclass RegexText\nsuffix/'],
+  ['an interpolated quoted slash', '/#{"/"}/'],
+  ['an interpolated regexp', '/#{ /\\// }/'],
+  ['an interpolated percent string and division', '/#{ %q!}!.ord / 2 }/'],
+];
+
+regexpExpressions.forEach(([description, expression]) => {
+  test(`preserves group exclusions around a regexp with ${description}`, () => {
+    const gemfile = `group :test do
+  matcher = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('distinguishes a conditional regexp from division after a keyword-named method', () => {
+  const gemfile = `group :test do
+  if /prefix
+class RegexText
+suffix/
+  end
+  gem 'rspec'
+end
+ratio = receiver.if / 2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

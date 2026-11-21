@@ -392,7 +392,7 @@ test('detects source changes without dependency updates', async (t) => {
     });
     const pages = [];
     t.mock.method(repos, 'getCommit', async ({ ref, page }) => {
-      if (page === undefined) return { data: { sha: ref } };
+      if (page === undefined) return { data: ref };
       pages.push(page);
       const files = nodePages.includes(page) ? [{ filename: 'package-lock.json' }] : [];
       if (page === rubyPage) {
