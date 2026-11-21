@@ -71,6 +71,8 @@ let package = Package(dependencies: [
 ])
 `;
 
+const regexManifest = 'let sample = #/.package(url: "https://example.com/ghost.git")/#\n' + manifest;
+
 cases.forEach(([name, content, pkg, expected]) => {
   test(`Swift production dependency: ${name}`, async () => {
     stubManifest(content);
@@ -84,6 +86,8 @@ cases.forEach(([name, content, pkg, expected]) => {
   ['swift-argument-parser', manifest, 'Package.resolved', true],
   ['swift-log', '.package(url: #"https://example.com/swift-log.git"#, from: "1.1.0")', 'Package.swift', true],
   ['swift-nio', interpolatedManifest, 'Package.resolved', true],
+  ['ghost', regexManifest, 'Package.resolved', false],
+  ['swift-argument-parser', regexManifest, 'Package.resolved', true],
 ].forEach(([pkg, content, filename, pending]) => {
   test(`Swift release check with ${filename} change and ${pkg} bump`, async () => {
     stubManifest(content);
