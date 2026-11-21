@@ -504,8 +504,24 @@ end
 ratio = receiver.if / 2
 ratio = receiver.or / 2
 ratio = receiver.and / 2
+ratio = receiver.not / 2
 gem 'rack', path: '/rack'`;
 
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves group exclusions around a multiline regexp after not', () => {
+  const gemfile = `group :test do
+  not /prefix
+class RegexText
+gem "ignored"
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
