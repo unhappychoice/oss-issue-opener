@@ -300,3 +300,23 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+['puts = 8', 'puts, count = [8, 1]'].forEach((assignment) => {
+  test(`keeps ${assignment} local to its method when scanning a Gemfile`, () => {
+    const gemfile = `def render
+  ${assignment}
+  if true
+    puts /2
+  end
+end
+group :test do
+  puts /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});

@@ -1,10 +1,10 @@
-import { opensScope, splitGemfileStatements } from './gemfile-scopes.js';
+import { opensLocalScope, opensScope, splitGemfileStatements } from './gemfile-scopes.js';
 
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  let hasLocalPuts = false;
+  const putsAssignments = new Set<number>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -15,12 +15,15 @@ export const gemfileTokens = (content: string): string[] => {
       const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
       const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
       if (token === '=') {
-        hasLocalPuts ||= !/^[=~]/.test(content.slice(pattern.lastIndex, pattern.lastIndex + 1)) &&
-          (barePuts || assignsParallelPuts(tokens, index)) && !declaresPutsParameter(tokens);
+        if (!/^[=~]/.test(content[pattern.lastIndex] ?? '') &&
+          (barePuts || assignsParallelPuts(tokens, index)) && !declaresPutsParameter(tokens)) {
+          putsAssignments.add(currentLocalScope(tokens).index);
+        }
       } else if (expectsRegexp(previous, qualifier) ||
-        ((!hasLocalPuts || !barePuts) && startsPutsRegexp(previous, qualifier, content, match.index))) {
+        (startsPutsRegexp(previous, qualifier, content, match.index) &&
+          (!barePuts || !hasLocalPuts(tokens, putsAssignments)))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
-        if (end !== undefined && (!barePuts || !hasPutsParameterInScope(tokens))) {
+        if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
           pattern.lastIndex = end;
           continue;
@@ -164,15 +167,23 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const hasPutsParameterInScope = (tokens: string[]): boolean => {
-  const scopes: boolean[] = [];
-  for (const statement of splitGemfileStatements(tokens)) {
+const hasLocalPuts = (tokens: string[], assignments: Set<number>): boolean => {
+  const { index, putsParameter } = currentLocalScope(tokens);
+  return putsParameter || assignments.has(index);
+};
+
+const currentLocalScope = (tokens: string[]) => {
+  const topLevel = { index: -1, putsParameter: false };
+  const scopes: (typeof topLevel)[] = [];
+  splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
     if (opensScope(statement)) {
-      scopes.push(statement[0] === 'def' ? hasPutsParameter(statement) : scopes.at(-1) ?? false);
+      scopes.push(opensLocalScope(statement)
+        ? { index, putsParameter: statement[0] === 'def' && hasPutsParameter(statement) }
+        : scopes.at(-1) ?? topLevel);
     }
-  }
-  return scopes.at(-1) ?? false;
+  });
+  return scopes.at(-1) ?? topLevel;
 };
 
 const declaresPutsParameter = (tokens: string[]): boolean => {

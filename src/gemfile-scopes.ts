@@ -38,10 +38,11 @@ export const splitGemfileStatements = (tokens: string[]): string[][] => {
 };
 
 export const opensScope = (tokens: string[]): boolean =>
-  opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+  opensLocalScope(tokens) || tokens.includes('do') ||
   /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '');
 
-const opensNamespace = (tokens: string[]): boolean =>
+export const opensLocalScope = (tokens: string[]): boolean =>
+  (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
   tokens.some((token, index) => (token === 'class' || token === 'module') &&
     (index === 0 || tokens[index - 1] === '='));
 
