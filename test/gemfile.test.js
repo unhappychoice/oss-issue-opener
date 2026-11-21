@@ -221,6 +221,7 @@ const regexpExpressions = [
   ['nested regexp inside interpolation', 'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/'],
   ['block end and gem declaration', "matcher = /prefix\nend\ngem 'ignored'\nsuffix/"],
   ['division inside interpolation', 'matcher = /prefix#{ 8 / 2 }\nclass RegexText\nsuffix/'],
+  ['character literal inside interpolation', 'matcher = /prefix#{ ?/ }\nclass RegexText\nsuffix/'],
 ];
 
 regexpExpressions.forEach(([name, expression]) => {
@@ -239,5 +240,10 @@ gem 'rack'`;
 
 test('preserves gem declarations between division expressions', () => {
   const gemfile = "ratio = 8 /2\ngem 'rack'\nratio /2";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves gem declarations after a slash character literal', () => {
+  const gemfile = "separator = ?/\ngem 'rack', path: '/rack'";
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });

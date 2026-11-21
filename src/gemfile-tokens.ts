@@ -6,10 +6,10 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' || token === '%') {
+    if (token === '/' || token === '%' || token === '?') {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       if (expectsRegexp(tokens[index], tokens[previousSignificantToken(tokens, index - 1)])) {
-        const end = regexpEnd(content, match.index);
+        const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
           pattern.lastIndex = end;
@@ -44,6 +44,12 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 const expectsRegexp = (token = '\n', previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return)$/.test(token));
+
+const characterLiteralEnd = (content: string, start: number): number | undefined => {
+  const pattern = /\?(?:\\[^\r\n]|[^\s\\])/uy;
+  pattern.lastIndex = start;
+  return pattern.test(content) ? pattern.lastIndex : undefined;
+};
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
@@ -101,6 +107,15 @@ const regexpEnd = (content: string, start: number): number | undefined => {
         frame.regexpExpected = true;
       }
     } else if (!token.startsWith('#') && !isSpacing(token)) {
+      if (frame.regexpExpected && token === '?') {
+        const end = characterLiteralEnd(content, offset);
+        if (end !== undefined) {
+          frame.previous = content.slice(offset, end);
+          frame.regexpExpected = false;
+          offset = end;
+          continue;
+        }
+      }
       const nested = frame.regexpExpected && (token === '/' || token === '%')
         ? literalFrame(content, offset, true)
         : undefined;
