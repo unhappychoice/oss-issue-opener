@@ -6,7 +6,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (isComment(token)) continue;
-    if ((token === '/' || token === '%') && canStartRegexp(tokens)) {
+    if ((token === '/' || token === '%') && canStartRegexp(tokens, content, match.index)) {
       const literal = readRegexp(content, match.index);
       if (literal !== undefined) {
         tokens.push(literal);
@@ -55,9 +55,11 @@ const previousSignificantToken = (tokens: string[], start: number): number => {
 
 const isComment = (token: string): boolean => token.startsWith('#') || token.startsWith('=begin');
 
-const canStartRegexp = (tokens: string[]): boolean => {
+const canStartRegexp = (tokens: string[], content: string, start: number): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
-  return expectsRegexp(tokens[index] ?? '\n', tokens[previousSignificantToken(tokens, index - 1)]);
+  const token = tokens[index] ?? '\n';
+  return expectsRegexp(token, tokens[previousSignificantToken(tokens, index - 1)]) ||
+    (token === 'puts' && index < tokens.length - 1 && !/\s/.test(content[start + 1] ?? ''));
 };
 
 const expectsRegexp = (token: string, previous: string): boolean =>

@@ -236,6 +236,8 @@ gem 'rack', path: '/.rack'`;
 });
 
 const multilineRegexps = [
+  'puts /prefix\nclass RegexText\nsuffix/',
+  'self.puts %r{prefix\nmodule RegexText\nsuffix}',
   'matcher = /prefix\nclass RegexText\nsuffix/',
   '/prefix\nend\nmodule RegexText\nsuffix/',
   'matcher = enabled && /prefix\\/\nclass RegexText\nsuffix/i',
