@@ -182,3 +182,198 @@ gem 'rack'`;
     });
   });
 });
+
+const namespaceDefinitions = [
+  'class TestHelper; end',
+  'module TestHelpers\n  class TestHelper < Object\n  end\nend',
+  'result = class TestHelper; end',
+  'result = module TestHelpers; end',
+  'class <<self; end',
+  'class << self; end',
+  'result = class <<self; end',
+  'class <<self\n=begin\nend\ngem "ignored"\n=end\nend',
+];
+
+[':test', ':development', ':development, :test'].forEach((group) => {
+  namespaceDefinitions.forEach((definition) => {
+    test(`preserves ${group} scope across ${definition}`, () => {
+      const gemfile = `group ${group} do
+${definition}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    });
+  });
+});
+
+test('recognizes a production gem after dividing a block parameter named warn', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    [4].each do |warn|
+      warn /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+another_ratio = 8 / 2`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['warn, other', 'other, warn', 'other, (warn, third)', 'other, *warn'].forEach((targets) => {
+  test(`recognizes a production gem after dividing warn assigned by ${targets}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class Helper
+      ${targets} = 4, 8
+      warn /2
+      gem 'rspec'
+    end
+  end
+end
+gem 'rack'
+warn /prefix
+gem "ignored"
+suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+['class TestHelper', 'module TestHelpers', 'class <<self', 'result = class TestHelper'].forEach((definition) => {
+  test(`resolves warn in its local scope across ${definition}`, () => {
+    const gemfile = `warn = 12
+group :test do
+  ${definition}
+    warn /prefix
+class RegexText
+gem "ignored"
+suffix/
+  end
+  gem 'rspec'
+end
+warn /2
+gem 'rack'
+matcher = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps a namespace local assignment inside its namespace', () => {
+  const gemfile = `class TestHelper
+  warn = 12
+  warn /2
+end
+warn /prefix
+class RegexText
+gem "ignored"
+suffix/
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['def helper(warn)', 'def helper warn', 'def helper(warn = 4)', 'def self.helper(value, warn: 4)'].forEach((definition) => {
+  test(`distinguishes division by a method parameter from a later warn regexp after ${definition}`, () => {
+    const gemfile = `group :test do
+  ${definition}
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack'
+warn /prefix
+gem "ignored"
+suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+const regexpExpressions = [
+  ['slash delimiters', '/prefix\nclass RegexText\nend\ngem "ignored"\nsuffix/i'],
+  ['a preceding slash character literal', '?/\n  matcher = /prefix\nclass RegexText\nsuffix/'],
+  ['an interpolated slash character literal', '/#{ ?/.ord / 2 }/'],
+  ['unary negation', '!/prefix\nclass RegexText\nsuffix/'],
+  ['the right operand of or', 'false or /prefix\nclass RegexText\nsuffix/'],
+  ['the right operand of and', 'true and /prefix\nmodule RegexText\nsuffix/'],
+  ['percent delimiters', '%r!prefix\nclass RegexText\nsuffix!'],
+  ['paired percent delimiters', '%r{prefix{nested}\nclass RegexText\nsuffix}'],
+  ['the first ternary branch', 'true ? /prefix\nclass RegexText\nsuffix/ : nil'],
+  ['the second ternary branch', 'false ? nil : /prefix\nclass RegexText\nsuffix/'],
+  ['an interpolated quoted slash', '/#{"/"}/'],
+  ['an interpolated regexp', '/#{ /\\// }/'],
+  ['an interpolated percent string and division', '/#{ %q!}!.ord / 2 }/'],
+];
+
+regexpExpressions.forEach(([description, expression]) => {
+  test(`preserves group exclusions around a regexp with ${description}`, () => {
+    const gemfile = `group :test do
+  matcher = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('distinguishes a conditional regexp from division after keyword-named methods', () => {
+  const gemfile = `group :test do
+  if /prefix
+class RegexText
+suffix/
+  end
+  gem 'rspec'
+end
+ratio = receiver.if / 2
+ratio = receiver.or / 2
+ratio = receiver.and / 2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('distinguishes a warn regexp argument from division', () => {
+  const gemfile = `group :test do
+  warn /prefix
+class RegexText
+gem "ignored"
+suffix/
+  gem 'rspec'
+end
+warn = 12
+warn / 2
+gem 'rack'
+warn/2
+gem 'rake'
+ratio = warn /2
+gem 'rails'
+warn /2
+gem 'json'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rake'), true);
+  assert.equal(isProductionGem(gemfile, 'rails'), true);
+  assert.equal(isProductionGem(gemfile, 'json'), true);
+});
