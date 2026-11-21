@@ -377,3 +377,32 @@ matcher = /suffix/`;
   assert.equal(isProductionGem(gemfile, 'rails'), true);
   assert.equal(isProductionGem(gemfile, 'json'), true);
 });
+
+['||=', '&&=', '+=', '/=', '<<='].forEach((operator) => {
+  test(`recognizes division after a local binding with ${operator}`, () => {
+    const gemfile = `warn ${operator} 12
+group :test do
+  class TestHelper; end
+  warn /2
+  gem 'rspec'
+end
+gem 'rack'
+matcher = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('recognizes a regexp on the right of a compound assignment', () => {
+  const gemfile = `group :test do
+  matcher ||= /=prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

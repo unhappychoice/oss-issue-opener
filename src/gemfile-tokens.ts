@@ -1,4 +1,4 @@
-import { characterLiteralEnd, expectsRegexp, regexpEnd } from './gemfile-regexp.js';
+import { canOpenLiteral, characterLiteralEnd, expectsRegexp, regexpEnd } from './gemfile-regexp.js';
 import { hasGemfileBinding } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
@@ -9,10 +9,11 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (['?', '/', '%'].includes(token)) {
+    if (canOpenLiteral(token)) {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previous = tokens[previousSignificantToken(tokens, index - 1)];
-      if (expectsRegexp(tokens[index], previous) || opensWarnRegexp(content, match.index, tokens, index, previous)) {
+      const warnRegexp = token === '/' && opensWarnRegexp(content, match.index, tokens, index, previous);
+      if (expectsRegexp(tokens[index], previous) || warnRegexp) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
           : regexpEnd(content, match.index, tokenPattern);
@@ -23,7 +24,7 @@ export const gemfileTokens = (content: string): string[] => {
         }
       }
     }
-    if (token.startsWith('<<')) {
+    if (token.startsWith('<<') && token !== '<<=') {
       // A singleton class uses the shift token where the pattern can match a heredoc opener.
       if (opensSingletonClass(tokens)) {
         tokens.push('<<');
@@ -46,13 +47,13 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
 
 const opensWarnRegexp = (
   content: string, start: number, tokens: string[], index: number, previous = '\n',
 ): boolean =>
   tokens[index] === 'warn' && ['\n', ';', 'do'].includes(previous) &&
-  index < tokens.length - 1 && content[start] === '/' && /\S/.test(content[start + 1] ?? '') &&
+  index < tokens.length - 1 && /\S/.test(content[start + 1] ?? '') &&
   !hasGemfileBinding(tokens.slice(0, index), 'warn');
 
 const opensSingletonClass = (tokens: string[]): boolean => {

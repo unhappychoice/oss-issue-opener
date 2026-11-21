@@ -1,6 +1,12 @@
+export const isCompoundAssignment = (token: string): boolean =>
+  /^(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=$/.test(token);
+
 export const expectsRegexp = (token = '\n', previous?: string): boolean =>
-  /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
+  isCompoundAssignment(token) || /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|and|or)$/.test(token));
+
+export const canOpenLiteral = (token: string): boolean =>
+  ['?', '/', '%', '/=', '%='].includes(token);
 
 export const characterLiteralEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\[^\n]|[^\s\\])/uy;
@@ -58,7 +64,7 @@ const interpolationEnd = (content: string, start: number, expression: RegExp): n
     if (token.startsWith('#') || token.startsWith('=begin') || /^(?:[^\S\n]+|\\\r?\n)$/.test(token)) continue;
     if (token === '{') depth++;
     if (token === '}' && --depth === 0) return offset;
-    if (regexpExpected && ['?', '/', '%'].includes(token)) {
+    if (regexpExpected && canOpenLiteral(token)) {
       const end = token === '?'
         ? characterLiteralEnd(content, tokenStart)
         : interpolationLiteralEnd(content, tokenStart, expression);

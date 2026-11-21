@@ -1,3 +1,5 @@
+import { isCompoundAssignment } from './gemfile-regexp.js';
+
 export const opensGemfileBlock = (tokens: string[]): boolean =>
   opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
   /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '');
@@ -70,8 +72,13 @@ const hasLocalBinding = (statements: string[][], name: string): boolean => {
     const previous = tokens[index - 1];
     if (token === '|') parameters = !parameters && (tokens[index - 2] === 'do' || previous === '{');
     return token === name && (parameters ||
-      (previous !== '.' && tokens[index + 1] === '=' && tokens[index + 2] !== '='));
+      (previous !== '.' && assignsLocal(tokens, index)));
   });
+};
+
+const assignsLocal = (tokens: string[], index: number): boolean => {
+  const operator = tokens[index + 1];
+  return isCompoundAssignment(operator) || (operator === '=' && tokens[index + 2] !== '=');
 };
 
 const assignsMultipleTargets = (statement: string[], name: string): boolean => {
