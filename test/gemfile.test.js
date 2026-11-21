@@ -244,6 +244,8 @@ const regexpExpressions = [
   ['percent regexp after or', 'enabled or %r{prefix\nmodule RegexText\nsuffix}'],
   ['slash literal passed to puts', 'puts /prefix\nclass RegexText\nsuffix/'],
   ['numeric prefix in a regexp passed to puts', 'puts /2\nclass RegexText\nsuffix/'],
+  ['slash literal after a hash argument', 'configure 8 => puts\nputs /prefix\nclass RegexText\nsuffix/'],
+  ['slash literal after a hash assignment', 'options = {8 => puts}\nputs /prefix\nclass RegexText\nsuffix/'],
   ['slash literal after comparing puts', 'puts == nil\nputs /prefix\nclass RegexText\nsuffix/'],
   ['slash literal after assigning other locals', '(output, count) = [8, 1]\nputs /prefix\nclass RegexText\nsuffix/'],
   ['slash literal after nested assignment to other locals', '((output, count), rest) = [[8, 1], 2]\nputs /prefix\nclass RegexText\nsuffix/'],
@@ -302,6 +304,7 @@ test('preserves gem declarations after dividing a local variable named warn', ()
 
 [
   'puts = 8',
+  '8 => puts',
   'puts ||= 8',
   'puts &&= 8',
   'puts += 8',
@@ -449,6 +452,7 @@ gem 'rack', path: '/rack'`;
 
 [
   '[1].each do\n  puts = 8\n  puts /2\nend',
+  '[1].each do\n  8 => puts\n  puts /2\nend',
   '[1].each { puts = 8; puts /2 }',
   '[1].each do\n  if true\n    puts = 8\n  end\n  puts /2\nend',
 ].forEach((block) => {

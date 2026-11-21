@@ -199,7 +199,8 @@ const currentLocalScope = (tokens: string[], name: CommandName): LocalScope => {
   splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
     const scope = scopes.at(-1) ?? topLevel;
-    if (bindsForTarget(statement, name) || bindsRescueTarget(statement, name)) scope.bindsName = true;
+    if (bindsForTarget(statement, name) || bindsRescueTarget(statement, name) ||
+      bindsRightwardTarget(statement, name)) scope.bindsName = true;
     if (statement[0] === '|' && hasParameter(statement.slice(1, -1), name)) scope.bindsName = true;
     if (opensScope(statement)) {
       scopes.push(opensLocalScope(statement)
@@ -215,6 +216,10 @@ const opensBlockScope = (statement: string[]): boolean =>
 
 const bindsRescueTarget = (statement: string[], name: CommandName): boolean =>
   statement[0] === 'rescue' && statement.at(-2) === '=>' && statement.at(-1) === name;
+
+const bindsRightwardTarget = (statement: string[], name: CommandName): boolean =>
+  statement.length === 3 && statement[1] === '=>' && statement[2] === name &&
+  /^(?:\w+[!?]?$|:\w+$|['"])/.test(statement[0]);
 
 const bindsForTarget = (statement: string[], name: CommandName): boolean => {
   if (statement[0] !== 'for') return false;

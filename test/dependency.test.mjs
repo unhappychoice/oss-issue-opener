@@ -156,7 +156,7 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
     end
     gem 'rspec'
   end
-  puts ||= 8
+  8 => puts
   puts /2
   gem 'rack', path: '/rack'`);
 
