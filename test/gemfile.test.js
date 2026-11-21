@@ -623,7 +623,7 @@ pattern = /suffix/`;
   });
 });
 
-['if', 'case', 'when', 'not', 'return', 'while', 'until', 'yield', 'then'].forEach((method) => {
+['if', 'case', 'when', 'not', 'return', 'while', 'until', 'yield', 'then', 'defined?'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
@@ -638,6 +638,8 @@ pattern = /suffix/`;
 });
 
 [
+  ['a slash regexp after defined?', 'defined? /prefix\nclass FakeClass\n/x'],
+  ['a percent regexp after defined?', 'defined? %r{prefix\nclass FakeClass\n}x'],
   ['a negated slash regexp', String.raw`!/prefix\/
 class FakeClass
 /x`],
