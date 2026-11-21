@@ -251,6 +251,13 @@ test('preserves gem declarations between division expressions', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['@puts', '@@puts', '$puts'].forEach((variable) => {
+  test(`preserves gem declarations after dividing ${variable}`, () => {
+    const gemfile = `${variable} /2\ngem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['puts = 8', '(puts, count) = [8, 1]', 'puts, count = [8, 1]'].forEach((assignment) => {
   ['/ 2', '/2'].forEach((division) => {
     test(`preserves gem declarations after ${assignment} and puts ${division}`, () => {

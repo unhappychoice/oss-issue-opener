@@ -18,7 +18,7 @@ export const gemfileTokens = (content: string): string[] => {
         hasLocalPuts ||= !/^[=~]/.test(content.slice(pattern.lastIndex, pattern.lastIndex + 1)) &&
           (barePuts || assignsParallelPuts(tokens, index)) && !declaresPutsParameter(tokens);
       } else if (expectsRegexp(previous, qualifier) ||
-        ((!hasLocalPuts || !barePuts) && startsPutsRegexp(previous, content, match.index))) {
+        ((!hasLocalPuts || !barePuts) && startsPutsRegexp(previous, qualifier, content, match.index))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined && (!barePuts || !hasPutsParameterInScope(tokens))) {
           tokens.push(content.slice(match.index, end));
@@ -55,8 +55,10 @@ const expectsRegexp = (token = '\n', previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|case|when|return)$/.test(token));
 
-const startsPutsRegexp = (previous: string | undefined, content: string, start: number): boolean => {
-  if (previous !== 'puts') return false;
+const startsPutsRegexp = (
+  previous: string | undefined, qualifier: string | undefined, content: string, start: number,
+): boolean => {
+  if (previous !== 'puts' || qualifier === '@' || qualifier === '$') return false;
   const argument = /[ \t](?:\/\S|%r)/y;
   argument.lastIndex = start - 1;
   return argument.test(content);
