@@ -6,6 +6,11 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === '?' && content[pattern.lastIndex] === '/' && canStartRegexp(tokens)) {
+      tokens.push('?/');
+      pattern.lastIndex++;
+      continue;
+    }
     if ((token === '/' || token === '%') && canStartRegexp(tokens)) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {

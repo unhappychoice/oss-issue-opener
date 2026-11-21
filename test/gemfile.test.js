@@ -301,9 +301,17 @@ gem 'rack'`;
   });
 });
 
-test('ignores scope keywords inside either ternary regexp branch', () => {
-  const gemfile = `group :test do
-  pattern = flag ? /one
+test('preserves a production gem after a slash character literal', () => {
+  const gemfile = `separator = ?/
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['true ? /one', 'true ?/one'].forEach((expression) => {
+  test(`ignores scope keywords inside either regexp branch of ${expression}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
 end
 / : /two
 class RegexText
@@ -312,6 +320,7 @@ class RegexText
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
