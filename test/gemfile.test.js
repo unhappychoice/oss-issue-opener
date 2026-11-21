@@ -477,6 +477,23 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+
+  test(`ignores class text in a multiline ${delimiter} regexp after else`, () => {
+    const gemfile = `group :test do
+  if ENV['FEATURE']
+    gem 'conditional'
+  else ${pattern}
+    gem 'fallback'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'conditional'), false);
+    assert.equal(isProductionGem(gemfile, 'fallback'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 ['&&', '||', 'and', 'or'].forEach((operator) => {
