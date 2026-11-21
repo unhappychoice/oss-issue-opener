@@ -4,7 +4,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const putsAssignments = new Set<number>();
+  const assignments = new Map(commandNames.map((name) => [name, new Set<number>()]));
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -14,16 +14,20 @@ export const gemfileTokens = (content: string): string[] => {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previous = tokens[index];
       const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
-      const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
+      const qualified = ['.', ':', '@', '$'].includes(qualifier);
       if (token === '=' || compoundAssignment) {
-        const assignsPuts = barePuts || (!compoundAssignment && assignsParallelPuts(tokens));
-        if (assignsPuts && (compoundAssignment || !/^[=~]/.test(content[pattern.lastIndex] ?? '')) &&
-          !declaresPutsParameter(tokens)) {
-          putsAssignments.add(currentLocalScope(tokens).index);
+        if (compoundAssignment || !/^[=~]/.test(content[pattern.lastIndex] ?? '')) {
+          assignments.forEach((scopes, name) => {
+            const assignsLocal = (previous === name && !qualified) ||
+              (!compoundAssignment && assignsParallelLocal(tokens, name));
+            if (assignsLocal && !declaresMethodParameter(splitGemfileStatements(tokens).at(-1) ?? [], name)) {
+              scopes.add(currentLocalScope(tokens, name).index);
+            }
+          });
         }
       } else if (expectsRegexp(previous, qualifier) ||
-        (startsPutsRegexp(previous, qualifier, content, match.index) &&
-          (!barePuts || !hasLocalPuts(tokens, putsAssignments)))) {
+        (startsCommandRegexp(previous, qualifier, content, match.index) &&
+          (qualified || !hasLocalBinding(tokens, previous, assignments.get(previous)!)))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
@@ -62,10 +66,13 @@ const expectsRegexp = (token = '\n', previous?: string): boolean =>
   compoundAssignmentPattern.test(token) || /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|and|or|do|if|elsif|unless|case|when|return)$/.test(token));
 
-const startsPutsRegexp = (
+const commandNames = ['puts', 'warn'] as const;
+type CommandName = typeof commandNames[number];
+
+const startsCommandRegexp = (
   previous: string | undefined, qualifier: string | undefined, content: string, start: number,
-): boolean => {
-  if (previous !== 'puts' || qualifier === '@' || qualifier === '$') return false;
+): previous is CommandName => {
+  if ((previous !== 'puts' && previous !== 'warn') || qualifier === '@' || qualifier === '$') return false;
   const argument = /[ \t](?:\/\S|%r)/y;
   argument.lastIndex = start - 1;
   return argument.test(content);
@@ -171,60 +178,55 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const hasLocalPuts = (tokens: string[], assignments: Set<number>): boolean => {
-  const { index, bindsPuts } = currentLocalScope(tokens);
-  return bindsPuts || assignments.has(index);
+const hasLocalBinding = (tokens: string[], name: CommandName, assignments: Set<number>): boolean => {
+  const { index, bindsName } = currentLocalScope(tokens, name);
+  return bindsName || assignments.has(index);
 };
 
-const currentLocalScope = (tokens: string[]) => {
-  const topLevel = { index: -1, bindsPuts: false };
+const currentLocalScope = (tokens: string[], name: CommandName) => {
+  const topLevel = { index: -1, bindsName: false };
   const scopes: (typeof topLevel)[] = [];
   splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
     const scope = scopes.at(-1) ?? topLevel;
-    if (bindsForPuts(statement)) scope.bindsPuts = true;
-    if (statement[0] === '|' && hasPutsParameter(statement.slice(1, -1))) {
-      scopes[scopes.length - 1] = { ...scope, bindsPuts: true };
+    if (bindsForTarget(statement, name)) scope.bindsName = true;
+    if (statement[0] === '|' && hasParameter(statement.slice(1, -1), name)) {
+      scopes[scopes.length - 1] = { ...scope, bindsName: true };
     }
     if (opensScope(statement)) {
       scopes.push(opensLocalScope(statement)
-        ? { index, bindsPuts: declaresMethodPutsParameter(statement) }
+        ? { index, bindsName: declaresMethodParameter(statement, name) }
         : opensBlockScope(statement) ? { ...scope } : scope);
     }
   });
   return scopes.at(-1) ?? topLevel;
 };
 
-const declaresPutsParameter = (tokens: string[]): boolean => {
-  const statement = splitGemfileStatements(tokens).at(-1);
-  return statement !== undefined && declaresMethodPutsParameter(statement);
-};
-
 const opensBlockScope = (statement: string[]): boolean =>
   statement.at(-1) === 'do' && !/^(?:for|until|while)$/.test(statement[0]);
 
-const bindsForPuts = (statement: string[]): boolean => {
+const bindsForTarget = (statement: string[], name: CommandName): boolean => {
   if (statement[0] !== 'for') return false;
   const inIndex = statement.indexOf('in');
   if (inIndex < 0) return false;
   const targets = statement.slice(1, inIndex);
-  return targets.some((token, index) => token === 'puts' &&
+  return targets.some((token, index) => token === name &&
     (index === 0 || [',', '(', '*'].includes(targets[index - 1])) &&
     (index === targets.length - 1 || [',', ')'].includes(targets[index + 1])));
 };
 
-const declaresMethodPutsParameter = (statement: string[]): boolean => {
+const declaresMethodParameter = (statement: string[], name: CommandName): boolean => {
   if (statement[0] !== 'def') return false;
   const parameters = statement.slice(statement[2] === '.' ? 4 : 2);
   if (parameters[0] === '(') parameters.shift();
-  return hasPutsParameter(parameters);
+  return hasParameter(parameters, name);
 };
 
-const hasPutsParameter = (parameters: string[]): boolean => {
+const hasParameter = (parameters: string[], name: CommandName): boolean => {
   let depth = 0;
   let atParameterStart = true;
   for (const token of parameters) {
-    if (atParameterStart && token === 'puts') return true;
+    if (atParameterStart && token === name) return true;
     if (atParameterStart && ['*', '&'].includes(token)) continue;
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
@@ -237,16 +239,15 @@ const assignmentTarget = String.raw`(?:(?:\* )?\w+|\*)`;
 const assignmentList = `${assignmentTarget}(?: , ${assignmentTarget})*(?: ,)?`;
 const groupedAssignment = new RegExp(String.raw`\( (${assignmentList}) \)`, 'g');
 const parallelAssignment = new RegExp(`^${assignmentList}$`);
-const putsTarget = /(?:^| )puts(?: |$)/;
 
-const assignsParallelPuts = (tokens: string[]): boolean => {
+const assignsParallelLocal = (tokens: string[], name: CommandName): boolean => {
   let targets = splitGemfileStatements(tokens).at(-1)?.join(' ') ?? '';
   let previous: string;
   do {
     previous = targets;
-    targets = targets.replace(groupedAssignment, (_, group: string) => putsTarget.test(group) ? 'puts' : '_');
+    targets = targets.replace(groupedAssignment, (_, group: string) => group.split(' ').includes(name) ? name : '_');
   } while (targets !== previous);
-  return parallelAssignment.test(targets) && putsTarget.test(targets);
+  return parallelAssignment.test(targets) && targets.split(' ').includes(name);
 };
 
 const previousSignificantToken = (tokens: string[], index: number): number => {

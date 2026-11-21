@@ -222,6 +222,9 @@ const regexpExpressions = [
   ['slash literal after nested assignment to other locals', '((output, count), rest) = [[8, 1], 2]\nputs /prefix\nclass RegexText\nsuffix/'],
   ['qualified puts after a local assignment', 'puts = 8\nKernel.puts /prefix\nclass RegexText\nsuffix/'],
   ['percent regexp passed to puts', 'puts %r{prefix\nmodule RegexText\nsuffix}'],
+  ['slash literal passed to warn', 'warn /prefix\nclass RegexText\nsuffix/'],
+  ['percent regexp passed to warn', 'warn %r{prefix\nmodule RegexText\nsuffix}'],
+  ['qualified warn after a local assignment', 'warn = 8\nKernel.warn /prefix\nclass RegexText\nsuffix/'],
   ['return before a slash literal', 'def matcher\n  return /prefix\nclass RegexText\nsuffix/\nend'],
   ['return before a percent regexp', 'def matcher\n  return %r{prefix\nclass RegexText\nsuffix}\nend'],
   ['escaped delimiter and options', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
@@ -252,6 +255,11 @@ gem 'rack'`;
 
 test('preserves gem declarations between division expressions', () => {
   const gemfile = "ratio = 8 /2\ngem 'rack'\nratio /2";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves gem declarations after dividing a local variable named warn', () => {
+  const gemfile = "warn = 8\nwarn /2\ngem 'rack', path: '/rack'";
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
