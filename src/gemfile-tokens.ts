@@ -2,14 +2,20 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let hasLocalPuts = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' || token === '%' || token === '?') {
+    if (token === '=' || token === '/' || token === '%' || token === '?') {
       const index = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsRegexp(tokens[index], tokens[previousSignificantToken(tokens, index - 1)]) ||
-        startsPutsRegexp(tokens[index], content, match.index)) {
+      const previous = tokens[index];
+      const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
+      const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
+      if (token === '=') {
+        hasLocalPuts ||= barePuts && !/^[=~]/.test(content.slice(pattern.lastIndex, pattern.lastIndex + 1));
+      } else if (expectsRegexp(previous, qualifier) ||
+        ((!hasLocalPuts || !barePuts) && startsPutsRegexp(previous, content, match.index))) {
         const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
