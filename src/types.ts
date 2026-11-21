@@ -42,6 +42,7 @@ export interface DependencyUpdate {
 
 export type ReleaseStatus = (
   | { status: 'no-tag' }
+  | { status: 'no-branch' | 'no-head' }
   | { status: 'up-to-date' }
   | { status: 'incomplete'; lookupErrors: unknown[] }
   | { status: 'pending'; changedSources: string[]; dependencyUpdates: DependencyUpdate[]; compareUrl: string }

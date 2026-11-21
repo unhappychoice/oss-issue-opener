@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { getDefaultBranch, initOctokit } from '../dist/github.js';
+import { getDefaultBranchHead, initOctokit } from '../dist/github.js';
 
 const entryPoint = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const sha = 'a'.repeat(40);
@@ -94,5 +94,5 @@ test('a deadline while resolving the default branch propagates to the investigat
   });
   const keepAlive = setTimeout(() => {}, 1_000);
   t.after(() => clearTimeout(keepAlive));
-  await assert.rejects(getDefaultBranch('owner', 'repo'), { name: 'TimeoutError' });
+  await assert.rejects(getDefaultBranchHead('owner', 'repo'), { name: 'TimeoutError' });
 });

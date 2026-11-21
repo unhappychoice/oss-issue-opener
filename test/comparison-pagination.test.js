@@ -282,12 +282,12 @@ test('counts renamed files once against the commit API file limit', async (t) =>
   assert.equal(getCommit.mock.callCount(), 16);
 });
 
-test('discards commit paths when the API file limit may hide changes', async (t) => {
+test('rejects commit file lookups when the API file limit may hide changes', async (t) => {
   const files = Array.from({ length: 100 }, (_, i) => ({ filename: `docs/${i}.md` }));
   const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async () => ({
     data: { files },
     headers: { link: '<https://api.github.com/?page=2>; rel="next"' },
   }));
-  assert.deepEqual(await getCommitFiles('owner', 'repo', 'bump'), []);
+  await assert.rejects(getCommitFiles('owner', 'repo', 'bump'), /reached the 3000-file limit/);
   assert.equal(getCommit.mock.callCount(), 30);
 });

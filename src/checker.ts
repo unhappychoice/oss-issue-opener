@@ -14,14 +14,11 @@ export const checkCIStatus = async (
   repo: string,
   getHead = () => getDefaultBranchHead(owner, repo)
 ): Promise<CIStatus> => {
-  const head = await getHead().catch((error: unknown) => {
-    if (error instanceof Error && 'status' in error && error.status === 404) return null;
-    throw error;
-  });
-  if (head === undefined) return { status: 'no-branch', failedChecks: [] };
-  if (head === null) return { status: 'no-ci', failedChecks: [] };
+  const result = await getHead();
+  if (result.status === 'no-branch') return { status: 'no-branch', failedChecks: [] };
+  if (result.status === 'no-head') return { status: 'no-ci', failedChecks: [] };
 
-  const { sha } = head;
+  const { sha } = result.head;
   const results = await Promise.allSettled([
     getCommitStatus(owner, repo, sha),
     getCheckRuns(owner, repo, sha),
@@ -60,16 +57,16 @@ export const checkPendingRelease = async (
   const latestTag = await getLatestRelease(owner, repo);
   if (!latestTag) return { status: 'no-tag' };
 
-  const head = await getHead();
-  if (!head) return { status: 'up-to-date' };
+  const result = await getHead();
+  if (result.status !== 'found') return { status: result.status };
 
   const { baseSha, headSha, files, getCommits } = await compareCommits(
-    owner, repo, `tags/${latestTag}`, head
+    owner, repo, `tags/${latestTag}`, result.head
   );
   if (files.length === 0) return { status: 'up-to-date' };
 
   let rootContents: Promise<string[]> | undefined;
-  const getPinnedContents = getContents ?? (() => rootContents ??= getRepoContents(owner, repo, '', headSha));
+  const getPinnedContents = getContents ?? (() => rootContents ??= getRepoContents(owner, repo, '', headSha, result.head.treeSha));
   const resolvedTypes = typeof projectTypes === 'function' ? await projectTypes(getPinnedContents) : projectTypes;
   const types = Array.isArray(resolvedTypes) ? resolvedTypes : [resolvedTypes];
   const sourcePatterns = types.map(getSourcePatterns);
@@ -110,10 +107,14 @@ const findDependencyUpdates = async (
     return bump ? [{ sha, bump }] : [];
   });
   const candidates = await Promise.all(bumps.map(async ({ sha, bump }) => {
-    const productionTypes = (await Promise.all(checkers.map(async ({ type, check }) =>
+    const results = await Promise.allSettled(checkers.map(async ({ type, check }) =>
       await check(bump.pkg) ? [type] : []
-    ))).flat();
-    return { sha, bump, productionTypes };
+    ));
+    return {
+      sha, bump,
+      productionTypes: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []),
+      productionErrors: results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []),
+    };
   }));
   const lookups = await Promise.allSettled(candidates.filter(({ productionTypes }) => productionTypes.length > 0)
     .map(async ({ sha, bump, productionTypes }) => {
@@ -122,7 +123,10 @@ const findDependencyUpdates = async (
     }));
   return {
     dependencyUpdates: lookups.flatMap((lookup) => lookup.status === 'fulfilled' ? lookup.value : []),
-    lookupErrors: lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
+    lookupErrors: [
+      ...new Set(candidates.flatMap(({ productionErrors }) => productionErrors)),
+      ...lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
+    ],
   };
 };
 
