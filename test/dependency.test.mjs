@@ -156,7 +156,8 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
     end
     gem 'rspec'
   end
-  gem 'rack'`);
+  separator = ?/
+  gem 'rack', path: '/rack'`);
 
   assert.equal(await check('rspec'), false);
   assert.equal(await check('rack'), true);

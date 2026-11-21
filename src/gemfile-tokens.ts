@@ -6,14 +6,14 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' || token === '%') {
+    if (token === '?' || token === '/' || token === '%') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
-      if (expectsRegexp(tokens[previous] ?? '\n', qualifier)) {
-        const end = regexpEnd(content, match.index);
+      if (expectsExpression(tokens[previous] ?? '\n', qualifier)) {
+        const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
-          tokens.push('<regexp>');
+          tokens.push('<literal>');
           continue;
         }
       }
@@ -65,9 +65,15 @@ const heredocEnd = (content: string, start: number, delimiter: string, indented:
   return content.length;
 };
 
-const expectsRegexp = (previous: string, qualifier: string | undefined): boolean =>
+const expectsExpression = (previous: string, qualifier: string | undefined): boolean =>
   qualifier !== '.' &&
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:|do|if|elsif|unless|when|return)$/.test(previous);
+
+const characterEnd = (content: string, start: number): number | undefined => {
+  const character = /\?(?:\\(?:u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{1,2}|[0-7]{1,3}|(?:[CM]-|c)*[^\r\n])|[^\s\\])/uy;
+  character.lastIndex = start;
+  return character.test(content) ? character.lastIndex : undefined;
+};
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
@@ -107,7 +113,14 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     if (frame.braces > 0) {
       expression.lastIndex = offset;
       const token = expression.exec(content)?.[0] ?? char;
-      const nested = (token === '/' || token === '%') && expectsRegexp(frame.previous, frame.qualifier)
+      const expectsValue = expectsExpression(frame.previous, frame.qualifier);
+      const character = token === '?' && expectsValue ? characterEnd(content, offset) : undefined;
+      if (character !== undefined) {
+        frame.previous = '<literal>';
+        offset = character;
+        continue;
+      }
+      const nested = (token === '/' || token === '%') && expectsValue
         ? literalFrame(content, offset, true)
         : undefined;
       if (nested) {

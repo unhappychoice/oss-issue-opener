@@ -213,9 +213,10 @@ gem 'rack'`;
 [
   ['slash regexp', "pattern = /first\\/part\nclass Fake\nmodule Fake\ngem 'ignored'\nlast/im"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
-  ['ternary regexp branches', "pattern = enabled ? /first\nclass Fake\nlast/ : /first\nend\nlast/"],
+  ['ternary regexp branches', "enabled = true; pattern = enabled ?/first\nclass Fake\nlast/ : /first\nend\nlast/"],
   ['nested regexp and percent string interpolation', "pattern = /#{[/a\\/b/, %q(}/), { key: 1 }]}\nclass Fake\ngem 'ignored'\nlast/"],
   ['division after a method name in regexp interpolation', "pattern = /#{receiver.if / 2}\nend\ngem 'ignored'\nlast/"],
+  ['character literal in regexp interpolation', "pattern = /#{?{}\nend\ngem 'ignored'\nlast/"],
 ].forEach(([description, expression]) => {
   test(`ignores Gemfile scope tokens inside ${description}`, () => {
     const gemfile = `group :test do
@@ -228,6 +229,18 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('keeps a slash character literal separate from the following gem path', () => {
+  const gemfile = `group :test do
+  class TestHelper; end
+  separator = ?/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 test('preserves group boundaries around division and modulo', () => {
