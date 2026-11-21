@@ -258,6 +258,8 @@ const regexpExpressions = [
   ['paired percent regexp', 'matcher = %r{prefix{2}\nclass RegexText\nsuffix}'],
   ['case before a slash literal', 'case /prefix\nclass RegexText\nsuffix/\nwhen Regexp\n  nil\nend'],
   ['case before a percent regexp', 'case %r!prefix\nclass RegexText\nsuffix!\nwhen Regexp\n  nil\nend'],
+  ['until before a slash literal', 'until /prefix\nclass RegexText\nsuffix/.match?(value)\n  break\nend'],
+  ['while before a percent regexp', 'while %r!prefix\nmodule RegexText\nsuffix!.match?(value)\n  break\nend'],
   ['ternary branches', 'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /prefix\nmodule RegexText\nsuffix/'],
   ['percent string inside interpolation', 'matcher = /prefix#{ %q!} /! }\nclass RegexText\nsuffix/'],
   ['nested regexp inside interpolation', 'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/'],
