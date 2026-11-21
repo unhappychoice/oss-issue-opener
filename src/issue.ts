@@ -1,5 +1,5 @@
-import { createIssue, listOpenIssues } from './github.js';
-import type { DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
+import { completeIssue, createIssue, listOpenIssueDetails, listOpenIssues } from './github.js';
+import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
 import { ISSUE_REPO } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
@@ -14,7 +14,7 @@ export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): 
     type: 'ci-failure',
     repo,
     title: `[CI Failure] ${repo}`,
-    body: formatIssueBody(intro, items, links),
+    body: formatIssueBody(intro, items, links + recoveryMarker(repo, failedChecks)),
   };
 };
 
@@ -37,6 +37,48 @@ export const buildPendingReleaseIssue = (
     title: `[Pending Release] ${repo}`,
     body: formatIssueBody(intro + heading, items, links),
   };
+};
+
+export const listCIAlerts = async () => listOpenIssueDetails(issueOwner, issueRepo, 'ci-failure');
+
+export const closeRecoveredCIAlerts = async (
+  alerts: Awaited<ReturnType<typeof listCIAlerts>>,
+  recoveries: ReadonlyMap<string, NonNullable<CIStatus['recovery']>>
+): Promise<void> => {
+  const failures: Error[] = [];
+  for (const alert of alerts) {
+    const { number, user, labels, body } = alert;
+    if (user?.login !== issueOwner || !labels.some((label) =>
+      (typeof label === 'string' ? label : label.name) === 'ci-failure')) continue;
+
+    const marker = body?.trimEnd().split('\n').at(-1)?.match(/^<!-- oss-issue-opener:ci:v1 ([\w.-]+\/[\w.-]+) ([\w-]+(?: [\w-]+)*) -->$/);
+    if (!marker) continue;
+    const [, repo, checks] = marker;
+    const recovery = recoveries.get(repo);
+    if (!recovery || !/^[a-f0-9]{40}$/i.test(recovery.sha)) continue;
+    const passed = new Set(recovery.passedChecks.map(checkKey));
+    if (!checks.split(' ').every((check) => passed.has(check))) continue;
+
+    try {
+      const url = `https://github.com/${repo}/commit/${recovery.sha}`;
+      await completeIssue(issueOwner, issueRepo, number, issueOwner,
+        `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`);
+      console.log(`  [closed] ${alert.title} (#${number})`);
+    } catch (cause) {
+      failures.push(new Error(`Failed to complete CI alert #${number}`, { cause }));
+      console.error(`  [failed] Completing CI alert #${number}`, cause);
+    }
+  }
+  if (failures.length > 0) throw new AggregateError(failures, 'CI alert closure failed');
+};
+
+const checkKey = ({ name, source }: Pick<FailedCheck, 'name' | 'source'>): string =>
+  Buffer.from(JSON.stringify([source, name])).toString('base64url');
+
+const recoveryMarker = (repo: string, checks: FailedCheck[]): string => {
+  const keys = [...new Set(checks.map(checkKey))].join(' ');
+  const marker = `\n\n<!-- oss-issue-opener:ci:v1 ${repo} ${keys} -->`;
+  return keys && marker.length <= ISSUE_BODY_LIMIT / 2 ? marker : `\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`;
 };
 
 const formatIssueBody = (intro: string, items: string[], links: string): string => {

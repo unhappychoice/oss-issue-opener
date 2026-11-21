@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import type { Repository } from './types.js';
+import type { CISource, Repository } from './types.js';
 
 let octokit: Octokit;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -105,7 +105,10 @@ export async function* getCommitStatus(
 ): AsyncGenerator<CIResult[]> {
   for (let page = 1; ; page++) {
     const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-    yield data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' }));
+    yield data.statuses.map((s) => ({
+      state: ['success', 'failure', 'error'].includes(s.state) ? s.state : 'pending',
+      context: s.context, url: s.target_url ?? '', source: 'status', passed: s.state === 'success',
+    }));
     if (data.statuses.length < 100) return;
   }
 }
@@ -129,14 +132,17 @@ export async function* getCheckRuns(
 
   for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
     yield checkRuns.map((c) => ({
-      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
+      state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
+        ? conclusionStates[c.conclusion] : 'pending',
+      source: 'check',
+      passed: c.status === 'completed' && c.conclusion === 'success',
       context: c.name,
       url: c.html_url ?? '',
     }));
   }
 }
 
-export type CIResult = { state: string; context: string; url: string };
+export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean };
 
 async function* listCheckRunPages(owner: string, repo: string, ref: string) {
   const client = getOctokit();
@@ -287,6 +293,11 @@ export const listOpenIssues = async (
   repo: string,
   label: string
 ): Promise<{ title: string; number: number }[]> => {
+  const data = await listOpenIssueDetails(owner, repo, label);
+  return data.map((i) => ({ title: i.title, number: i.number }));
+};
+
+export const listOpenIssueDetails = async (owner: string, repo: string, label: string) => {
   const data = await getOctokit().paginate(getOctokit().issues.listForRepo, {
     owner,
     repo,
@@ -294,7 +305,19 @@ export const listOpenIssues = async (
     state: 'open',
     per_page: 100,
   });
-  return data.filter((i) => !i.pull_request).map((i) => ({ title: i.title, number: i.number }));
+  return data.filter((i) => !i.pull_request);
+};
+
+export const completeIssue = async (
+  owner: string, repo: string, issue_number: number, author: string, body: string
+): Promise<void> => {
+  const client = getOctokit();
+  const params = { owner, repo, issue_number };
+  const comments = await client.paginate(client.issues.listComments, { ...params, per_page: 100 });
+  if (!comments.some((comment) => comment.user?.login === author && comment.body === body)) {
+    await client.issues.createComment({ ...params, body });
+  }
+  await client.issues.update({ ...params, state: 'closed', state_reason: 'completed' });
 };
 
 export const createIssue = async (

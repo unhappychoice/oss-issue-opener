@@ -7,8 +7,11 @@ export type ProjectType = 'ruby' | 'node' | 'rust' | 'kotlin' | 'go' | 'swift' |
 
 export type CIStatusType = 'success' | 'failure' | 'pending' | 'no-ci' | 'no-branch' | 'incomplete';
 
+export type CISource = 'status' | 'check';
+
 export interface FailedCheck {
   name: string;
+  source: CISource;
   url: string;
 }
 
@@ -16,6 +19,7 @@ export interface CIStatus {
   status: CIStatusType;
   failedChecks: FailedCheck[];
   endpointErrors?: unknown[];
+  recovery?: { sha: string; passedChecks: Pick<FailedCheck, 'name' | 'source'>[] };
 }
 
 export type IssueType = 'ci-failure' | 'pending-release';

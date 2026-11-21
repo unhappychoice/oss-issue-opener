@@ -30,14 +30,20 @@ export const checkCIStatus = async (
 
   const failedChecks = filtered
     .filter((s) => s.state === 'failure' || s.state === 'error')
-    .map((s) => ({ name: s.context, url: s.url }));
-  const hasPending = filtered.some((s) => s.state === 'pending');
+    .map((s) => ({ name: s.context, url: s.url, source: s.source }));
+  const hasPending = filtered.some((s) => s.state === 'pending' || typeof s.context !== 'string' || s.context.length === 0);
 
   if (endpointErrors.length > 0) {
     return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
   }
   if (filtered.length === 0) return { status: 'no-ci', failedChecks };
-  return { status: failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success', failedChecks };
+  if (failedChecks.length > 0 || hasPending) {
+    return { status: failedChecks.length > 0 ? 'failure' : 'pending', failedChecks };
+  }
+  const unpassed = new Set(filtered.filter(({ passed }) => !passed).map(({ source, context }) => JSON.stringify([source, context])));
+  const passedChecks = filtered.filter(({ source, context }) => !unpassed.has(JSON.stringify([source, context])))
+    .map(({ context, source }) => ({ name: context, source }));
+  return { status: 'success', failedChecks, recovery: { sha, passedChecks } };
 };
 
 const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {

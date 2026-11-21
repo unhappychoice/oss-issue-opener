@@ -41,8 +41,10 @@ const sha = 'a'.repeat(40);
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: state,
       failedChecks: state === 'failure'
-        ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101' }]
+        ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101', source: 'status' }]
         : [],
+      ...(state === 'success' ? { recovery: { sha, passedChecks: Array.from({ length: 101 }, (_, i) =>
+        ({ name: `status-${i + 1}`, source: 'status' })) } } : {}),
     });
     assert.equal(requests.length, 2);
     assert.deepEqual(requests.map(({ page, per_page }) => ({ page, per_page })), [

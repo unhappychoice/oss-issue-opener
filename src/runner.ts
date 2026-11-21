@@ -1,8 +1,8 @@
 import { getDefaultBranchHead, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
-import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from './issue.js';
-import { ORGS, type Repository, type PendingIssue } from './types.js';
+import { buildCIFailureIssue, buildPendingReleaseIssue, closeRecoveredCIAlerts, createIssuesInBatch, listCIAlerts } from './issue.js';
+import { ORGS, type CIStatus, type Repository, type PendingIssue } from './types.js';
 
 const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, checkPendingRelease, createIssuesInBatch };
 type Dependencies = typeof defaultDependencies;
@@ -24,9 +24,16 @@ const mapWithConcurrency = async <T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 };
 
-export const runChecks = async (deps: Dependencies = defaultDependencies): Promise<void> => {
+export const runChecks = async (
+  deps: Dependencies = defaultDependencies,
+  autoCloseCIAlerts = process.env.AUTO_CLOSE_CI_ALERTS === 'true'
+): Promise<void> => {
   const failures: Error[] = [];
   const allIssues: PendingIssue[] = [];
+  const recoveries = new Map<string, NonNullable<CIStatus['recovery']>>();
+  const alerts = autoCloseCIAlerts
+    ? await attempt('open CI alert lookup', failures, listCIAlerts, [])
+    : [];
   let totalRepos = 0;
 
   for (const org of ORGS) {
@@ -44,7 +51,7 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
       totalRepos++;
       const issues: PendingIssue[] = [];
       await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
-        issues.push(...await checkRepo(repo, deps, failures));
+        issues.push(...await checkRepo(repo, deps, failures, recoveries));
       });
       return issues;
     });
@@ -53,6 +60,10 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
 
   if (allIssues.length > 0) {
     await attempt('issue batch creation', failures, () => deps.createIssuesInBatch(allIssues));
+  }
+
+  if (alerts.length > 0 && recoveries.size > 0) {
+    await attempt('CI alert closure', failures, () => closeRecoveredCIAlerts(alerts, recoveries));
   }
 
   const ciFailures = allIssues.filter((i) => i.type === 'ci-failure').length;
@@ -65,7 +76,7 @@ export const runChecks = async (deps: Dependencies = defaultDependencies): Promi
   console.log(`  Pending releases: ${pendingReleases}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   if (failures.length > 0) {
-    throw new AggregateError(failures, `Failed ${failures.length} investigation or creation operations`);
+    throw new AggregateError(failures, `Failed ${failures.length} maintenance operations`);
   }
 };
 
@@ -87,7 +98,10 @@ const recordFailure = (target: string, failures: Error[], cause: unknown): void 
 
 const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 
-const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[]): Promise<PendingIssue[]> => {
+const checkRepo = async (
+  { fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[],
+  recoveries: Map<string, NonNullable<CIStatus['recovery']>>
+): Promise<PendingIssue[]> => {
   const [owner, repo] = fullName.split('/') as [string, string];
   let head: ReturnType<typeof getDefaultBranchHead> | undefined;
   const getHead = () => head ??= getDefaultBranchHead(owner, repo, listedBranch);
@@ -101,6 +115,7 @@ const checkRepo = async ({ fullName, defaultBranch: listedBranch }: Repository, 
       const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪', incomplete: '⚠️' };
       log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
 
+      if (ciResult.status === 'success' && ciResult.recovery) recoveries.set(fullName, ciResult.recovery);
       return ciResult.status === 'failure' ? [buildCIFailureIssue(fullName, ciResult.failedChecks)] : [];
     }, []),
 

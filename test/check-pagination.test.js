@@ -82,8 +82,10 @@ test('shares four suite lookups across repositories and yields runs in suite ord
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: conclusion === 'success' ? 'success' : 'failure',
       failedChecks: conclusion !== 'success'
-        ? [{ name: `check-${total}`, url: `https://github.com/owner/repo/actions/runs/${total}` }]
+        ? [{ name: `check-${total}`, url: `https://github.com/owner/repo/actions/runs/${total}`, source: 'check' }]
         : [],
+      ...(conclusion === 'success' ? { recovery: { sha, passedChecks: Array.from({ length: total }, (_, i) =>
+        ({ name: `check-${i + 1}`, source: 'check' })) } } : {}),
     });
     assert.deepEqual(requests, requestCount === 1 ? [firstUrl] : [firstUrl, nextUrl]);
   });
@@ -135,7 +137,7 @@ test('shares four suite lookups across repositories and yields runs in suite ord
     const getHead = async () => ({ status: 'found', head: { sha, treeSha: 'head-tree' } });
     assert.deepEqual(await checkCIStatus('owner', 'repo', getHead), {
       status: 'failure',
-      failedChecks: [{ name: failure.name, url: failure.html_url }],
+      failedChecks: [{ name: failure.name, url: failure.html_url, source: 'check' }],
       ...(failLaterPage ? { endpointErrors: [pageError] } : {}),
     });
   });
