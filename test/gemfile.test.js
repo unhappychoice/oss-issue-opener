@@ -451,6 +451,8 @@ const regexpExpressions = [
   ['the right operand of subtraction', '12 - /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of multiplication', '1 * /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of division', '120 / /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
+  ['the right operand of modulo', '120 % /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
+  ['a percent regexp after modulo', '120 % %r{prefix\nclass RegexText\ngem "ignored"\nsuffix}.source.length'],
   ['the right operand of bitwise AND', '1 & /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of bitwise OR', '1 | /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of bitwise XOR', '1 ^ /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
