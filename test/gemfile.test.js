@@ -213,6 +213,8 @@ gem 'rack'`;
 [
   ['slash regexp', "pattern = /first\\/part\nclass Fake\nmodule Fake\ngem 'ignored'\nlast/im"],
   ['percent regexp', "pattern = %r{first{nested}\nclass Fake\ngem 'ignored'\nlast}x"],
+  ['regexp after and', "true and /first\nclass Fake\ngem 'ignored'\nlast/"],
+  ['regexp after or', "false or %r{first\nmodule Fake\ngem 'ignored'\nlast}"],
   ['ternary regexp branches', "enabled = true; pattern = enabled ?/first\nclass Fake\nlast/ : /first\nend\nlast/"],
   ['nested regexp and percent string interpolation', "pattern = /#{[/a\\/b/, %q(}/), { key: 1 }]}\nclass Fake\ngem 'ignored'\nlast/"],
   ['division after a method name in regexp interpolation', "pattern = /#{receiver.if / 2}\nend\ngem 'ignored'\nlast/"],

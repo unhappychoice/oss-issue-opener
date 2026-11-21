@@ -67,7 +67,7 @@ const heredocEnd = (content: string, start: number, delimiter: string, indented:
 
 const expectsExpression = (previous: string, qualifier: string | undefined): boolean =>
   qualifier !== '.' &&
-  /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:|do|if|elsif|unless|when|return)$/.test(previous);
+  /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|&&|\|\||\?|:|and|or|do|if|elsif|unless|when|return)$/.test(previous);
 
 const characterEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\(?:u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{1,2}|[0-7]{1,3}|(?:[CM]-|c)*[^\r\n])|[^\s\\])/uy;
