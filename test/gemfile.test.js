@@ -246,11 +246,26 @@ another_ratio = total / size`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['receiver.if', 'receiver::!'].forEach((call) => {
+['receiver.if', 'receiver::!', 'receiver.return'].forEach((call) => {
   test(`preserves a production gem after dividing the result of ${call}`, () => {
     const gemfile = `ratio = ${call} / 2
 gem 'rack', path: '/rack'`;
 
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['/prefix\nclass RegexText\nsuffix/', '%r{prefix\nclass RegexText\nsuffix}'].forEach((pattern) => {
+  test(`preserves group boundaries around a multiline ${pattern.startsWith('/') ? 'slash' : 'percent'} regexp after return`, () => {
+    const gemfile = `group :test do
+  def matcher
+    return ${pattern}
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });

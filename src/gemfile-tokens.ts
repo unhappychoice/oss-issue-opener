@@ -46,7 +46,7 @@ const canStartRegexp = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
   const previous = tokens[index] ?? '\n';
   if (/^(?:\n|;|=|=>|&&|\|\||~|\(|\[|,|\?|:)$/.test(previous)) return true;
-  return /^(?:!|do|if|elsif|unless|when)$/.test(previous) &&
+  return /^(?:!|do|if|elsif|unless|when|return)$/.test(previous) &&
     !['.', '::'].includes(tokens[previousSignificantToken(tokens, index - 1)]);
 };
 
