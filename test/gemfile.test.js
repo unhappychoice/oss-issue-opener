@@ -245,3 +245,58 @@ another_ratio = total / size`;
 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('preserves a production gem after dividing a method result named if', () => {
+  const gemfile = `ratio = receiver.if / 2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
+  '"/"',
+  ' %q!}!.ord / 2 ',
+  '%q!a/(b! + ")"',
+  '%q(a/(b))',
+].forEach((expression) => {
+  test(`preserves group boundaries around a regexp interpolating ${expression}`, () => {
+    const gemfile = `group :test do
+  pattern = /#{${expression}}
+end
+/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('ignores a class keyword in a regexp after unary negation', () => {
+  const gemfile = `group :test do
+  matcher = !/prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('ignores scope keywords inside either ternary regexp branch', () => {
+  const gemfile = `group :test do
+  pattern = flag ? /one
+end
+/ : /two
+class RegexText
+/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
