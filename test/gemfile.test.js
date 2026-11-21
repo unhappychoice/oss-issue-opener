@@ -234,9 +234,10 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('ignores class text in a multiline regexp used as an if condition', () => {
-  const gemfile = `group :test do
-  if /prefix
+['if', 'unless'].forEach((keyword) => {
+  test(`ignores class text in a multiline regexp used as an ${keyword} condition`, () => {
+    const gemfile = `group :test do
+  ${keyword} /prefix
 class FakeClass
 / =~ ENV['FEATURE']
     gem 'conditional'
@@ -245,9 +246,10 @@ class FakeClass
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'conditional'), false);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'conditional'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 ['&&', '||'].forEach((operator) => {
