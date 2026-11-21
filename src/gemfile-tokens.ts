@@ -172,22 +172,24 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
 const hasLocalPuts = (tokens: string[], assignments: Set<number>): boolean => {
-  const { index, putsParameter } = currentLocalScope(tokens);
-  return putsParameter || assignments.has(index);
+  const { index, bindsPuts } = currentLocalScope(tokens);
+  return bindsPuts || assignments.has(index);
 };
 
 const currentLocalScope = (tokens: string[]) => {
-  const topLevel = { index: -1, putsParameter: false };
+  const topLevel = { index: -1, bindsPuts: false };
   const scopes: (typeof topLevel)[] = [];
   splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
+    const scope = scopes.at(-1) ?? topLevel;
+    if (bindsForPuts(statement)) scope.bindsPuts = true;
     if (statement[0] === '|' && hasPutsParameter(statement.slice(1, -1))) {
-      scopes[scopes.length - 1] = { ...(scopes.at(-1) ?? topLevel), putsParameter: true };
+      scopes[scopes.length - 1] = { ...scope, bindsPuts: true };
     }
     if (opensScope(statement)) {
       scopes.push(opensLocalScope(statement)
-        ? { index, putsParameter: declaresMethodPutsParameter(statement) }
-        : scopes.at(-1) ?? topLevel);
+        ? { index, bindsPuts: declaresMethodPutsParameter(statement) }
+        : opensBlockScope(statement) ? { ...scope } : scope);
     }
   });
   return scopes.at(-1) ?? topLevel;
@@ -196,6 +198,19 @@ const currentLocalScope = (tokens: string[]) => {
 const declaresPutsParameter = (tokens: string[]): boolean => {
   const statement = splitGemfileStatements(tokens).at(-1);
   return statement !== undefined && declaresMethodPutsParameter(statement);
+};
+
+const opensBlockScope = (statement: string[]): boolean =>
+  statement.at(-1) === 'do' && !/^(?:for|until|while)$/.test(statement[0]);
+
+const bindsForPuts = (statement: string[]): boolean => {
+  if (statement[0] !== 'for') return false;
+  const inIndex = statement.indexOf('in');
+  if (inIndex < 0) return false;
+  const targets = statement.slice(1, inIndex);
+  return targets.some((token, index) => token === 'puts' &&
+    (index === 0 || [',', '(', '*'].includes(targets[index - 1])) &&
+    (index === targets.length - 1 || [',', ')'].includes(targets[index + 1])));
 };
 
 const declaresMethodPutsParameter = (statement: string[]): boolean => {

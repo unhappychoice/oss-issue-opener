@@ -290,6 +290,47 @@ test('preserves gem declarations after a slash character literal', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['puts in [8]', '(count, puts) in [[1, 8]] do'].forEach((header) => {
+  test(`recognizes division by a for loop variable in ${header}`, () => {
+    const inside = `for ${header}\n  puts /2\nend`;
+    const after = `for ${header}\nend\nputs /2`;
+    [inside, after].forEach((expression) => {
+      assert.equal(isProductionGem(`${expression}\ngem 'rack', path: '/rack'`, 'rack'), true);
+    });
+  });
+});
+
+test('recognizes a puts regexp after a loop that binds a different variable', () => {
+  const gemfile = `group :test do
+  for count in [8]
+  end
+  puts /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('keeps a for loop variable local to its enclosing block', () => {
+  const gemfile = `[1].each do
+  for puts in [8] do
+    puts /2
+  end
+  gem 'rack', path: '/rack'
+end
+group :test do
+  puts /prefix
+end
+suffix/
+  gem 'rspec'
+end`;
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+});
+
 [
   '[8].each do |puts|\n  puts /2\nend',
   '[8].each do |count, puts|\n  if true\n    puts /2\n  end\nend',
