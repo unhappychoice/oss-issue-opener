@@ -453,6 +453,7 @@ const regexpExpressions = [
   ['the right operand of division', '120 / /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of bitwise AND', '1 & /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of bitwise OR', '1 | /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
+  ['the right operand of bitwise XOR', '1 ^ /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of less-than', '"" < /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source'],
   ['the right operand of greater-than', '"" > /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source'],
   ['the right operand of or', 'false or /prefix\nclass RegexText\nsuffix/'],
