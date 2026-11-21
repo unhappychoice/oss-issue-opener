@@ -529,6 +529,10 @@ class FakeClass
 module FakeModule
 suffix}`],
   ['a percent command literal', '%x{echo #{%q!}!}\nclass FakeClass\n}'],
+  ['a multiline backtick command literal', '`echo\nclass FakeClass\n`'],
+  ['a backtick command with an escape and nested interpolation', '`echo \\` #{`echo "}"`}\nclass FakeClass\n`'],
+  ['a backtick command inside regexp interpolation', '/prefix#{`echo } /`}\nclass FakeClass\n/'],
+  ['a backtick command following a backtick method definition', 'nil\n  def `(command)\n  end\n  `echo\nclass FakeClass\n`'],
   ['a percent regexp with an escaped delimiter', String.raw`%r!prefix\!
 class FakeClass
 !x`],

@@ -39,12 +39,14 @@ const scanGemfile = (content: string) => {
   while ((match = pattern.exec(content)) !== null) {
     let token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    const backtickLiteral = isBacktickLiteral(token, previous);
     const commandPercentLiteral = commandArgument && token === '%' && content.charAt(pattern.lastIndex) !== '=';
-    if ((literalExpected && (token === '/' || token === '%')) ||
+    if (backtickLiteral || (literalExpected && (token === '/' || token === '%')) ||
       commandPercentLiteral ||
       (commandArgument && token === '/' && /\S/.test(content.charAt(pattern.lastIndex)))) {
       const end = literalEnd(content, match.index);
-      if (end !== undefined && (literalExpected || commandPercentLiteral || isCommandRegexpEnd(content, match.index, end))) {
+      if (end !== undefined &&
+        (backtickLiteral || literalExpected || commandPercentLiteral || isCommandRegexpEnd(content, match.index, end))) {
         token = content.slice(match.index, end);
         pattern.lastIndex = end;
       }
@@ -93,6 +95,9 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
+const isBacktickLiteral = (token: string, previous: string): boolean =>
+  token === '`' && previous !== 'def' && previous !== '.';
+
 const isCommandRegexpEnd = (content: string, start: number, end: number): boolean =>
   !/[\w'"`]/.test(content.charAt(end)) &&
   !/\n[\t ]*end\b[^\n]*\n[\s\S]*?^[\t ]*#[^\n]*\/[imxounes]*$/m.test(content.slice(start, end));
@@ -124,7 +129,7 @@ const expectsLiteral = (token: string, previous: string): boolean =>
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|(%[rqQwWiIx]?)([^\w\s]|_)/y;
+  const opening = /([/`])|(%[rqQwWiIx]?)([^\w\s]|_)/y;
   opening.lastIndex = start;
   const root = opening.exec(content);
   if (!root) return undefined;
@@ -133,7 +138,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
   const interpolated = /\\[\s\S]|#\{|[\s\S]/y;
   const plain = /\\[\s\S]|[\s\S]/y;
   const options = /[imxounes]*/y;
-  const frames = [literalFrame(root[1] ?? '/', root[2] ?? '/')];
+  const frames = [literalFrame(root[1] ?? root[2], root[1] ?? root[3])];
   let offset = opening.lastIndex;
 
   while (offset < content.length) {
@@ -164,11 +169,11 @@ const literalEnd = (content: string, start: number): number | undefined => {
     }
 
     if (isSpacing(token) || token.startsWith('#')) continue;
-    if ((token === '/' || token === '%') && frame.literalExpected) {
+    if (isBacktickLiteral(token, frame.previous) || ((token === '/' || token === '%') && frame.literalExpected)) {
       opening.lastIndex = offset - 1;
       const match = opening.exec(content);
       if (match) {
-        frames.push(literalFrame(match[1] ?? '/', match[2] ?? '/'));
+        frames.push(literalFrame(match[1] ?? match[2], match[1] ?? match[3]));
         offset = opening.lastIndex;
       }
     }
