@@ -210,6 +210,33 @@ gem 'rack'`;
   });
 });
 
+const percentStrings = [
+  ['single-quoted with paired delimiters', '%q{prefix #{ {nested} } suffix\nclass StringText\ngem "ignored"\nsuffix}'],
+  ['single-quoted with an escaped delimiter', '%q!prefix\\!\nclass StringText\ngem "ignored"\nsuffix!'],
+  ['double-quoted with interpolation', '%Q{prefix#{ %q!}! }\nmodule StringText\ngem "ignored"\nsuffix}'],
+  ['a block end', '%q{prefix\nend\ngem "ignored"\nsuffix}'],
+  ['untyped', '%{prefix\nclass StringText\ngem "ignored"\nsuffix}'],
+];
+
+percentStrings.forEach(([name, literal]) => {
+  test(`ignores scope keywords in a multiline percent string with ${name}`, () => {
+    const gemfile = `group :test do
+  description = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('preserves gem declarations between modulo expressions', () => {
+  const gemfile = "remainder = 8 % 2\ngem 'rack'\nremainder % 2";
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 const regexpExpressions = [
   ['slash literal', 'matcher = /prefix\nclass RegexText\nsuffix/'],
   ['slash literal after compound assignment', 'matcher ||= /prefix\nclass RegexText\nsuffix/'],

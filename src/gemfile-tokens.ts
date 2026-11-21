@@ -28,7 +28,7 @@ export const gemfileTokens = (content: string): string[] => {
       } else if (expectsRegexp(previous, qualifier) ||
         (startsCommandRegexp(previous, qualifier, content, match.index) &&
           (qualified || !hasLocalBinding(tokens, previous, assignments.get(previous)!)))) {
-        const end = token === '?' ? characterLiteralEnd(content, match.index) : regexpEnd(content, match.index);
+        const end = token === '?' ? characterLiteralEnd(content, match.index) : literalEnd(content, match.index);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
           pattern.lastIndex = end;
@@ -86,8 +86,8 @@ const characterLiteralEnd = (content: string, start: number): number | undefined
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, inInterpolation: boolean) => {
-  const opening = inInterpolation ? /\/|%([rQq])?([^a-zA-Z0-9\u0080-\uffff])/y : /\/|%(r)([^a-zA-Z0-9\u0080-\uffff])/y;
+const literalFrame = (content: string, start: number) => {
+  const opening = /\/|%([rQq])?([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -105,12 +105,13 @@ const literalFrame = (content: string, start: number, inInterpolation: boolean) 
   };
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const initial = literalFrame(content, start, false);
+const literalEnd = (content: string, start: number): number | undefined => {
+  const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
   const expression = new RegExp(tokenPattern, 'y');
   const literal = /\\[\s\S]|#\{|[\s\S]/y;
+  const rawLiteral = /\\[\s\S]|[\s\S]/y;
   const options = /[imxounes]*/y;
   let offset = initial.start;
 
@@ -127,7 +128,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       if (frames.length === 0) return offset;
       continue;
     }
-    const part = frame.braces === 0 ? literal : expression;
+    const part = frame.braces > 0 ? expression : frame.interpolates ? literal : rawLiteral;
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;
@@ -150,7 +151,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
         }
       }
       const nested = frame.regexpExpected && (token === '/' || token === '%')
-        ? literalFrame(content, offset, true)
+        ? literalFrame(content, offset)
         : undefined;
       if (nested) {
         frames.push(nested);
