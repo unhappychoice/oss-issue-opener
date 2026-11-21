@@ -413,3 +413,24 @@ end`;
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
 }
+
+for (const [description, loop] of [
+  ['in the loop body', 'for puts in [12]\n  puts /2\nend'],
+  ['with multiple loop targets and do', 'for prefix, warn in [[1, 12]] do\n  warn /2\nend'],
+  ['in the iterable', 'for print in [12, print /2]; end'],
+  ['after the loop', 'for puts in [12]; end\nputs /2'],
+]) {
+  test(`keeps division by a loop variable separate from the gem path ${description}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper; end
+  end
+  ${loop}
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
