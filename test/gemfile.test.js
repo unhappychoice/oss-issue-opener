@@ -461,7 +461,22 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', 'when', 'not'].forEach((method) => {
+test('preserves group exclusions after a method returns a multiline regexp', () => {
+  const gemfile = `group :test do
+  def matcher
+    return /prefix
+class FakeClass
+/x
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['if', 'when', 'not', 'return'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
@@ -512,6 +527,7 @@ gem 'rack'`;
   ['a non-interpolated paired percent string', '/prefix#{%q{#{}}; 4 / 2}suffix/'],
   ['an interpolated paired percent string containing a regexp', '/prefix#{%Q{#{/a.b/i}}; 4 / 2}suffix/'],
   ['a regexp in a ternary branch', 'true ? /prefix#{%q!}!; 4 / 2}suffix/ : /fallback/'],
+  ['a multiline regexp in the true ternary branch', 'true ? /prefix\nclass FakeClass\n/ : nil'],
   ['a multiline regexp in the false ternary branch', 'false ? nil : /prefix\nclass FakeClass\n/'],
 ].forEach(([description, expression]) => {
   test(`preserves group exclusions after ${description}`, () => {
