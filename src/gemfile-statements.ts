@@ -44,36 +44,43 @@ export const gemfileStatementsFromTokens = (tokens: string[]): string[][] => {
 };
 
 export const hasGemfileBinding = (tokens: string[], name: string): boolean => {
-  const root = { statements: [] as string[][], parameter: false };
+  const root: BindingScope = { statements: [] };
   const scopes = [root];
   gemfileStatementsFromTokens(tokens).forEach((statement) => {
     const scope = scopes.at(-1) ?? root;
     const method = statement[0] === 'def';
     if (statement[0] === 'end') {
-      scope.statements.push(statement);
       scopes.pop();
       return;
     }
     if (!method) scope.statements.push(statement);
     if (!opensGemfileBlock(statement)) return;
-    scopes.push(method || opensNamespace(statement)
-      ? { statements: [], parameter: method && methodDeclaresParameter(statement, name) }
-      : scope);
+    if (method || opensNamespace(statement)) {
+      scopes.push({ statements: [], parameter: method && methodDeclaresParameter(statement, name) });
+    } else if (statement.at(-1) === 'do' && !/^(while|until|for)$/.test(statement[0])) {
+      scopes.push({ statements: [], parent: scope });
+    } else {
+      scopes.push(scope);
+    }
   });
-  const scope = scopes.at(-1) ?? root;
-  return scope.parameter || hasLocalBinding(scope.statements, name);
+  for (let scope: BindingScope | undefined = scopes.at(-1) ?? root; scope; scope = scope.parent) {
+    if (scope.parameter || hasLocalBinding(scope, name)) return true;
+  }
+  return false;
 };
 
-const hasLocalBinding = (statements: string[][], name: string): boolean => {
+type BindingScope = {
+  statements: string[][];
+  parent?: BindingScope;
+  parameter?: boolean;
+};
+
+const hasLocalBinding = ({ statements, parent }: BindingScope, name: string): boolean => {
   if (statements.some((statement) => assignsMultipleTargets(statement, name))) return true;
   const tokens = statements.flatMap((statement) => [...statement, ';']);
-  let parameters = false;
-  return tokens.some((token, index) => {
-    const previous = tokens[index - 1];
-    if (token === '|') parameters = !parameters && (tokens[index - 2] === 'do' || previous === '{');
-    return token === name && (parameters ||
-      (previous !== '.' && assignsLocal(tokens, index)));
-  });
+  const parameterEnd = parent && tokens[0] === '|' ? tokens.indexOf('|', 1) : -1;
+  return tokens.some((token, index) => token === name &&
+    (index < parameterEnd || (tokens[index - 1] !== '.' && assignsLocal(tokens, index))));
 };
 
 const assignsLocal = (tokens: string[], index: number): boolean => {
