@@ -299,6 +299,68 @@ const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   return client.repos;
 };
 
+for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete entry']) {
+  test(`handles a capped root listing when the pinned tree is ${outcome}`, async () => {
+    const repos = stubInvestigations();
+    const entries = Array.from({ length: 1000 }, (_, index) => ({
+      name: index === 0 ? 'go.mod' : `directory-${index}`, type: 'dir',
+    }));
+    const failure = new Error('Root tree request failed');
+    mockCommitFiles(mock, ['package-lock.json']);
+    mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: 'package-lock.json' }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0 to 1.1' } }],
+    } }));
+    const content = mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(ref, headSha('repo'));
+      if (path === '') return { data: entries };
+      assert.equal(path, 'package.json');
+      return { data: { content: Buffer.from('{"dependencies":{"runtime":"1.1"}}').toString('base64') } };
+    });
+    const tree = mock.method(getOctokit().git, 'getTree', async () => {
+      if (outcome === 'request failed') throw failure;
+      return { data: {
+        truncated: outcome === 'truncated',
+        tree: [
+          ...entries.map(({ name }) => ({ path: name, type: 'tree' })),
+          { path: outcome === 'incomplete entry' ? undefined : 'package.json', type: 'blob' },
+        ],
+      } };
+    });
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    if (outcome === 'complete') {
+      await runChecks(deps);
+      assert.equal(batches[0].length, 1);
+      assert.equal(batches[0][0].type, 'pending-release');
+      assert.match(batches[0][0].body, /runtime.*1\.0.*->.*1\.1/);
+      assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.endsWith('Types: node')));
+    } else {
+      await assert.rejects(runChecks(deps), (error) => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.errors.length, 1);
+        const [{ message, cause }] = error.errors;
+        assert.equal(message, 'Failed owner/repo: release investigation');
+        if (outcome === 'request failed') assert.equal(cause, failure);
+        else assert.match(cause.message, outcome === 'truncated' ? /truncated tree/ : /incomplete tree entry/);
+        return true;
+      });
+      assert.deepEqual(batches, []);
+      assert.ok(console.log.mock.calls.every(({ arguments: [line] }) => !line.includes('Release: up to date')));
+    }
+
+    assert.deepEqual(tree.mock.calls.map(({ arguments: [params] }) => params),
+      [{ owner: 'owner', repo: 'repo', tree_sha: 'head-tree' }]);
+    assert.deepEqual(content.mock.calls.map(({ arguments: [{ path }] }) => path),
+      outcome === 'complete' ? ['', 'package.json'] : ['']);
+  });
+}
+
 test('shares default branch heads per repository and refreshes them on each scan', async () => {
   const repos = stubInvestigations();
   let branch = 'main';

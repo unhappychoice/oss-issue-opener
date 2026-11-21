@@ -28,8 +28,13 @@ export async function* listOrgRepos(name: string): AsyncGenerator<Repository> {
   }
 }
 
-export const getRepoContents = async (owner: string, repo: string, path = '', ref?: string): Promise<string[]> => {
+export const getRepoContents = async (
+  owner: string, repo: string, path = '', ref?: string, rootTreeSha?: string
+): Promise<string[]> => {
   const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
+  if (path === '' && Array.isArray(data) && data.length >= 1000) {
+    return getRootTreeContents(owner, repo, rootTreeSha);
+  }
   return Array.isArray(data) ? data.filter((entry) => entry.type !== 'dir').map((entry) => entry.name) : [];
 };
 
@@ -148,6 +153,16 @@ export const getLatestRelease = async (owner: string, repo: string): Promise<str
 
   const { data: tags } = await getOctokit().repos.listTags({ owner, repo, per_page: 1 });
   return tags[0]?.name ?? null;
+};
+
+const getRootTreeContents = async (owner: string, repo: string, tree_sha?: string): Promise<string[]> => {
+  if (!tree_sha) throw new Error('Cannot establish complete root listing: missing tree SHA');
+  const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha });
+  if (data.truncated !== false) throw new Error('Cannot establish complete root listing: truncated tree');
+  return data.tree.flatMap(({ path, type }) => {
+    if (!path || !type) throw new Error('Cannot establish complete root listing: incomplete tree entry');
+    return type === 'tree' ? [] : [path];
+  });
 };
 
 const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {
