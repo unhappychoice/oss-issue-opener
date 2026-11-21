@@ -116,7 +116,9 @@ const checkRepo = async (
       log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
 
       if (ciResult.status === 'success' && ciResult.recovery) recoveries.set(fullName, ciResult.recovery);
-      return ciResult.status === 'failure' ? [buildCIFailureIssue(fullName, ciResult.failedChecks)] : [];
+      return ciResult.status === 'failure'
+        ? [buildCIFailureIssue(fullName, ciResult.failedChecks, !ciResult.endpointErrors?.length)]
+        : [];
     }, []),
 
     attempt<PendingIssue[]>(`${fullName}: release investigation`, failures, async () => {

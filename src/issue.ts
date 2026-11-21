@@ -5,7 +5,7 @@ import { ISSUE_REPO, recoveryCheckKey } from './types.js';
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 const ISSUE_BODY_LIMIT = 65_536;
 
-export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => {
+export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[], scanComplete = true): PendingIssue => {
   const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
   const links = `\n\n**Repository**: https://github.com/${repo}
 **Actions**: https://github.com/${repo}/actions`;
@@ -14,7 +14,7 @@ export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): 
     type: 'ci-failure',
     repo,
     title: `[CI Failure] ${repo}`,
-    body: formatIssueBody(intro, items, links + recoveryMarker(repo, failedChecks)),
+    body: formatIssueBody(intro, items, links + (scanComplete ? recoveryMarker(repo, failedChecks) : '')),
   };
 };
 

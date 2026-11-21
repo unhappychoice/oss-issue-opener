@@ -42,6 +42,7 @@ const setup = (t, {
   const client = getOctokit();
   const events = [];
   const comments = [];
+  const created = [];
   let nextCloseError = closeError;
   const open = new Set(alerts.map(({ number }) => number));
   t.mock.method(console, 'log', () => {});
@@ -56,8 +57,8 @@ const setup = (t, {
   });
   t.mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   t.mock.method(client.paginate, 'iterator', async function* () {
-    if (checksError) throw checksError;
     yield { data: runs };
+    if (checksError) throw checksError;
   });
   t.mock.method(client, 'paginate', async (endpoint, params) => {
     if (endpoint === client.issues.listComments) return comments;
@@ -94,9 +95,9 @@ const setup = (t, {
     },
     checkCIStatus,
     checkPendingRelease: async () => ({ status: 'no-tag' }),
-    createIssuesInBatch: async () => {},
+    createIssuesInBatch: async (issues) => { created.push(...issues); },
   };
-  return { run: (enabled) => runChecks(deps, enabled), events };
+  return { run: (enabled) => runChecks(deps, enabled), events, created };
 };
 
 test('closes only a matching open alert and records the checked commit once', async (t) => {
@@ -199,6 +200,24 @@ test('leaves an alert open when a CI endpoint cannot be read', async (t) => {
   const { run, events } = setup(t, { checksError: new Error('Check runs unavailable') });
   await assert.rejects(run(true), /Failed 1 maintenance operations/);
   assert.deepEqual(events, ['list']);
+});
+
+test('keeps an alert from a partial check scan open after the recorded job passes', async (t) => {
+  const partial = setup(t, {
+    alerts: [],
+    runs: [{ ...passedBuild, conclusion: 'failure', check_suite: { id: 100 } }],
+    statuses: [],
+    checksError: new Error('Later check page unavailable'),
+  });
+  await assert.rejects(partial.run(true), /Failed 1 maintenance operations/);
+  assert.equal(partial.created.length, 1);
+  const [{ body: partialBody }] = partial.created;
+  assert.match(partialBody, /- build/);
+  assert.doesNotMatch(partialBody, /oss-issue-opener:ci:v1/);
+
+  const recovered = setup(t, { alerts: [{ ...alert, body: partialBody }], statuses: [] });
+  await recovered.run(true);
+  assert.deepEqual(recovered.events, ['list']);
 });
 
 test('reports an alert lookup failure without closing any alerts', async (t) => {

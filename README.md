@@ -160,6 +160,7 @@ recorded job name and workflow ID. A missing, pending, skipped, neutral, or
 unreadable recorded check leaves the issue open. The scanner comments with a link
 to the verified commit and closes the issue as completed.
 
-Alerts require manual closure when the recovery metadata is missing, when a check
-run has no verified GitHub Actions workflow ID, or when the complete check list
-cannot fit in the metadata. Linear links do not affect eligibility.
+Alerts require manual closure when the initial CI scan could not retrieve all
+results, when the recovery metadata is missing, when a check run has no verified
+GitHub Actions workflow ID, or when the complete check list cannot fit in the
+metadata. Linear links do not affect eligibility.
