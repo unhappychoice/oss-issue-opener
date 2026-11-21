@@ -541,6 +541,25 @@ gem 'rack'`;
   });
 });
 
+[
+  ['slash', '/prefix\nclass FakeClass\n/x'],
+  ['percent', '%r!prefix\nclass FakeClass\n!x'],
+].forEach(([delimiter, pattern]) => {
+  test(`ignores class text in a multiline ${delimiter} regexp after then`, () => {
+    const gemfile = `group :test do
+  if ENV['FEATURE'] then ${pattern}
+    gem 'conditional'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'conditional'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['&&', '||', 'and', 'or'].forEach((operator) => {
   test(`ignores class text in a multiline regexp after ${operator}`, () => {
     const gemfile = `group :test do
@@ -604,7 +623,7 @@ pattern = /suffix/`;
   });
 });
 
-['if', 'case', 'when', 'not', 'return', 'while', 'until', 'yield'].forEach((method) => {
+['if', 'case', 'when', 'not', 'return', 'while', 'until', 'yield', 'then'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
