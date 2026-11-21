@@ -213,6 +213,8 @@ gem 'rack'`;
 const regexpExpressions = [
   ['slash literal', 'matcher = /prefix\nclass RegexText\nsuffix/'],
   ['slash literal after compound assignment', 'matcher ||= /prefix\nclass RegexText\nsuffix/'],
+  ['slash literal after and', 'enabled and /prefix\nclass RegexText\nsuffix/'],
+  ['percent regexp after or', 'enabled or %r{prefix\nmodule RegexText\nsuffix}'],
   ['slash literal passed to puts', 'puts /prefix\nclass RegexText\nsuffix/'],
   ['numeric prefix in a regexp passed to puts', 'puts /2\nclass RegexText\nsuffix/'],
   ['slash literal after comparing puts', 'puts == nil\nputs /prefix\nclass RegexText\nsuffix/'],

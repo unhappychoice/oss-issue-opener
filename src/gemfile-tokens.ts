@@ -60,7 +60,7 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const expectsRegexp = (token = '\n', previous?: string): boolean =>
   compoundAssignmentPattern.test(token) || /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless|case|when|return)$/.test(token));
+  (previous !== '.' && /^(?:!|and|or|do|if|elsif|unless|case|when|return)$/.test(token));
 
 const startsPutsRegexp = (
   previous: string | undefined, qualifier: string | undefined, content: string, start: number,
