@@ -207,6 +207,25 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  String.raw`%w!words \! #{
+class FakeClass
+module FakeModule
+!`,
+  '%W{words #{%w[more words]}\nclass FakeClass\nmodule FakeModule\n}',
+].forEach((literal) => {
+  test(`preserves group boundaries across a multiline ${literal.slice(0, 2)} literal`, () => {
+    const gemfile = `group :test do
+  words = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['/x', '/rack', '/'].forEach((path) => {
   ['warn', 'puts'].forEach((name) => {
     test(`detects a gem with path ${path} after compact division of the ${name} block parameter`, () => {

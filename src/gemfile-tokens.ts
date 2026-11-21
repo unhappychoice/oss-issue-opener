@@ -119,7 +119,7 @@ const expectsLiteral = (token: string, previous: string): boolean =>
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%[rqQ]([^\w\s])/y;
+  const opening = /\/|%[rqQwW]([^\w\s])/y;
   opening.lastIndex = start;
   const root = opening.exec(content);
   if (!root) return undefined;
@@ -133,7 +133,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
 
   while (offset < content.length) {
     const frame = frames.at(-1)!;
-    const part = frame.braces > 0 ? expression : frame.kind === '%q' ? plain : interpolated;
+    const part = frame.braces > 0 ? expression : frame.interpolates ? interpolated : plain;
     part.lastIndex = offset;
     const token = part.exec(content)?.[0];
     if (!token) return undefined;
@@ -177,6 +177,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
 
 const literalFrame = (kind: string, delimiter: string) => ({
   kind,
+  interpolates: kind !== '%q' && kind !== '%w',
   delimiter,
   closing: pairedDelimiters.get(delimiter) ?? delimiter,
   depth: 1,
