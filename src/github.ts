@@ -164,9 +164,13 @@ export const getCommitFiles = async (owner: string, repo: string, ref: string): 
   let fileCount = 0;
   for (let page = 1; ; page++) {
     const { data, headers } = await getOctokit().repos.getCommit({ owner, repo, ref, per_page: perPage, page });
-    if (!data.files) return [];
+    if (!data.files) {
+      throw new Error(`Cannot establish complete commit files for ${owner}/${repo}@${ref}: missing files on page ${page}`);
+    }
     fileCount += data.files.length;
-    if (fileCount >= fileLimit) return [];
+    if (fileCount >= fileLimit) {
+      throw new Error(`Cannot establish complete commit files for ${owner}/${repo}@${ref}: reached the ${fileLimit}-file limit`);
+    }
     paths.push(...changedPaths(data.files));
     if (!headers?.link?.includes('rel="next"')) return paths;
   }
