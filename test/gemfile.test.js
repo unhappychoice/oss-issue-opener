@@ -207,17 +207,19 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('detects a production gem after compact division of a block parameter', () => {
-  const gemfile = `group :test do
-  [4].each do |value|
-    value /2
+['/x', '/rack', '/'].forEach((path) => {
+  test(`detects a gem with path ${path} after compact division of a block parameter`, () => {
+    const gemfile = `group :test do
+  [4].each do |warn|
+    warn /2
   end
   gem 'rspec'
 end
-gem 'rack', path: '/x'`;
+gem 'rack', path: '${path}'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('ignores class and module text in a multiline regexp inside an excluded group', () => {
@@ -235,7 +237,7 @@ gem 'rack'`;
 });
 
 [
-  ['an unparenthesized slash regexp', ' /prefix\nclass FakeClass\n/x'],
+  ['an unparenthesized slash regexp', ' /2\nclass FakeClass\n/x'],
   ['a parenthesized slash regexp', '(/prefix\nclass FakeClass\n/x)'],
   ['a parenthesized percent regexp', '(%r{prefix\nclass FakeClass\n}x)'],
   ['division with space after the slash', ' / 2'],
@@ -339,6 +341,7 @@ gem 'rack'`;
   ['a non-interpolated paired percent string', '/prefix#{%q{#{}}; 4 / 2}suffix/'],
   ['an interpolated paired percent string containing a regexp', '/prefix#{%Q{#{/a.b/i}}; 4 / 2}suffix/'],
   ['a regexp in a ternary branch', 'true ? /prefix#{%q!}!; 4 / 2}suffix/ : /fallback/'],
+  ['a multiline regexp in the false ternary branch', 'false ? nil : /prefix\nclass FakeClass\n/'],
 ].forEach(([description, expression]) => {
   test(`preserves group exclusions after ${description}`, () => {
     const gemfile = `group :test do
