@@ -598,6 +598,7 @@ gem 'rack'`;
 [
   ['a multiline percent string', 'message = %q{prefix{nested}\nclass LiteralText\ngem "ignored"\nsuffix}'],
   ['a multiline Kernel.warn regexp', 'Kernel.warn /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline logger.warn regexp', 'logger.warn /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline puts regexp', 'puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline Kernel.puts regexp', 'Kernel.puts /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline print regexp', 'print /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
@@ -617,6 +618,18 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
+});
+
+test('keeps division after an explicit warn call visible', () => {
+  const gemfile = `group :test do
+  logger.warn / 2
+  gem 'rspec'
+end
+gem 'rack'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 ['puts', 'print', 'p'].forEach((name) => {

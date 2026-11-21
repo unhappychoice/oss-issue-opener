@@ -57,9 +57,8 @@ const opensCommandRegexp = (
   const command = tokens[index];
   return ['warn', 'puts', 'print', 'p'].includes(command) && index < tokens.length - 1 &&
     /\S/.test(content[start + 1] ?? '') &&
-    (previous === '.'
-      ? tokens[previousSignificantToken(tokens, previousIndex - 1)] === 'Kernel'
-      : ['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), command));
+    (previous === '.' ||
+      (['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), command)));
 };
 
 const opensSingletonClass = (tokens: string[]): boolean => {
