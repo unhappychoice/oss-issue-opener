@@ -213,6 +213,11 @@ class FakeClass
 module FakeModule
 !`,
   '%W{words #{%w[more words]}\nclass FakeClass\nmodule FakeModule\n}',
+  String.raw`%i!symbols \! #{
+class FakeClass
+module FakeModule
+!`,
+  '%I{symbols #{%i[more symbols]}\nclass FakeClass\nmodule FakeModule\n}',
 ].forEach((literal) => {
   test(`preserves group boundaries across a multiline ${literal.slice(0, 2)} literal`, () => {
     const gemfile = `group :test do
