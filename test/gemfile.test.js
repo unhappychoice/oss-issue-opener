@@ -451,6 +451,8 @@ const regexpExpressions = [
   ['the right operand of subtraction', '12 - /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of multiplication', '1 * /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of division', '120 / /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
+  ['the right operand of less-than', '"" < /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source'],
+  ['the right operand of greater-than', '"" > /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source'],
   ['the right operand of or', 'false or /prefix\nclass RegexText\nsuffix/'],
   ['the right operand of and', 'true and /prefix\nmodule RegexText\nsuffix/'],
   ['percent delimiters', '%r!prefix\nclass RegexText\nsuffix!'],
