@@ -235,8 +235,51 @@ gem 'rack', path: '/.rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('recognizes production gems after division of a local named puts', () => {
+  const gemfile = `puts = 4
+group :test do
+  module TestHelpers
+    class TestHelper
+      puts = 8
+      puts /2
+      gem 'rspec', path: '/rspec'
+    end
+  end
+end
+puts /2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves multiline regexp calls across local scope boundaries', () => {
+  const gemfile = `group :test do
+  puts = 4
+  module TestHelpers
+    class TestHelper
+      puts /prefix
+end
+end
+end
+module RegexText
+suffix/
+    end
+  end
+  gem 'rspec'
+end
+puts /prefix
+group :test do
+suffix/
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 const multilineRegexps = [
   'puts /prefix\nclass RegexText\nsuffix/',
+  'puts =~ /check/\nputs /prefix\nend\nsuffix/',
   'self.puts %r{prefix\nmodule RegexText\nsuffix}',
   'matcher = /prefix\nclass RegexText\nsuffix/',
   '/prefix\nend\nmodule RegexText\nsuffix/',

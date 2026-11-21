@@ -37,7 +37,50 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+export const opensGemfileBlock = (tokens: string[]): boolean =>
+  tokens.includes('do') || opensMethod(tokens) || opensNamespace(tokens) ||
+  /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '');
+
+export const splitGemfileStatements = (tokens: string[]): string[][] => {
+  const result: string[][] = [];
+  let current: string[] = [];
+  let depth = 0;
+  tokens.forEach((token) => {
+    if (isSpacing(token)) return;
+    if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
+      if (current.length) result.push(current);
+      current = [];
+      return;
+    }
+    if (token === '\n') return;
+    if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
+      result.push([...current, 'do']);
+      current = [];
+      return;
+    }
+    if (depth === 0 && token === '}') {
+      if (current.length) result.push(current);
+      result.push(['end']);
+      current = [];
+      return;
+    }
+    if (token === 'end' && depth === 0 && current.length) {
+      result.push(current);
+      current = [];
+    }
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    current.push(token);
+    if ((token === 'do' || token === 'end') && depth === 0) {
+      result.push(current);
+      current = [];
+    }
+  });
+  if (current.length) result.push(current);
+  return result;
+};
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|=~|&&|\|\||[^\S\n]+|\n|./;
 
 const opensSingletonClass = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
@@ -58,12 +101,48 @@ const isComment = (token: string): boolean => token.startsWith('#') || token.sta
 const canStartRegexp = (tokens: string[], content: string, start: number): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
   const token = tokens[index] ?? '\n';
-  return expectsRegexp(token, tokens[previousSignificantToken(tokens, index - 1)]) ||
-    (token === 'puts' && index < tokens.length - 1 && !/\s/.test(content[start + 1] ?? ''));
+  const previous = tokens[previousSignificantToken(tokens, index - 1)];
+  return expectsRegexp(token, previous) ||
+    (token === 'puts' && index < tokens.length - 1 && !/\s/.test(content[start + 1] ?? '') &&
+      (previous === '.' || !hasLocalPuts(tokens)));
+};
+
+const hasLocalPuts = (tokens: string[]): boolean => {
+  const scopes = [{ assigned: false }];
+  for (const statement of splitGemfileStatements(tokens)) {
+    if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
+    const current = scopes.at(-1)!;
+    if (opensNamespace(statement) || opensMethod(statement)) {
+      scopes.push({ assigned: false });
+    } else if (opensGemfileBlock(statement)) {
+      scopes.push(statement.includes('do') ? { assigned: current.assigned } : current);
+    }
+    if (statement[0] === 'puts' && statement[1] === '=' && statement[2] !== '=') {
+      current.assigned = true;
+    }
+  }
+  return scopes.at(-1)!.assigned;
+};
+
+const opensNamespace = (tokens: string[]): boolean =>
+  tokens.some((token, index) => (token === 'class' || token === 'module') &&
+    (index === 0 || tokens[index - 1] === '='));
+
+const opensMethod = (tokens: string[]): boolean =>
+  tokens[0] === 'def' && !isEndlessMethod(tokens);
+
+const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
 };
 
 const expectsRegexp = (token: string, previous: string): boolean =>
-  /^(?:\n|;|=|=>|~|\?|:|\(|\[|,|&&|\|\|)$/.test(token) ||
+  /^(?:\n|;|=|=>|=~|~|\?|:|\(|\[|,|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
