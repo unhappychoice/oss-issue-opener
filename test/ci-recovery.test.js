@@ -6,13 +6,15 @@ import { buildCIFailureIssue } from '../dist/issue.js';
 import { runChecks } from '../dist/runner.js';
 
 const repo = 'owner/project';
-const author = 'unhappychoice';
+const issueOwner = 'unhappychoice';
+const author = 'alert-maintainer';
 const sha = 'a'.repeat(40);
 const checks = [
   { name: 'build', source: 'check', url: '', workflowId: 10 },
   { name: 'lint', source: 'status', url: '' },
 ];
 const body = buildCIFailureIssue(repo, checks).body;
+const recoveryComment = `CI recovery verified on the default branch at [\`${sha}\`](https://github.com/${repo}/commit/${sha}). All checks recorded in this alert passed.`;
 const alert = { number: 1, title: 'Renamed alert', state: 'open', user: { login: author }, labels: ['ci-failure'], body };
 const setAutoClose = (t, value) => {
   const previous = process.env.AUTO_CLOSE_CI_ALERTS;
@@ -36,17 +38,21 @@ const passedLint = { context: 'lint', state: 'success' };
 
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
-  workflowError, currentAlert = (issue) => issue,
+  workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
   const events = [];
-  const comments = [];
+  const comments = [...existingComments];
   const created = [];
   let nextCloseError = closeError;
   const open = new Set(alerts.map(({ number }) => number));
   t.mock.method(console, 'log', () => {});
   t.mock.method(console, 'error', () => {});
+  const getAuthenticated = t.mock.method(client.users, 'getAuthenticated', async () => {
+    if (authError) throw authError;
+    return { data: { login } };
+  });
   t.mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   t.mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha } } } } }));
   t.mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses } }));
@@ -75,7 +81,7 @@ const setup = (t, {
     events.push(['comment', params]);
   });
   t.mock.method(client.issues, 'get', async (params) => {
-    assert.deepEqual(params, { owner: author, repo: 'oss-issue-opener', issue_number: params.issue_number });
+    assert.deepEqual(params, { owner: issueOwner, repo: 'oss-issue-opener', issue_number: params.issue_number });
     const issue = alerts.find(({ number }) => number === params.issue_number);
     return { data: currentAlert(issue, comments.length) };
   });
@@ -91,19 +97,19 @@ const setup = (t, {
 
   const deps = {
     listOrgRepos: async function* (org) {
-      if (org === author) yield { fullName: repo, defaultBranch: 'main' };
+      if (org === issueOwner) yield { fullName: repo, defaultBranch: 'main' };
     },
     checkCIStatus,
     checkPendingRelease: async () => ({ status: 'no-tag' }),
     createIssuesInBatch: async (issues) => { created.push(...issues); },
   };
-  return { run: (enabled) => runChecks(deps, enabled), events, created };
+  return { run: (enabled) => runChecks(deps, enabled), events, created, getAuthenticated };
 };
 
 test('closes only a matching open alert and records the checked commit once', async (t) => {
   setAutoClose(t, 'true');
-  const { run, events } = setup(t, { alerts: [
-    { ...alert, number: 2, user: { login: 'other' } },
+  const { run, events, getAuthenticated } = setup(t, { alerts: [
+    { ...alert, number: 2, user: { login: issueOwner } },
     { ...alert, number: 3, labels: [] },
     { ...alert, number: 4, body: 'Legacy alert' },
     { ...alert, number: 5, body: buildCIFailureIssue('owner/another', checks).body },
@@ -114,10 +120,11 @@ test('closes only a matching open alert and records the checked commit once', as
   ] });
   await run();
   await run();
-  const issue = { owner: author, repo: 'oss-issue-opener', issue_number: 1 };
+  assert.equal(getAuthenticated.mock.callCount(), 2);
+  const issue = { owner: issueOwner, repo: 'oss-issue-opener', issue_number: 1 };
   assert.deepEqual(events, [
     'list',
-    ['comment', { ...issue, body: `CI recovery verified on the default branch at [\`${sha}\`](https://github.com/${repo}/commit/${sha}). All checks recorded in this alert passed.` }],
+    ['comment', { ...issue, body: recoveryComment }],
     ['close', { ...issue, state: 'closed', state_reason: 'completed' }],
     'list',
   ]);
@@ -228,13 +235,29 @@ test('reports an alert lookup failure without closing any alerts', async (t) => 
 
 test('skips alert lookups when automatic closure is disabled', async (t) => {
   setAutoClose(t, 'false');
-  const { run, events } = setup(t);
+  const { run, events, getAuthenticated } = setup(t);
   await run();
   assert.deepEqual(events, []);
+  assert.equal(getAuthenticated.mock.callCount(), 0);
+});
+
+test('leaves alerts open when the authenticated account cannot be resolved', async (t) => {
+  const { run, events } = setup(t, { authError: new Error('Authenticated user unavailable') });
+  await assert.rejects(run(true), /Failed 1 maintenance operations/);
+  assert.deepEqual(events, ['list']);
+});
+
+test('leaves alerts open when the authenticated account has no login', async (t) => {
+  const { run, events } = setup(t, { login: null });
+  await assert.rejects(run(true), /Failed 1 maintenance operations/);
+  assert.deepEqual(events, ['list']);
 });
 
 test('retries a failed close without repeating the recovery comment', async (t) => {
-  const { run, events } = setup(t, { closeError: new Error('Update unavailable') });
+  const { run, events } = setup(t, {
+    closeError: new Error('Update unavailable'),
+    existingComments: [{ user: { login: issueOwner }, body: recoveryComment }],
+  });
   await assert.rejects(run(true), /Failed 1 maintenance operations/);
   await run(true);
   assert.deepEqual(events.map((event) => typeof event === 'string' ? event : event[0]),

@@ -151,8 +151,8 @@ After the batch, any failures are reported together and the process exits with a
 Set `AUTO_CLOSE_CI_ALERTS=true` to enable automatic closure. For the weekly workflow,
 set the `AUTO_CLOSE_CI_ALERTS` Actions repository variable to `true`.
 
-The scanner considers open `ci-failure` issues authored by the destination repository
-owner that carry scanner-generated recovery metadata for the scanned repository.
+The scanner considers open `ci-failure` issues authored by the account authenticated
+with `GH_TOKEN` that carry scanner-generated recovery metadata for the scanned repository.
 The existing alert must be present when the scan starts. Its recorded check runs and
 commit statuses must each explicitly pass on the checked default-branch commit,
 and the overall CI scan must succeed. GitHub Actions jobs must match both the

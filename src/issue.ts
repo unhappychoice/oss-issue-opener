@@ -1,4 +1,4 @@
-import { completeIssue, createIssue, listOpenIssueDetails, listOpenIssues } from './github.js';
+import { completeIssue, createIssue, getAuthenticatedLogin, listOpenIssueDetails, listOpenIssues } from './github.js';
 import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
 import { ISSUE_REPO, recoveryCheckKey } from './types.js';
 
@@ -45,10 +45,11 @@ export const closeRecoveredCIAlerts = async (
   alerts: Awaited<ReturnType<typeof listCIAlerts>>,
   recoveries: ReadonlyMap<string, NonNullable<CIStatus['recovery']>>
 ): Promise<void> => {
+  const author = await getAuthenticatedLogin();
   const failures: Error[] = [];
   for (const alert of alerts) {
     const { number } = alert;
-    const recorded = recordedChecks(alert);
+    const recorded = recordedChecks(alert, author);
     if (!recorded) continue;
     const { repo, checks } = recorded;
     const recovery = recoveries.get(repo);
@@ -58,10 +59,10 @@ export const closeRecoveredCIAlerts = async (
 
     try {
       const url = `https://github.com/${repo}/commit/${recovery.sha}`;
-      const closed = await completeIssue(issueOwner, issueRepo, number, issueOwner,
+      const closed = await completeIssue(issueOwner, issueRepo, number, author,
         `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`,
         (issue) => {
-          const current = recordedChecks(issue);
+          const current = recordedChecks(issue, author);
           return current?.repo === repo && current.checks.every((check) => passed.has(check));
         });
       if (closed) console.log(`  [closed] ${alert.title} (#${number})`);
@@ -74,10 +75,10 @@ export const closeRecoveredCIAlerts = async (
 };
 
 const recordedChecks = (
-  issue: Awaited<ReturnType<typeof listCIAlerts>>[number]
+  issue: Awaited<ReturnType<typeof listCIAlerts>>[number], author: string
 ): { repo: string; checks: string[] } | undefined => {
   const { state, user, labels, body, pull_request } = issue;
-  if (state !== 'open' || pull_request || user?.login !== issueOwner || !labels.some((label) =>
+  if (state !== 'open' || pull_request || user?.login !== author || !labels.some((label) =>
     (typeof label === 'string' ? label : label.name) === 'ci-failure')) return undefined;
 
   const marker = body?.trimEnd().split('\n').at(-1)?.match(/^<!-- oss-issue-opener:ci:v1 ([\w.-]+\/[\w.-]+) ([\w-]+(?: [\w-]+)*) -->$/);

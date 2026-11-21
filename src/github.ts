@@ -333,6 +333,12 @@ export const listOpenIssueDetails = async (owner: string, repo: string, label: s
   return data.filter((i) => !i.pull_request);
 };
 
+export const getAuthenticatedLogin = async (): Promise<string> => {
+  const { data } = await getOctokit().users.getAuthenticated();
+  if (!data.login) throw new Error('Authenticated GitHub account has no login');
+  return data.login;
+};
+
 export const completeIssue = async (
   owner: string, repo: string, issue_number: number, author: string, body: string,
   isEligible: (issue: Awaited<ReturnType<Octokit['issues']['get']>>['data']) => boolean
