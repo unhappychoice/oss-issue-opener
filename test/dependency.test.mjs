@@ -156,8 +156,8 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
     end
     gem 'rspec'
   end
-  (value, count) = [12, 1]
-  value /2
+  puts ||= 8
+  puts /2
   gem 'rack', path: '/rack'`);
 
   assert.equal(await check('rspec'), false);

@@ -9,14 +9,16 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '=' || token === '/' || token === '%' || token === '?') {
+    const compoundAssignment = compoundAssignmentPattern.test(token);
+    if (token === '=' || compoundAssignment || token === '/' || token === '%' || token === '?') {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previous = tokens[index];
       const qualifier = tokens[previousSignificantToken(tokens, index - 1)];
       const barePuts = previous === 'puts' && !['.', ':', '@', '$'].includes(qualifier);
-      if (token === '=') {
-        if (!/^[=~]/.test(content[pattern.lastIndex] ?? '') &&
-          (barePuts || assignsParallelPuts(tokens, index)) && !declaresPutsParameter(tokens)) {
+      if (token === '=' || compoundAssignment) {
+        const assignsPuts = barePuts || (!compoundAssignment && assignsParallelPuts(tokens, index));
+        if (assignsPuts && (compoundAssignment || !/^[=~]/.test(content[pattern.lastIndex] ?? '')) &&
+          !declaresPutsParameter(tokens)) {
           putsAssignments.add(currentLocalScope(tokens).index);
         }
       } else if (expectsRegexp(previous, qualifier) ||
@@ -30,7 +32,7 @@ export const gemfileTokens = (content: string): string[] => {
         }
       }
     }
-    if (token.startsWith('<<')) {
+    if (token.startsWith('<<') && !compoundAssignment) {
       if (opensSingletonClass(tokens)) {
         tokens.push('<<');
         pattern.lastIndex = match.index + 2;
@@ -52,10 +54,12 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+const compoundAssignmentPattern = /^(?:\|\||&&|\*\*|<<|>>|[+*/%&|^-])=$/;
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|(?:\|\||&&|\*\*|<<|>>|[+*/%&|^-])=|&&|\|\||[^\S\n]+|\n|./;
 
 const expectsRegexp = (token = '\n', previous?: string): boolean =>
-  /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
+  compoundAssignmentPattern.test(token) || /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|case|when|return)$/.test(token));
 
 const startsPutsRegexp = (
