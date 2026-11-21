@@ -217,8 +217,18 @@ gem 'rack'`;
   });
 });
 
-test('ignores scope keywords inside a multiline regexp passed as a command argument', () => {
+['x, y = 8, 2', 'x, y, z = 8, 2, 1'].forEach((assignment) => {
+  test(`recognizes production gems after division following ${assignment}`, () => {
+    const gemfile = `${assignment}\nx /2\ngem 'rack', path: '/rack'\ny /2\ngem 'puma', path: '/puma'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'puma'), true);
+  });
+});
+
+test('recognizes a command regexp after an assignment in an argument list', () => {
   const gemfile = `group :test do
+  configure(puts, option = 8)
   puts /example
 class Phantom
 /

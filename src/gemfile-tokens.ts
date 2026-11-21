@@ -30,7 +30,7 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (token === '=' && content[match.index + 1] !== '=') {
-      assignedNames.add(tokens[previousSignificantToken(tokens, tokens.length - 1)] ?? '');
+      recordAssignmentTargets(tokens, assignedNames);
     } else if (/^\w+=$/.test(token)) {
       assignedNames.add(token.slice(0, -1));
     }
@@ -58,6 +58,24 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 const previousSignificantToken = (tokens: string[], start: number): number => {
   while (start >= 0 && isSpacing(tokens[start])) start--;
   return start;
+};
+
+const recordAssignmentTargets = (tokens: string[], assignedNames: Set<string>): void => {
+  const last = previousSignificantToken(tokens, tokens.length - 1);
+  assignedNames.add(tokens[last] ?? '');
+  if (!/^[a-z_]\w*$/.test(tokens[last] ?? '')) return;
+
+  const precedingTargets: string[] = [];
+  let index = previousSignificantToken(tokens, last - 1);
+  while (tokens[index] === ',') {
+    const target = previousSignificantToken(tokens, index - 1);
+    if (!/^[a-z_]\w*$/.test(tokens[target] ?? '')) return;
+    precedingTargets.push(tokens[target]);
+    index = previousSignificantToken(tokens, target - 1);
+  }
+  if (['\n', ';', 'do'].includes(tokens[index] ?? '\n')) {
+    precedingTargets.forEach((name) => assignedNames.add(name));
+  }
 };
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {
