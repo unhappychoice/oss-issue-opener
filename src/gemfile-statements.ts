@@ -24,6 +24,14 @@ export const methodParameters = (tokens: string[]): string[] => {
   return parameters;
 };
 
+export const multipleAssignmentTargets = (tokens: string[]): string[] => {
+  const equals = tokens.indexOf('=');
+  if (equals < 0) return [];
+  const targets = tokens.slice(0, equals).join(' ');
+  if (!/^(?:\* )?[a-z_]\w*(?: , (?:\* )?[a-z_]\w*)+(?: ,(?: \*)?)?$/.test(targets)) return [];
+  return targets.match(/[a-z_]\w*/g) ?? [];
+};
+
 export class GemfileStatements {
   private current: string[] = [];
   private depth = 0;

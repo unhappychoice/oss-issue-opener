@@ -324,6 +324,29 @@ gem 'rack', path: '/x'`;
 });
 
 [
+  ['left, right', 'left'],
+  ['left, middle, *rest', 'middle'],
+  ['left,\n  right', 'left'],
+].forEach(([targets, name]) => {
+  test(`detects a production gem after compact division following ${JSON.stringify(targets)} assignment`, () => {
+    const gemfile = `group :test do
+  module Helpers
+    class Helper
+      ${targets} = [4, 6, 8]
+      ${name} /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+pattern = / suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+[
   'helper(warn)',
   'helper warn',
   'self.helper(value = [1, 2], warn: 4)',
