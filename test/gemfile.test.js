@@ -407,6 +407,7 @@ const regexpExpressions = [
   ['an interpolated slash character literal', '/#{ ?/.ord / 2 }/'],
   ['unary negation', '!/prefix\nclass RegexText\nsuffix/'],
   ['the right operand of addition', '1 + /prefix\nclass RegexText\nsuffix/'],
+  ['the right operand of subtraction', '12 - /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of multiplication', '1 * /prefix\nclass RegexText\ngem "ignored"\nsuffix/.source.length'],
   ['the right operand of or', 'false or /prefix\nclass RegexText\nsuffix/'],
   ['the right operand of and', 'true and /prefix\nmodule RegexText\nsuffix/'],
@@ -418,6 +419,18 @@ const regexpExpressions = [
   ['an interpolated regexp', '/#{ /\\// }/'],
   ['an interpolated percent string and division', '/#{ %q!}!.ord / 2 }/'],
 ];
+
+test('recognizes division after the right operand of subtraction', () => {
+  const gemfile = `group :test do
+  ratio = 12 - 6 / 2
+  gem 'rspec'
+end
+gem 'rack'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
 
 regexpExpressions.forEach(([description, expression]) => {
   test(`preserves group exclusions around a regexp with ${description}`, () => {
