@@ -446,8 +446,23 @@ gem 'rack'`;
 
 [
   ['slash', '/prefix\nclass FakeClass\n/x'],
-  ['percent', '%r{prefix\nclass FakeClass\n}x'],
+  ['percent', '%r!prefix\nclass FakeClass\n!x'],
 ].forEach(([delimiter, pattern]) => {
+  test(`ignores class text in a multiline ${delimiter} regexp used as the case expression`, () => {
+    const gemfile = `group :test do
+  case ${pattern}
+  when nil
+    gem 'conditional'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'conditional'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+
   test(`ignores class text in a multiline ${delimiter} regexp in a when clause`, () => {
     const gemfile = `group :test do
   case ENV['FEATURE']
@@ -507,7 +522,7 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', 'when', 'not', 'return', 'while', 'until'].forEach((method) => {
+['if', 'case', 'when', 'not', 'return', 'while', 'until'].forEach((method) => {
   test(`recognizes division after a method named ${method}`, () => {
     const gemfile = `group :test do
   result = settings.${method} / 2
