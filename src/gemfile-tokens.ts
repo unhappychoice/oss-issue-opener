@@ -1,6 +1,6 @@
 import { gemfileScopeKind, readGemfileStatements } from './gemfile-statements.js';
 
-const regexpCommands = new Set(['puts', 'warn']);
+const regexpCommands = new Set(['puts', 'warn', 'print']);
 const localAssignment = /^[^\S\n]*(?:(?:\|\||&&|\*\*|<<|>>|[-+*/%&|^])=|=(?![=~>]))/;
 
 export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
