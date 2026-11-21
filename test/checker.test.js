@@ -336,7 +336,7 @@ test('detects source changes without dependency updates', async (t) => {
   ['npm development dependency', ['package-lock.json'], false, 'up-to-date'],
   ['npm production dependency', ['package-lock.json'], true, 'pending'],
   ['no dependency paths', ['README.md'], true, 'up-to-date'],
-  ['unavailable paths', undefined, true, 'up-to-date'],
+  ['an empty file list', [], true, 'up-to-date'],
   ['multiple production ecosystems in the bump', ['package-lock.json', 'Gemfile.lock'], true, 'up-to-date'],
   ['multiple ecosystems in the bump with only one production match', ['package-lock.json', 'Cargo.lock'], true, 'up-to-date'],
   ['an undetected ecosystem', ['Cargo.lock'], true, 'up-to-date'],
@@ -458,4 +458,21 @@ test('reports an incomplete release check when its only bump lookup fails', asyn
     status: 'incomplete',
     lookupErrors: [failure],
   });
+});
+
+test('reports an incomplete release check at the commit file cap', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 21 to 22');
+  const getCommit = t.mock.method(getOctokit().repos, 'getCommit', async ({ ref, page }) => {
+    if (page === undefined) return { data: { sha: ref } };
+    const files = Array.from({ length: 100 }, (_, index) => ({
+      filename: page === 1 && index === 0 ? 'package-lock.json' : `docs/${page}-${index}.md`,
+    }));
+    return { data: { files }, headers: { link: page < 30 ? '<next>; rel="next"' : '' } };
+  });
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+    status: 'incomplete',
+    lookupErrors: [new Error('Cannot establish complete commit files for owner/repo@commit: reached the 3000-file limit')],
+  });
+  assert.equal(getCommit.mock.callCount(), 31);
 });

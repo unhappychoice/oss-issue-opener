@@ -442,12 +442,14 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   });
 });
 
-test('submits confirmed release notifications before rejecting failed bump lookups', async () => {
+test('submits confirmed release notifications before reporting incomplete bump file lists', async () => {
   const repos = stubInvestigations();
-  const failure = Object.assign(new Error('Commit files HTTP 503'), { status: 503 });
   mock.method(repos, 'getCommit', async ({ ref, page }) => {
     if (page === undefined) return { data: { sha: commitSha(ref) } };
-    if (ref === 'failed') throw failure;
+    if (ref === 'failed' && page === 2) return { data: {} };
+    if (ref === 'failed') {
+      return { data: { files: [{ filename: 'package-lock.json' }] }, headers: { link: '<next>; rel="next"' } };
+    }
     return { data: { files: [{ filename: 'package-lock.json' }] } };
   });
   mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
@@ -478,7 +480,8 @@ test('submits confirmed release notifications before rejecting failed bump looku
     assert.ok(error instanceof AggregateError);
     assert.deepEqual(error.errors.map(({ message }) => message).sort(),
       repoNames.map((repo) => `Failed owner/${repo}: release investigation`).sort());
-    assert.ok(error.errors.every(({ cause }) => cause === failure));
+    assert.deepEqual(error.errors.map(({ cause }) => cause.message).sort(), repoNames
+      .map((repo) => `Cannot establish complete commit files for owner/${repo}@failed: missing files on page 2`).sort());
     assert.equal(batches.length, 1);
     assert.deepEqual(batches[0].map(({ repo, type }) => [repo, type]), [
       ['owner/source', 'pending-release'], ['owner/dependency', 'pending-release'],
