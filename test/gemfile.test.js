@@ -300,7 +300,7 @@ gem 'rack'`;
   });
 });
 
-['&&', '||'].forEach((operator) => {
+['&&', '||', 'and', 'or'].forEach((operator) => {
   test(`ignores class text in a multiline regexp after ${operator}`, () => {
     const gemfile = `group :test do
   pattern = ENV['FEATURE'] ${operator} /prefix
@@ -331,6 +331,12 @@ pattern = /suffix/`;
   ['a negated slash regexp', String.raw`!/prefix\/
 class FakeClass
 /x`],
+  ['a non-interpolated percent string', `%q{prefix{
+class FakeClass
+}suffix}`],
+  ['an interpolated percent string', `%Q{prefix#{/a.b/i}
+module FakeModule
+suffix}`],
   ['a percent regexp with an escaped delimiter', String.raw`%r!prefix\!
 class FakeClass
 !x`],
