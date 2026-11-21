@@ -110,10 +110,14 @@ const findDependencyUpdates = async (
     return bump ? [{ sha, bump }] : [];
   });
   const candidates = await Promise.all(bumps.map(async ({ sha, bump }) => {
-    const productionTypes = (await Promise.all(checkers.map(async ({ type, check }) =>
+    const results = await Promise.allSettled(checkers.map(async ({ type, check }) =>
       await check(bump.pkg) ? [type] : []
-    ))).flat();
-    return { sha, bump, productionTypes };
+    ));
+    return {
+      sha, bump,
+      productionTypes: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []),
+      productionErrors: results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []),
+    };
   }));
   const lookups = await Promise.allSettled(candidates.filter(({ productionTypes }) => productionTypes.length > 0)
     .map(async ({ sha, bump, productionTypes }) => {
@@ -122,7 +126,10 @@ const findDependencyUpdates = async (
     }));
   return {
     dependencyUpdates: lookups.flatMap((lookup) => lookup.status === 'fulfilled' ? lookup.value : []),
-    lookupErrors: lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
+    lookupErrors: [
+      ...new Set(candidates.flatMap(({ productionErrors }) => productionErrors)),
+      ...lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
+    ],
   };
 };
 

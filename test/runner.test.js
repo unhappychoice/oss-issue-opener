@@ -481,6 +481,53 @@ test('submits confirmed release notifications before rejecting failed bump looku
   });
 });
 
+[
+  ['source change', ['src/index.ts'], /src\/index\.ts/],
+  ['production bump in another ecosystem', ['go.sum'], /example\.com\/runtime.*1\.0\.0.*1\.1\.0/],
+  ['no confirmed reason', [], null],
+].forEach(([scenario, extraFiles, expectedReason]) => {
+  test(`reports a manifest read failure with ${scenario}`, async () => {
+    const repos = stubInvestigations();
+    const failure = Object.assign(new Error('package.json HTTP 503'), { status: 503 });
+    const hasGoBump = extraFiles.includes('go.sum');
+    mock.method(repos, 'getCommit', async ({ ref, page }) => ({ data: page === undefined
+      ? { sha: commitSha(ref) }
+      : { files: [{ filename: ref === 'go-bump' ? 'go.sum' : 'package-lock.json' }] },
+    }));
+    mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: ['package-lock.json', ...extraFiles].map((filename) => ({ filename })),
+      commits: [
+        { sha: 'node-bump', commit: { message: 'Bump lodash from 4.17.20 to 4.17.21' } },
+        ...(hasGoBump ? [{ sha: 'go-bump', commit: { message: 'Bump example.com/runtime from v1.0.0 to v1.1.0' } }] : []),
+      ],
+    } }));
+    mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(ref, headSha('repo'));
+      if (path === 'package.json') throw failure;
+      if (path === '') return { data: ['package.json', ...(hasGoBump ? ['go.mod'] : [])].map((name) => ({ name })) };
+      assert.equal(path, 'go.mod');
+      return { data: { content: Buffer.from('require example.com/runtime v1.1.0').toString('base64') } };
+    });
+    const { deps, batches } = setup({
+      listOrgRepos: async (org) => org === 'unhappychoice' ? [{ fullName: 'owner/repo', defaultBranch: 'main' }] : [],
+      checkCIStatus: async () => ({ status: 'success', failedChecks: [] }),
+      checkPendingRelease,
+      detectProjectTypes,
+    });
+
+    await expectFailures(deps, [['Failed owner/repo: release investigation', failure]]);
+    const status = expectedReason ? 'pending' : 'incomplete';
+    assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes(`Release: ${status}`)));
+    if (expectedReason) {
+      assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), [['pending-release']]);
+      assert.match(batches[0][0].body, expectedReason);
+      assert.doesNotMatch(batches[0][0].body, /lodash/);
+    } else {
+      assert.deepEqual(batches, []);
+    }
+  });
+});
+
 test('notifies about a production bump at the compared head after the default branch advances', async () => {
   const repos = stubInvestigations();
   const pinnedHead = commitSha('heads/main');
