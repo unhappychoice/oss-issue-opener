@@ -286,6 +286,21 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['&&', '||'].forEach((operator) => {
+  test(`preserves group boundaries around a multiline regexp after ${operator}`, () => {
+    const gemfile = `group :test do
+  pattern = enabled ${operator} /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('ignores scope keywords inside either ternary regexp branch', () => {
   const gemfile = `group :test do
   pattern = flag ? /one
