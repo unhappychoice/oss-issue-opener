@@ -179,24 +179,28 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
 const hasLocalBinding = (tokens: string[], name: CommandName, assignments: Set<number>): boolean => {
-  const { index, bindsName } = currentLocalScope(tokens, name);
-  return bindsName || assignments.has(index);
+  let scope: LocalScope | undefined = currentLocalScope(tokens, name);
+  while (scope) {
+    if (scope.bindsName || assignments.has(scope.index)) return true;
+    scope = scope.parent;
+  }
+  return false;
 };
 
-const currentLocalScope = (tokens: string[], name: CommandName) => {
-  const topLevel = { index: -1, bindsName: false };
-  const scopes: (typeof topLevel)[] = [];
+type LocalScope = { index: number; bindsName: boolean; parent?: LocalScope };
+
+const currentLocalScope = (tokens: string[], name: CommandName): LocalScope => {
+  const topLevel: LocalScope = { index: -1, bindsName: false };
+  const scopes: LocalScope[] = [];
   splitGemfileStatements(tokens).forEach((statement, index) => {
     if (statement[0] === 'end') scopes.pop();
     const scope = scopes.at(-1) ?? topLevel;
     if (bindsForTarget(statement, name)) scope.bindsName = true;
-    if (statement[0] === '|' && hasParameter(statement.slice(1, -1), name)) {
-      scopes[scopes.length - 1] = { ...scope, bindsName: true };
-    }
+    if (statement[0] === '|' && hasParameter(statement.slice(1, -1), name)) scope.bindsName = true;
     if (opensScope(statement)) {
       scopes.push(opensLocalScope(statement)
         ? { index, bindsName: declaresMethodParameter(statement, name) }
-        : opensBlockScope(statement) ? { ...scope } : scope);
+        : opensBlockScope(statement) ? { index, bindsName: false, parent: scope } : scope);
     }
   });
   return scopes.at(-1) ?? topLevel;

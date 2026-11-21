@@ -416,3 +416,34 @@ gem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+[
+  '[1].each do\n  puts = 8\n  puts /2\nend',
+  '[1].each { puts = 8; puts /2 }',
+  '[1].each do\n  if true\n    puts = 8\n  end\n  puts /2\nend',
+].forEach((block) => {
+  test(`isolates a command-name assignment in ${block}`, () => {
+    const gemfile = `${block}
+group :test do
+  puts /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('inherits a surrounding local assignment in nested blocks', () => {
+  const gemfile = `puts = 8
+[1].each do
+  [1].each do
+    puts /2
+    gem 'rack', path: '/rack'
+  end
+end`;
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
