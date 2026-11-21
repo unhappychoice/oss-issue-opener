@@ -2,9 +2,19 @@ import { Octokit } from '@octokit/rest';
 import type { Repository } from './types.js';
 
 let octokit: Octokit;
+const REQUEST_TIMEOUT_MS = 30_000;
 
-export const initOctokit = (token: string): void => {
+export const initOctokit = (token: string, requestTimeoutMs = REQUEST_TIMEOUT_MS): void => {
   octokit = new Octokit({ auth: token });
+  octokit.hook.wrap('request', (request, options) => {
+    const deadline = AbortSignal.timeout(requestTimeoutMs);
+    const callerSignal = options.request?.signal;
+    const signal = callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline;
+    // The inner Octokit hooks share this request's options object.
+    options.request = { ...options.request, signal };
+    // Octokit can swallow body-read errors while parsing a response.
+    return Promise.resolve(request(options)).finally(() => signal.throwIfAborted());
+  });
 };
 
 export const getOctokit = (): Octokit => {
@@ -88,24 +98,23 @@ const getDefaultBranch = async (owner: string, repo: string): Promise<string | n
   }
 };
 
-export const getCommitStatus = async (
+export async function* getCommitStatus(
   owner: string,
   repo: string,
   ref: string
-): Promise<{ state: string; context: string; url: string }[]> => {
-  const statuses: { state: string; context: string; url: string }[] = [];
+): AsyncGenerator<CIResult[]> {
   for (let page = 1; ; page++) {
     const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-    statuses.push(...data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' })));
-    if (data.statuses.length < 100) return statuses;
+    yield data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' }));
+    if (data.statuses.length < 100) return;
   }
-};
+}
 
-export const getCheckRuns = async (
+export async function* getCheckRuns(
   owner: string,
   repo: string,
   ref: string
-): Promise<{ state: string; context: string; url: string }[]> => {
+): AsyncGenerator<CIResult[]> {
   const conclusionStates: Record<string, string> = {
     success: 'success',
     neutral: 'success',
@@ -118,30 +127,34 @@ export const getCheckRuns = async (
     startup_failure: 'failure',
   };
 
-  const checkRuns = await listCheckRuns(owner, repo, ref);
-  return checkRuns.map((c) => ({
-    state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
-    context: c.name,
-    url: c.html_url ?? '',
-  }));
-};
+  for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
+    yield checkRuns.map((c) => ({
+      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
+      context: c.name,
+      url: c.html_url ?? '',
+    }));
+  }
+}
 
-const listCheckRuns = async (owner: string, repo: string, ref: string) => {
+export type CIResult = { state: string; context: string; url: string };
+
+async function* listCheckRunPages(owner: string, repo: string, ref: string) {
   const client = getOctokit();
   const params = { owner, repo, ref, per_page: 100 };
   const { data } = await client.checks.listSuitesForRef({ ...params, per_page: 1 });
-  if (data.total_count <= 1000) return client.paginate(client.checks.listForRef, params);
+  if (data.total_count <= 1000) {
+    for await (const { data: runs } of client.paginate.iterator(client.checks.listForRef, params)) yield runs;
+    return;
+  }
 
-  const runs: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'] = [];
   for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
     for (const suite of suites) {
-      runs.push(...await client.paginate(client.checks.listForSuite, {
+      for await (const { data: runs } of client.paginate.iterator(client.checks.listForSuite, {
         owner, repo, check_suite_id: suite.id, per_page: 100,
-      }));
+      })) yield runs;
     }
   }
-  return runs;
-};
+}
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
   for (let page = 1; ; page++) {

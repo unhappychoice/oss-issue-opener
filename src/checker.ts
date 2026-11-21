@@ -1,5 +1,5 @@
 import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFiles, getRepoContents } from './github.js';
-import type { ComparedCommit } from './github.js';
+import type { CIResult, ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
@@ -19,13 +19,13 @@ export const checkCIStatus = async (
   if (result.status === 'no-head') return { status: 'no-ci', failedChecks: [] };
 
   const { sha } = result.head;
-  const results = await Promise.allSettled([
-    getCommitStatus(owner, repo, sha),
-    getCheckRuns(owner, repo, sha),
+  const results = await Promise.all([
+    collectCIResults(getCommitStatus(owner, repo, sha)),
+    collectCIResults(getCheckRuns(owner, repo, sha)),
   ]);
 
-  const allStatuses = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
-  const endpointErrors = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
+  const allStatuses = results.flatMap(({ statuses }) => statuses);
+  const endpointErrors = results.flatMap(({ errors }) => errors);
   const filtered = allStatuses.filter((s) => !/codecov/i.test(s.context));
 
   const failedChecks = filtered
@@ -38,6 +38,16 @@ export const checkCIStatus = async (
   }
   if (filtered.length === 0) return { status: 'no-ci', failedChecks };
   return { status: failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success', failedChecks };
+};
+
+const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
+  const statuses: CIResult[] = [];
+  try {
+    for await (const page of pages) statuses.push(...page);
+    return { statuses, errors: [] };
+  } catch (error) {
+    return { statuses, errors: [error] };
+  }
 };
 
 type GetContents = () => Promise<string[]>;
@@ -97,7 +107,12 @@ const findDependencyUpdates = async (
   getContents: GetContents
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
-  const commits = await getCommits();
+  let commits: ComparedCommit[];
+  try {
+    commits = await getCommits();
+  } catch (error) {
+    return { dependencyUpdates: [], lookupErrors: [error] };
+  }
   const checkers = types.map((type) => ({
     type,
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
