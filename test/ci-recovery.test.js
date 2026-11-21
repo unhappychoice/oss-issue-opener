@@ -38,7 +38,7 @@ const passedLint = { context: 'lint', state: 'success' };
 
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
-  workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue,
+  workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -73,7 +73,7 @@ const setup = (t, {
     assert.equal(params.state, 'open');
     events.push('list');
     if (listError) throw listError;
-    return alerts.filter(({ number }) => open.has(number));
+    return staleListing ? alerts : alerts.filter(({ number }) => open.has(number));
   });
   t.mock.method(client.issues, 'createComment', async (params) => {
     if (commentError) throw commentError;
@@ -83,7 +83,8 @@ const setup = (t, {
   t.mock.method(client.issues, 'get', async (params) => {
     assert.deepEqual(params, { owner: issueOwner, repo: 'oss-issue-opener', issue_number: params.issue_number });
     const issue = alerts.find(({ number }) => number === params.issue_number);
-    return { data: currentAlert(issue, comments.length) };
+    const current = open.has(issue.number) ? issue : { ...issue, state: 'closed' };
+    return { data: currentAlert(current, comments.length) };
   });
   t.mock.method(client.issues, 'update', async (params) => {
     events.push(['close', params]);
@@ -251,6 +252,17 @@ test('leaves alerts open when the authenticated account has no login', async (t)
   const { run, events } = setup(t, { login: null });
   await assert.rejects(run(true), /Failed 1 maintenance operations/);
   assert.deepEqual(events, ['list']);
+});
+
+test('a queued scan skips a closed alert returned by a stale listing at the same commit', async (t) => {
+  const { run, events } = setup(t, { staleListing: true });
+
+  await run(true);
+  await run(true);
+
+  assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event), [
+    'list', 'comment', 'close', 'list',
+  ]);
 });
 
 test('retries a failed close without repeating the recovery comment', async (t) => {
