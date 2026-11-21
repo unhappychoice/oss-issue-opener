@@ -42,23 +42,28 @@ export const gemfileStatementsFromTokens = (tokens: string[]): string[][] => {
 };
 
 export const hasGemfileBinding = (tokens: string[], name: string): boolean => {
-  const statements = gemfileStatementsFromTokens(tokens);
-  return hasMethodParameter(statements, name) || hasLocalBinding(statements, name);
-};
-
-const hasMethodParameter = (statements: string[][], name: string): boolean => {
-  const blocks: (boolean | undefined)[] = [];
-  statements.forEach((statement) => {
-    if (statement[0] === 'end') blocks.pop();
-    if (opensGemfileBlock(statement)) {
-      blocks.push(statement[0] === 'def' ? methodDeclaresParameter(statement, name) : undefined);
+  const root = { statements: [] as string[][], parameter: false };
+  const scopes = [root];
+  gemfileStatementsFromTokens(tokens).forEach((statement) => {
+    const scope = scopes.at(-1) ?? root;
+    const method = statement[0] === 'def';
+    if (statement[0] === 'end') {
+      scope.statements.push(statement);
+      scopes.pop();
+      return;
     }
+    if (!method) scope.statements.push(statement);
+    if (!opensGemfileBlock(statement)) return;
+    scopes.push(method || opensNamespace(statement)
+      ? { statements: [], parameter: method && methodDeclaresParameter(statement, name) }
+      : scope);
   });
-  return blocks.filter((binding) => binding !== undefined).at(-1) === true;
+  const scope = scopes.at(-1) ?? root;
+  return scope.parameter || hasLocalBinding(scope.statements, name);
 };
 
 const hasLocalBinding = (statements: string[][], name: string): boolean => {
-  const tokens = statements.flatMap((statement) => statement[0] === 'def' ? [';'] : [...statement, ';']);
+  const tokens = statements.flatMap((statement) => [...statement, ';']);
   let parameters = false;
   return tokens.some((token, index) => {
     const previous = tokens[index - 1];

@@ -226,6 +226,43 @@ another_ratio = 8 / 2`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['class TestHelper', 'module TestHelpers', 'class <<self', 'result = class TestHelper'].forEach((definition) => {
+  test(`resolves warn in its local scope across ${definition}`, () => {
+    const gemfile = `warn = 12
+group :test do
+  ${definition}
+    warn /prefix
+class RegexText
+gem "ignored"
+suffix/
+  end
+  gem 'rspec'
+end
+warn /2
+gem 'rack'
+matcher = /suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps a namespace local assignment inside its namespace', () => {
+  const gemfile = `class TestHelper
+  warn = 12
+  warn /2
+end
+warn /prefix
+class RegexText
+gem "ignored"
+suffix/
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['def helper(warn)', 'def helper warn', 'def helper(warn = 4)', 'def self.helper(value, warn: 4)'].forEach((definition) => {
   test(`distinguishes division by a method parameter from a later warn regexp after ${definition}`, () => {
     const gemfile = `group :test do
