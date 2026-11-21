@@ -1,6 +1,7 @@
 import { gemfileScopeKind, readGemfileStatements } from './gemfile-statements.js';
 
 const regexpCommands = new Set(['puts', 'warn']);
+const localAssignment = /^[^\S\n]*(?:(?:\|\||&&|\*\*|<<|>>|[-+*/%&|^])=|=(?![=~>]))/;
 
 export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
@@ -36,7 +37,7 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
     if (regexpCommands.has(commandName)) {
       const qualifier = tokens[previousSignificantToken(tokens, tokens.length - 1)];
       if (!['.', '@', '$', ':'].includes(qualifier ?? '') &&
-        (token !== commandName || /^[^\S\n]*=(?![=~>])/.test(content.slice(pattern.lastIndex)))) {
+        (token !== commandName || localAssignment.test(content.slice(pattern.lastIndex)))) {
         scopes.at(-1)!.add(commandName);
       }
     }

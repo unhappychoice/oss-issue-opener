@@ -267,6 +267,9 @@ other = 12 / 4`;
 for (const command of ['puts', 'warn']) {
   for (const assignment of [
     `${command} = 12`,
+    `${command} ||= 12`,
+    `${command} &&= 12`,
+    `${command} += 2`,
     `${command}, count = 12, 1`,
     `count, ${command}, other = 1, 12, 2`,
     `${command}, count=([12, 1])`,
