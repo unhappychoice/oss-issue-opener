@@ -210,16 +210,32 @@ gem 'rack'`;
   });
 });
 
-test('recognizes a production gem after dividing a method parameter', () => {
-  const gemfile = `group :test do
+['value /2', 'value /2 /4', 'value /2 / 4'].forEach((expression) => {
+  test(`recognizes a production gem after ${expression}`, () => {
+    const gemfile = `group :test do
   class TestHelper
     def divide(value)
-      value /2
+      ${expression}
     end
   end
   gem 'rspec'
 end
-gem 'rack', path: '/rack'`;
+gem 'rack', path: '/'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('ignores scope keywords in a multiline regexp passed to a command', () => {
+  const gemfile = `group :test do
+  puts /first line
+class Phantom
+module Phantoms
+/
+  gem 'rspec'
+end
+gem 'rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);

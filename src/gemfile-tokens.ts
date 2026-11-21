@@ -6,13 +6,11 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
-      const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
-        tokens.push(content.slice(match.index, end));
-        pattern.lastIndex = end;
-        continue;
-      }
+    const literalEnd = token === '/' || token === '%' ? statementRegexpEnd(content, match.index, tokens) : undefined;
+    if (literalEnd !== undefined) {
+      tokens.push(content.slice(match.index, literalEnd));
+      pattern.lastIndex = literalEnd;
+      continue;
     }
     if (token.startsWith('<<')) {
       // A singleton class uses the shift token where the pattern can match a heredoc opener.
@@ -70,6 +68,20 @@ const expectsRegexp = (tokens: string[]): boolean => {
   return /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:|[+*^&|<>%-])$/.test(token) ||
     (/^(?:!|do|if|elsif|unless|when|return)$/.test(token) &&
       tokens[previousSignificantToken(tokens, index - 1)] !== '.');
+};
+
+const statementRegexpEnd = (content: string, start: number, tokens: string[]): number | undefined => {
+  if (expectsRegexp(tokens)) return regexpEnd(content, start);
+  // In a bare command argument, Ruby requires space before the slash and none after it.
+  if (content[start] !== '/' || !isSpacing(tokens.at(-1) ?? '') || /\s/.test(content[start + 1] ?? '')) {
+    return undefined;
+  }
+  const commandIndex = previousSignificantToken(tokens, tokens.length - 1);
+  const beforeCommand = tokens[previousSignificantToken(tokens, commandIndex - 1)] ?? '\n';
+  if (!/^[a-z_]\w*[!?]?$/.test(tokens[commandIndex] ?? '') || !/^[\n;]$/.test(beforeCommand)) return undefined;
+  const end = regexpEnd(content, start);
+  // A slash followed by an operand is not a closing delimiter, as in `value /2 /4`.
+  return end !== undefined && !/^(?:\w|[ \t]*[\d'"])/.test(content.slice(end)) ? end : undefined;
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
