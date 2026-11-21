@@ -246,11 +246,13 @@ another_ratio = total / size`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('preserves a production gem after dividing a method result named if', () => {
-  const gemfile = `ratio = receiver.if / 2
+['receiver.if', 'receiver::!'].forEach((call) => {
+  test(`preserves a production gem after dividing the result of ${call}`, () => {
+    const gemfile = `ratio = ${call} / 2
 gem 'rack', path: '/rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [

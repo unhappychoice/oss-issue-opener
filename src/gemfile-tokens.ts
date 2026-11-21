@@ -1,5 +1,5 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
@@ -47,7 +47,7 @@ const canStartRegexp = (tokens: string[]): boolean => {
   const previous = tokens[index] ?? '\n';
   if (/^(?:\n|;|=|=>|&&|\|\||~|\(|\[|,|\?|:)$/.test(previous)) return true;
   return /^(?:!|do|if|elsif|unless|when)$/.test(previous) &&
-    tokens[previousSignificantToken(tokens, index - 1)] !== '.';
+    !['.', '::'].includes(tokens[previousSignificantToken(tokens, index - 1)]);
 };
 
 const regexpEnd = (content: string, start: number): number | undefined => {
