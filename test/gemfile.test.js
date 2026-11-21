@@ -227,6 +227,46 @@ another_ratio = 8 / 2`;
 });
 
 [
+  ['->(warn) do', 'end', 'warn /2'],
+  ['callback = ->(value, warn: 4) {', '}', 'warn /2'],
+  ['-> do', 'end', 'warn /prefix\nclass RegexpText\nend\nsuffix/'],
+].forEach(([opening, closing, body]) => {
+  test(`tracks lambda parameters and Gemfile group exclusions across ${opening}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper
+      ${opening}
+        ${body}
+      ${closing}
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+warn /prefix
+gem "ignored"
+suffix/`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('keeps a defaulted lambda parameter local to the lambda', () => {
+  const gemfile = `callback = ->(warn = 4) do
+  warn /2
+end
+warn /prefix
+gem 'ignored'
+suffix/
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
   'warn', 'warn if true', 'warn unless false', 'warn then',
   '[warn]', '[0, warn]', '[0, *warn]', '[[warn]]', '[0, [1, [2, *warn]]]',
   '{warn:}', '{other: 0, warn:}', '[{warn:}]', '{nested: {warn:}}',

@@ -55,12 +55,15 @@ export const hasGemfileBinding = (tokens: string[], name: string): boolean => {
       scopes.pop();
       return;
     }
-    if (!method) scope.statements.push(statement);
+    const lambda = statement.findIndex((token, index) =>
+      token === '->' && (index === 0 || statement[index - 1] === '='));
+    if (!method) scope.statements.push(lambda === -1 ? statement : statement.slice(0, lambda));
     if (!opensGemfileBlock(statement)) return;
     if (method || opensNamespace(statement)) {
       scopes.push({ statements: [], parameter: method && methodDeclaresParameter(statement, name) });
     } else if (statement.at(-1) === 'do' && !/^(while|until|for)$/.test(statement[0])) {
-      scopes.push({ statements: [], parent: scope });
+      const parameter = lambda !== -1 && declaresParameter(statement.slice(lambda + 1, -1), name);
+      scopes.push({ statements: [], parent: scope, parameter });
     } else {
       scopes.push(scope);
     }
@@ -142,8 +145,10 @@ const includesLocalTarget = (targets: string[], name: string): boolean =>
     (index === 0 || ['(', ',', '*'].includes(targets[index - 1])) &&
     (index === targets.length - 1 || [')', ','].includes(targets[index + 1])));
 
-const methodDeclaresParameter = (tokens: string[], name: string): boolean => {
-  const args = tokens.slice(tokens[2] === '.' ? 4 : 2);
+const methodDeclaresParameter = (tokens: string[], name: string): boolean =>
+  declaresParameter(tokens.slice(tokens[2] === '.' ? 4 : 2), name);
+
+const declaresParameter = (args: string[], name: string): boolean => {
   const parameterDepth = args[0] === '(' ? 1 : 0;
   let depth = 0;
   return args.some((token, index) => {
