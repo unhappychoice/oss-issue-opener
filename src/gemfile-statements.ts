@@ -28,7 +28,7 @@ export const readGemfileStatements = (onStatement: (tokens: string[]) => void) =
     current.push(token);
     if ((token === 'do' || token === 'end') && depth === 0) finish();
   };
-  return { push, finish };
+  return { push, finish, currentTokens: () => current };
 };
 
 export const gemfileScopeKind = (tokens: string[]): 'isolated' | 'block' | 'shared' | undefined => {

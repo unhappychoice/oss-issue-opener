@@ -265,20 +265,27 @@ other = 12 / 4`;
 });
 
 for (const command of ['puts', 'warn']) {
-  test(`keeps local ${command} division separate from the following gem path`, () => {
-    const gemfile = `group :test do
+  for (const assignment of [
+    `${command} = 12`,
+    `${command}, count = 12, 1`,
+    `count, ${command}, other = 1, 12, 2`,
+    `${command}, count=([12, 1])`,
+  ]) {
+    test(`keeps division after ${assignment} separate from the following gem path`, () => {
+      const gemfile = `group :test do
   module TestHelpers
     class TestHelper; end
   end
   gem 'rspec'
 end
-${command} = 12
+${assignment}
 ${command} /2
 gem 'rack', path: '/rack'`;
 
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
+  }
 
   for (const separateScope of ['helper do', 'class Helpers', 'module Helpers', 'def helper']) {
     test(`recognizes a ${command} regexp after a local assignment in ${separateScope}`, () => {
@@ -311,6 +318,22 @@ group :test do
 end
 gem 'rack', path: '/rack'`;
 
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('recognizes a command regexp after the command name appears in an argument list', () => {
+  const gemfile = `record(puts, count = 12)
+group :test do
+  puts /first
+end
+gem 'ignored'
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });

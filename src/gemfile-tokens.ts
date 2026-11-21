@@ -26,6 +26,12 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if ((token === '=' && !/[=~>]/.test(content[pattern.lastIndex] ?? '')) || /^\w+=$/.test(token)) {
+      const targets = [...statements.currentTokens(), token.slice(0, -1)].join(' ').trimEnd();
+      if (/^[a-zA-Z_]\w*(?: , [a-zA-Z_]\w*)+$/.test(targets)) {
+        targets.split(' , ').filter((name) => regexpCommands.has(name)).forEach((name) => scopes.at(-1)!.add(name));
+      }
+    }
     const commandName = token.replace(/=$/, '');
     if (regexpCommands.has(commandName)) {
       const qualifier = tokens[previousSignificantToken(tokens, tokens.length - 1)];
