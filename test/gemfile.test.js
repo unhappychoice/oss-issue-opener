@@ -189,9 +189,12 @@ const namespaceDefinitions = [
   'module TestHelpers\n  class TestHelper < Object\n  end\nend',
   'result = class TestHelper; end',
   'result = module TestHelpers; end',
+  'result ||= class TestHelper\n  end',
+  'result &&= module TestHelpers; end',
   'class <<self; end',
   'class << self; end',
   'result = class <<self; end',
+  'result ||= class <<self; end',
   'class <<self\n=begin\nend\ngem "ignored"\n=end\nend',
 ];
 

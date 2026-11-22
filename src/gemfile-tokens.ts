@@ -73,7 +73,7 @@ const opensSingletonClass = (tokens: string[]): boolean => {
   const index = previousSignificantToken(tokens, tokens.length - 1);
   if (tokens[index] !== 'class') return false;
   const previous = tokens[previousSignificantToken(tokens, index - 1)] ?? '\n';
-  return ['\n', ';', '=', 'do'].includes(previous);
+  return ['\n', ';', '=', 'do'].includes(previous) || isCompoundAssignment(previous);
 };
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);

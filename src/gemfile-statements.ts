@@ -166,7 +166,7 @@ const declaresParameter = (args: string[], name: string): boolean => {
 
 const opensNamespace = (tokens: string[]): boolean =>
   tokens.some((token, index) => (token === 'class' || token === 'module') &&
-    (index === 0 || tokens[index - 1] === '='));
+    (index === 0 || tokens[index - 1] === '=' || isCompoundAssignment(tokens[index - 1])));
 
 const isEndlessMethod = (tokens: string[]): boolean => {
   let depth = 0;
