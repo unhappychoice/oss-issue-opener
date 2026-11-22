@@ -263,9 +263,11 @@ gem 'rack'`;
   });
 });
 
-test('ignores Gemfile statements inside a multiline regexp passed to warn', () => {
-  const gemfile = `group :test do
-  warn /first
+['warn', 'puts'].forEach((command) => {
+  test(`ignores Gemfile statements inside a multiline regexp passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} == nil
+  ${command} /first
 class Pattern
 gem "ignored"
 last/
@@ -273,9 +275,24 @@ last/
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+
+  test(`preserves Gemfile scopes after compact division of a local named ${command}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${command === 'warn' ? 'warn = 4' : 'puts=(4)'}
+    ${command} /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('preserves Gemfile scopes after compact division of an instance variable', () => {

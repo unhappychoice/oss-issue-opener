@@ -2,12 +2,15 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const assignedCommands = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    const assignment = assignedRegexpCommand(tokens, token, content[pattern.lastIndex]);
+    if (assignment) assignedCommands.add(assignment);
     if (((token === '/' || token === '%') && expectsExpression(tokens)) ||
-      (token === '/' && expectsWarnRegexp(tokens, content[pattern.lastIndex]))) {
+      (token === '/' && expectsCommandRegexp(tokens, content[pattern.lastIndex], assignedCommands))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -47,13 +50,35 @@ const expectsExpression = (tokens: string[]): boolean => {
   return /^(?:!|and|or|do|if|elsif|unless|when|return)$/.test(token) && !['.', '@', '$'].includes(preceding);
 };
 
-const expectsWarnRegexp = (tokens: string[], nextCharacter: string | undefined): boolean => {
+const expectsCommandRegexp = (
+  tokens: string[],
+  nextCharacter: string | undefined,
+  assignedCommands: ReadonlySet<string>,
+): boolean => {
   if (!nextCharacter || /\s/.test(nextCharacter) || !isSpacing(tokens.at(-1) ?? '')) return false;
-  const commandIndex = previousSignificantToken(tokens, tokens.length - 1);
-  if (tokens[commandIndex] !== 'warn') return false;
-  const preceding = tokens[previousSignificantToken(tokens, commandIndex - 1)];
-  return preceding === undefined || ['\n', ';', 'do'].includes(preceding);
+  const command = bareRegexpCommand(tokens);
+  return command !== undefined && !assignedCommands.has(command);
 };
+
+const assignedRegexpCommand = (tokens: string[], token: string, next: string | undefined): string | undefined => {
+  if (token === '=' && next !== '=' && next !== '~') return bareRegexpCommand(tokens);
+  if ((token === 'warn=' || token === 'puts=') && followsStatementBoundary(tokens, tokens.length - 1)) {
+    return token.slice(0, -1);
+  }
+  return undefined;
+};
+
+const bareRegexpCommand = (tokens: string[]): string | undefined => {
+  const commandIndex = previousSignificantToken(tokens, tokens.length - 1);
+  const command = tokens[commandIndex];
+  if ((command === 'warn' || command === 'puts') && followsStatementBoundary(tokens, commandIndex - 1)) {
+    return command;
+  }
+  return undefined;
+};
+
+const followsStatementBoundary = (tokens: string[], index: number): boolean =>
+  ['\n', ';', 'do'].includes(tokens[previousSignificantToken(tokens, index)] ?? '\n');
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
