@@ -55,7 +55,7 @@ const regexpAllowedAfter = (tokens: string[]): boolean => {
 
 const expectsRegexp = (token = '\n', preceding?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
-  (preceding !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
+  (preceding !== '.' && /^(?:!|do|if|elsif|unless|return)$/.test(token));
 
 const previousSignificantToken = (tokens: string[], index: number): number => {
   while (index >= 0 && isSpacing(tokens[index])) index--;

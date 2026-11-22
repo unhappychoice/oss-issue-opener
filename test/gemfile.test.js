@@ -251,7 +251,7 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['receiver.if', 'receiver&.unless', 'receiver::elsif'].forEach((call) => {
+['receiver.if', 'receiver&.unless', 'receiver::elsif', 'receiver.return'].forEach((call) => {
   test(`preserves production gems after division following ${call}`, () => {
     const gemfile = `ratio = ${call} / 2
 gem 'rack', path: '/rack'`;
@@ -272,6 +272,21 @@ gem 'rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['/first\nclass Phantom\nlast/', '%r{first\nmodule Phantom\nlast}'].forEach((literal) => {
+  test(`keeps Gemfile scopes intact across return ${literal}`, () => {
+    const gemfile = `group :test do
+  def matcher
+    return ${literal}
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [
