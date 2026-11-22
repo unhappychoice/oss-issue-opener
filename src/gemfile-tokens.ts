@@ -8,14 +8,16 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const commandLocals = new Set<string>();
+  const scopes: CommandScope[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
+    const scope = trackCommandScope(scopes, token, tokens);
     const parameters = token === 'def' ? methodParameters : token === 'for' ? loopTargets :
-      token === 'do' || token === '{' ? blockParameters : undefined;
+      scope ? blockParameters : undefined;
     if (parameters) {
       parameters.lastIndex = pattern.lastIndex;
-      parameters.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => commandLocals.add(name));
+      parameters.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => (scope ?? commandLocals).add(name));
     }
     if (token === '=' || token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
@@ -26,7 +28,7 @@ export const gemfileTokens = (content: string): string[] => {
           recordAssignmentLocals(tokens, previous, commandLocals);
         }
       } else if (expectsLiteral(name ?? '\n', qualifier) ||
-          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, commandLocals) &&
+          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, commandLocals, scopes) &&
             startsCommandRegexp(content, match.index))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
@@ -66,10 +68,34 @@ const startsCommandRegexp = (content: string, start: number): boolean =>
 
 const isCommandName = (token?: string): token is string => /^[A-Za-z_]\w*[!?]?$/.test(token ?? '');
 
-const canTakeCommandRegexp = (name: string, qualifier: string | undefined, locals: Set<string>): boolean =>
+const canTakeCommandRegexp = (
+  name: string, qualifier: string | undefined, locals: Set<string>, scopes: CommandScope[],
+): boolean =>
   qualifier === '.' ||
-  (!['@', '$'].includes(qualifier ?? '') && !locals.has(name) &&
+  (!['@', '$'].includes(qualifier ?? '') && !locals.has(name) && !scopes.some(({ parameters }) => parameters.has(name)) &&
     !/^(?:true|false|nil|self|__FILE__|__LINE__|__ENCODING__|end)$/.test(name));
+
+type CommandScope = { closer: 'end' | '}'; parameters: Set<string>; loopHeader?: boolean };
+
+const trackCommandScope = (scopes: CommandScope[], token: string, tokens: string[]): Set<string> | undefined => {
+  if (!/^(?:do|end|[{};\n]|class|module|def|if|unless|case|begin|while|until|for)$/.test(token)) return;
+  const scope = scopes.at(-1);
+  const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)];
+  if (previous === '.' || previous === '@' || previous === '$') return;
+  if (scope?.closer === token) {
+    scopes.pop();
+  } else if (scope?.loopHeader && ['do', '\n', ';'].includes(token)) {
+    scope.loopHeader = false;
+  } else if (token === '{' || token === 'do') {
+    const parameters = new Set<string>();
+    scopes.push({ closer: token === '{' ? '}' : 'end', parameters });
+    return parameters;
+  } else if (/^(?:class|module|def|if|unless|case|begin|while|until|for)$/.test(token) &&
+    ['\n', ';', '=', 'do', '{', '('].includes(previous ?? '\n')) {
+    scopes.push({ closer: 'end', parameters: new Set(), loopHeader: /^(?:while|until|for)$/.test(token) });
+  }
+  return undefined;
+};
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
   tokens[index] === 'class' &&

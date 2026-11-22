@@ -329,6 +329,29 @@ test('preserves production gems after compact division of block parameters', () 
   });
 });
 
+test('recognizes command regexps after block parameters go out of scope', () => {
+  const blocks = [
+    'items.each do |warn|\n  warn /2\nend',
+    'items.each { |warn| warn /2 }',
+    'items.each do |warn|\n  while ready do\n    consume({ value: warn /2 })\n  end\n  warn /2\nend',
+    'items.each do |warn|\n  until ready\n    warn /2\n  end\nend',
+  ];
+
+  blocks.forEach((block) => {
+    const gemfile = `${block}
+group :test do
+  warn /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, block);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, block);
+  });
+});
+
 test('preserves group exclusions and production gems after compact division of for loop targets', () => {
   ['amount in [8]', 'index, amount in [[0, 8]]'].forEach((header) => {
     const gemfile = `group :test do
