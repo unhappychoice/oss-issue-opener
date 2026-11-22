@@ -13,9 +13,8 @@ export const gemfileTokens = (content: string): string[] => {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previousIndex = previousSignificantToken(tokens, index - 1);
       const previous = tokens[previousIndex];
-      const commandRegexp = (token === '/' || token === '%') &&
-        opensCommandRegexp(content, match.index, tokens, index, previousIndex);
-      if (expectsRegexp(tokens[index], previous) || commandRegexp) {
+      if (expectsRegexp(tokens[index], previous) || ((token === '/' || token === '%') &&
+        opensCommandRegexp(content, match.index, tokens, index, previousIndex))) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
           : rubyLiteralEnd(content, match.index, tokenPattern);
@@ -58,9 +57,11 @@ const opensCommandRegexp = (
   const command = tokens[index];
   const startsRegexp = content.startsWith('%r', start) ||
     (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
-  return startsRegexp && ['warn', 'puts', 'print', 'p', 'abort'].includes(command) && index < tokens.length - 1 &&
-    (previous === '.' ||
-      (['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), command)));
+  if (!startsRegexp || !/^[A-Za-z_]\w*[!?]?$/.test(command) || index === tokens.length - 1) return false;
+  if (previous === '.') return true;
+  return ['\n', ';', 'do'].includes(previous) &&
+    !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(command) &&
+    !hasGemfileBinding(tokens.slice(0, index), command);
 };
 
 const opensSingletonClass = (tokens: string[]): boolean => {
