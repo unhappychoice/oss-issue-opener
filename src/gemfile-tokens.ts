@@ -13,11 +13,11 @@ export const gemfileTokens = (content: string): string[] => {
       const name = tokens[previous];
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       if (token === '=') {
-        if (isRegexpCommand(name) && !['.', '@', '$'].includes(qualifier) && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
+        if (isCommandName(name) && !['.', '@', '$'].includes(qualifier) && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
           commandLocals.add(name);
         }
       } else if (expectsLiteral(name ?? '\n', qualifier) ||
-          (token === '/' && isRegexpCommand(name) && (qualifier === '.' || !commandLocals.has(name)) &&
+          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, commandLocals) &&
             startsCommandRegexp(content, match.index))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
@@ -55,7 +55,12 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 const startsCommandRegexp = (content: string, start: number): boolean =>
   /[^\S\r\n]/.test(content[start - 1] ?? '') && /\S/.test(content[start + 1] ?? '');
 
-const isRegexpCommand = (token?: string): token is 'puts' | 'warn' => token === 'puts' || token === 'warn';
+const isCommandName = (token?: string): token is string => /^[A-Za-z_]\w*[!?]?$/.test(token ?? '');
+
+const canTakeCommandRegexp = (name: string, qualifier: string | undefined, locals: Set<string>): boolean =>
+  qualifier === '.' ||
+  (!['@', '$'].includes(qualifier ?? '') && !locals.has(name) &&
+    !/^(?:true|false|nil|self|__FILE__|__LINE__|__ENCODING__|end)$/.test(name));
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
   tokens[index] === 'class' &&

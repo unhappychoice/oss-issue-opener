@@ -266,6 +266,8 @@ gem 'rack'`;
 });
 
 const regexpBodies = [
+  'check /prefix\nclass RegexText\nsuffix/',
+  'receiver.check /prefix\nmodule RegexText\nsuffix/i',
   'warn /prefix\nclass RegexText\nsuffix/',
   'warn = 8; warn / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'puts /prefix\nclass RegexText\nsuffix/',
@@ -291,9 +293,17 @@ const regexpBodies = [
   'ratio = receiver.if / 2\nclass TestHelper\nend\nratio / 2',
 ];
 
-test('preserves production gems after compact division of command-named locals', () => {
-  ['puts', 'warn'].forEach((name) => {
+test('preserves production gems after compact division of local variables', () => {
+  ['puts', 'warn', 'check'].forEach((name) => {
     const gemfile = `${name} = 8\n${name} /2\ngem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves production gems after compact division of non-command operands', () => {
+  ['self', '@value', '$value', '8'].forEach((operand) => {
+    const gemfile = `${operand} /2\ngem 'rack', path: '/rack'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
