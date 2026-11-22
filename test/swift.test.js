@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { swiftDependencies } from '../dist/swift.js';
+import { packageIdentifiers, swiftDependencies } from '../dist/swift.js';
 
 const measureParsing = (count) => {
   const names = Array.from({ length: count }, (_, index) => `package-${index}`);
@@ -41,6 +41,32 @@ test('Swift parsing avoids token array copies and scales linearly with declarati
       assert.equal(argumentChecks, measurements[index - 1].argumentChecks * 2);
     }
   });
+});
+
+test('Swift package scanning reads a bounded number of tokens per nested call', () => {
+  for (const depth of [128, 256, 512]) {
+    const names = Array.from({ length: depth }, (_, index) => `package-${index}`);
+    const openings = names.flatMap((name) => ['.', 'package', '(', 'id', ':', `"${name}"`, ',']);
+    for (const closings of [[], Array(depth).fill(')')]) {
+      let reads = 0;
+      const tokens = new Proxy([...openings, ...closings], {
+        get(target, key, receiver) {
+          if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+          return Reflect.get(target, key, receiver);
+        },
+      });
+      assert.deepEqual([...packageIdentifiers(tokens)], names);
+      assert.ok(reads <= 4 * tokens.length, `${reads} token reads at depth ${depth}`);
+    }
+  }
+});
+
+test('Swift extracts direct arguments from outer and nested package calls', () => {
+  const content = `
+    .package(wrap(id: "ignored", .package(path: "../Inner/")), url: "https://example.com/Outer.git")
+    .package(name: "Alias", id: "Registry.Library")
+  `;
+  assert.deepEqual([...swiftDependencies(content)], ['outer', 'inner', 'alias', 'registry.library']);
 });
 
 test('Swift finds a dependency after deeply nested string interpolation', () => {

@@ -1,9 +1,32 @@
-export const swiftDependencies = (content: string): Set<string> => {
-  const tokens = swiftTokens(content);
-  return new Set(tokens.flatMap((token, index) =>
-    token === '.' && tokens[index + 1] === 'package' && tokens[index + 2] === '('
-      ? packageIdentifiers(tokens, index + 3) : []
-  ));
+export const swiftDependencies = (content: string): Set<string> =>
+  packageIdentifiers(swiftTokens(content));
+
+export const packageIdentifiers = (tokens: readonly string[]): Set<string> => {
+  const calls: string[][] = [];
+  const active: { depth: number; identifiers: string[] }[] = [];
+  let depth = 0;
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token === '(') {
+      depth++;
+      if (tokens[index - 2] === '.' && tokens[index - 1] === 'package') {
+        const identifiers: string[] = [];
+        calls.push(identifiers);
+        active.push({ depth, identifiers });
+      }
+      continue;
+    }
+    const call = active.at(-1);
+    if (token === ')') {
+      if (call?.depth === depth) active.pop();
+      depth--;
+    } else if (call?.depth === depth) {
+      const identifier = packageIdentifier(tokens, index, token);
+      if (identifier !== undefined) call.identifiers.push(identifier);
+    }
+  }
+  // Keep identifiers in call-opening order, even when a nested call closes first.
+  return new Set(calls.flat());
 };
 
 const swiftTokens = (content: string): string[] => {
@@ -108,24 +131,13 @@ const swiftTokenReader = (content: string): ((index: number) => string) => {
   return readToken;
 };
 
-const packageIdentifiers = (tokens: string[], start: number): string[] => {
-  const identifiers: string[] = [];
-  let depth = 1;
-  for (let index = start; index < tokens.length; index++) {
-    const token = tokens[index];
-    if (token === '(') depth++;
-    if (token === ')') depth--;
-    if (depth === 0) break;
-    if (depth !== 1 || !['name', 'url', 'path', 'id'].includes(token)) continue;
-    if (tokens[index + 1] !== ':') continue;
-    const literal = staticStringValue(tokens[index + 2] ?? '');
-    if (literal === undefined) continue;
-    if (![',', ')'].includes(tokens[index + 3])) continue;
-    const identity = token === 'url' || token === 'path'
-      ? literal.replace(/\/+$/, '').split('/').pop()!.replace(/\.git$/i, '') : literal;
-    identifiers.push(identity.toLowerCase());
-  }
-  return identifiers;
+const packageIdentifier = (tokens: readonly string[], index: number, label: string): string | undefined => {
+  if (!['name', 'url', 'path', 'id'].includes(label) || tokens[index + 1] !== ':') return undefined;
+  const literal = staticStringValue(tokens[index + 2] ?? '');
+  if (literal === undefined || ![',', ')'].includes(tokens[index + 3])) return undefined;
+  const identity = label === 'url' || label === 'path'
+    ? literal.replace(/\/+$/, '').split('/').pop()!.replace(/\.git$/i, '') : literal;
+  return identity.toLowerCase();
 };
 
 const staticStringValue = (token: string): string | undefined => {
