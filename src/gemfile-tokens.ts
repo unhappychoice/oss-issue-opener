@@ -9,7 +9,8 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const previous = previousSignificantToken(tokens, tokens.length - 1);
-    if (opensGemfileLiteral(token, tokens[previous])) {
+    const beforePrevious = previousSignificantToken(tokens, previous - 1);
+    if (opensGemfileLiteral(token, tokens[previous], tokens[beforePrevious])) {
       const end = rubyLiteralEnd(content, match.index, pattern);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));

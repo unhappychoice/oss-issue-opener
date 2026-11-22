@@ -1,6 +1,6 @@
-export const opensGemfileLiteral = (token: string, previous = '\n'): boolean => {
+export const opensGemfileLiteral = (token: string, previous = '\n', beforePrevious?: string): boolean => {
   if (token === '`') return !['.', ':', 'def'].includes(previous);
-  return (token === '/' || token === '%') &&
+  return (token === '/' || token === '%') && beforePrevious !== '.' &&
     /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|do|if|elsif|unless|case|when|then|return)$/.test(previous);
 };
 
@@ -57,6 +57,7 @@ const literalEnd = (
 
 const interpolationEnd = (content: string, start: number, expression: RegExp): number | undefined => {
   let previous = '{';
+  let beforePrevious: string | undefined;
   let depth = 1;
   let offset = start;
   while (offset < content.length) {
@@ -68,14 +69,16 @@ const interpolationEnd = (content: string, start: number, expression: RegExp): n
     if (token.startsWith('#') || token.startsWith('=begin') || /^(?:[^\S\n]+|\\\r?\n)$/.test(token)) continue;
     if (token === '{') depth++;
     if (token === '}' && --depth === 0) return offset;
-    if (opensGemfileLiteral(token, previous)) {
+    if (opensGemfileLiteral(token, previous, beforePrevious)) {
       const end = rubyLiteralEnd(content, tokenStart, expression);
       if (end !== undefined) {
         offset = end;
+        beforePrevious = previous;
         previous = '';
         continue;
       }
     }
+    beforePrevious = previous;
     previous = token;
   }
   return undefined;
