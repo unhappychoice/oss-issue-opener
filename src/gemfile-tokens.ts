@@ -25,7 +25,7 @@ export const gemfileTokens = (content: string): string[] => {
       classHeader = token === 'class' && namespaceStart.test(previous);
       regexpCommand = false;
       scopes.read(singletonClass ? '<<' : token, previous);
-      if (regexpCommands.has(token) && previous !== '.') {
+      if (commandName.test(token) && !/^[.@$]$/.test(previous)) {
         if (localBindingFollows(content, pattern.lastIndex)) scopes.locals.add(token);
         regexpCommand = !scopes.locals.has(token);
       }
@@ -113,7 +113,7 @@ class LocalScopes {
   }
 }
 
-const regexpCommands = new Set(['warn', 'puts']);
+const commandName = /^(?!(?:end|false|nil|self|true|__FILE__|__LINE__|__ENCODING__)$)[a-z_]\w*[!?]?$/;
 const namespaceStart = /^(?:\n|;|=|do|\(|\{|then)$/;
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;

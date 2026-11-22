@@ -238,7 +238,7 @@ gem 'rack'`;
   });
 });
 
-['warn', 'puts'].forEach((command) => {
+['warn', 'puts', 'log_pattern'].forEach((command) => {
   test(`preserves group boundaries after division with a local named ${command}`, () => {
     const gemfile = `group :test do
   class TestHelper
