@@ -116,7 +116,7 @@ release investigation if it found a baseline and reached the head lookup.
 
 Both test commands compile `src/` into `dist/` and run the Node.js test suite,
 whose tests import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
-runs `npm run lint`, `npm run test:coverage` on pull requests and pushes to `main`, enforcing the
+runs `npm run lint`, `npm run format:check`, `npm run test:coverage` on pull requests and pushes to `main`, enforcing the
 coverage thresholds defined in [package.json](../package.json). The
 [weekly workflow](../.github/workflows/weekly.yml) runs `npm test` followed by
 `npm run start`.
