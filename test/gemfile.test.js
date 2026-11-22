@@ -492,3 +492,53 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true, method);
   });
 });
+
+test('recognizes command regexps after class and module locals go out of scope', () => {
+  const headers = ['module Helpers', 'class Helper', 'class <<self', 'result = module Helpers'];
+
+  headers.forEach((header) => {
+    const gemfile = `group :test do
+  ${header}
+    warn = 8
+    warn /2
+  end
+  warn /[(]/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true, header);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, header);
+  });
+});
+
+test('recognizes command regexps inside namespace bodies despite enclosing locals', () => {
+  const gemfile = `warn = 8
+group :test do
+  module Helpers
+    warn = 4
+    class Helper
+      warn /[(]/
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+});
+
+test('uses enclosing locals in class header expressions', () => {
+  const gemfile = `warn = 8
+class Helper < superclass(
+  warn /2, '/path'
+); warn /[(]/; end
+class <<receiver(warn /2, '/path'); warn /[(]/; end
+gem 'rack'`;
+
+  const statements = gemfileStatements(gemfile);
+  assert.deepEqual(statements[1], ['class', 'Helper', '<', 'superclass', '(', 'warn', '/', '2', ',', "'/path'", ')']);
+  assert.deepEqual(statements[4], ['class', '<<', 'receiver', '(', 'warn', '/', '2', ',', "'/path'", ')']);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

@@ -12,13 +12,13 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     const scope = trackCommandScope(scopes, token, tokens);
-    const methodIndex = currentMethodIndex(scopes);
-    const method = scopes[methodIndex];
-    const locals = method?.parameters ?? commandLocals;
+    const localScopeIndex = currentLocalScopeIndex(scopes);
+    const localScope = scopes[localScopeIndex];
+    const locals = localScope?.parameters ?? commandLocals;
     if (scope?.method) {
       beginMethodHeader(scope, content, pattern.lastIndex);
-    } else if (method?.header && match.index >= method.header.offset) {
-      advanceMethodHeader(method, method.header, token, content, pattern.lastIndex);
+    } else if (localScope?.header && match.index >= localScope.header.offset) {
+      advanceMethodHeader(localScope, localScope.header, token, content, pattern.lastIndex);
     }
     const parameters = token === 'for' ? loopTargets :
       scope && !scope.method ? blockParameters : undefined;
@@ -35,7 +35,7 @@ export const gemfileTokens = (content: string): string[] => {
           recordAssignmentLocals(tokens, previous, locals);
         }
       } else if (expectsLiteral(name ?? '\n', qualifier) ||
-          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, locals, scopes.slice(methodIndex + 1)) &&
+          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, locals, scopes.slice(localScopeIndex + 1)) &&
             startsCommandRegexp(content, match.index))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
@@ -140,11 +140,13 @@ type CommandScope = {
   method?: boolean;
   header?: MethodHeader;
   endlessDepth?: number;
+  namespaceHeaderDepth?: number;
+  namespaceBody?: boolean;
 };
 
-const currentMethodIndex = (scopes: CommandScope[]): number => {
+const currentLocalScopeIndex = (scopes: CommandScope[]): number => {
   let index = scopes.length - 1;
-  while (index >= 0 && !scopes[index].method) index--;
+  while (index >= 0 && !scopes[index].method && !scopes[index].namespaceBody) index--;
   return index;
 };
 
@@ -153,6 +155,7 @@ const trackCommandScope = (scopes: CommandScope[], token: string, tokens: string
   const scope = scopes.at(-1);
   const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)];
   if (previous === '.' || previous === '@' || previous === '$') return;
+  if (scope?.namespaceHeaderDepth !== undefined) advanceNamespaceHeader(scope, scope.namespaceHeaderDepth, token, previous);
   if (scope?.endlessDepth !== undefined) {
     if (token === '(' || token === '[') scope.endlessDepth++;
     if (token === ')' || token === ']') scope.endlessDepth--;
@@ -174,10 +177,20 @@ const trackCommandScope = (scopes: CommandScope[], token: string, tokens: string
       loopHeader: /^(?:while|until|for)$/.test(token),
       method: token === 'def',
     };
+    if (token === 'class' || token === 'module') block.namespaceHeaderDepth = 0;
     scopes.push(block);
     if (block.method) return block;
   }
   return undefined;
+};
+
+const advanceNamespaceHeader = (scope: CommandScope, depth: number, token: string, previous?: string): void => {
+  if (token === '(' || token === '[') scope.namespaceHeaderDepth = depth + 1;
+  if (token === ')' || token === ']') scope.namespaceHeaderDepth = depth - 1;
+  if (depth === 0 && (token === ';' || (token === '\n' && previous !== '<' && previous !== '<<'))) {
+    delete scope.namespaceHeaderDepth;
+    scope.namespaceBody = true;
+  }
 };
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
