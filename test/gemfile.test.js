@@ -578,9 +578,10 @@ gem 'rack'`;
   });
 });
 
-test('preserves group exclusions around a multiline regexp after then', () => {
-  const gemfile = `group :test do
-  if true then /prefix
+[['a bare regexp', ''], ['a warn regexp argument', 'warn ']].forEach(([description, command]) => {
+  test(`preserves group exclusions around ${description} after then`, () => {
+    const gemfile = `group :test do
+  if true then ${command}/prefix
 class RegexText
 gem "ignored"
 suffix/
@@ -589,9 +590,10 @@ suffix/
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
 });
 
 test('preserves group exclusions around a multiline regexp after not', () => {
@@ -626,6 +628,8 @@ ratio = warn /2
 gem 'rails'
 warn /2
 gem 'json'
+if true then warn /2; end
+gem 'nokogiri'
 matcher = /suffix/`;
 
   assert.equal(isProductionGem(gemfile, 'ignored'), false);
@@ -634,6 +638,7 @@ matcher = /suffix/`;
   assert.equal(isProductionGem(gemfile, 'rake'), true);
   assert.equal(isProductionGem(gemfile, 'rails'), true);
   assert.equal(isProductionGem(gemfile, 'json'), true);
+  assert.equal(isProductionGem(gemfile, 'nokogiri'), true);
 });
 
 test('recognizes division after a compact local assignment with a parenthesized value', () => {

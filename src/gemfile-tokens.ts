@@ -63,7 +63,7 @@ const opensCommandLiteral = (
     (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
   if (!startsLiteral || !/^[A-Za-z_]\w*[!?]?$/.test(command) || index === tokens.length - 1) return false;
   if (previous === '.' || previous === '::') return true;
-  return ['\n', ';', 'do'].includes(previous) &&
+  return ['\n', ';', 'do', 'then'].includes(previous) &&
     !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(command) &&
     !hasGemfileBinding(tokens.slice(0, index), command);
 };
