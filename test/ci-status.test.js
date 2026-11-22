@@ -111,6 +111,39 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
   });
 });
 
+[
+  { expected: 'success' },
+  { expected: 'pending', lastStatus: 'in_progress' },
+  { expected: 'no-ci', codecovOnly: true },
+  { expected: 'incomplete', failLater: true },
+  { expected: 'failure', failLater: true, conclusion: 'failure' },
+].forEach(({ expected, lastStatus = 'completed', codecovOnly, failLater, conclusion = 'success' }) => {
+  test(`aggregates multiple check run pages as ${expected}`, async () => {
+    const client = getOctokit();
+    const pageError = new Error('Later check run page unavailable');
+    const statuses = expected === 'failure' ? [{ state: 'error', context: 'lint' }] : [];
+    mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses } }));
+    mock.method(client.paginate, 'iterator', async function* () {
+      yield { data: [
+        { name: 'CodeCov/project', status: 'completed', conclusion: 'failure' },
+        ...(!codecovOnly ? [{ name: 'build', status: 'completed', conclusion, html_url: checkUrl }] : []),
+      ] };
+      yield { data: [{ name: codecovOnly ? 'codecov/patch' : 'test', status: lastStatus, conclusion: 'success' }] };
+      if (failLater) throw pageError;
+    });
+
+    assert.deepEqual(await checkCIStatus('owner', 'repo'), {
+      status: expected,
+      failedChecks: expected === 'failure' ? [
+        { name: 'lint', source: 'status', url: '' },
+        { name: 'build', source: 'check', url: checkUrl },
+      ] : [],
+      ...(expected === 'success' ? { recovery: { sha, passedChecks: [] } } : {}),
+      ...(failLater ? { endpointErrors: [pageError] } : {}),
+    });
+  });
+});
+
 test('evaluates the same commit when the default branch advances between CI lookups', async () => {
   const client = getOctokit();
   const nextSha = 'b'.repeat(40);
