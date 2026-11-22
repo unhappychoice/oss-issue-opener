@@ -266,3 +266,44 @@ gem 'rack', path: '/.rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  'matcher = /prefix\nclass RegexText\nend\\/suffix/',
+  'matcher = /prefix\nmodule RegexText\nsuffix/',
+  'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
+  '/prefix\nclass RegexText\nsuffix/',
+  '! /prefix\nclass RegexText\nsuffix/',
+  'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
+  'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
+  'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : nil',
+  'matcher = enabled ? nil : /prefix\nclass RegexText\nsuffix/',
+  "matcher = enabled ? 8 / 2 : 6 / 3\nclass TestHelper\nend",
+  "character = ?/\nclass TestHelper\nend\nratio = 8 / 2",
+  "character = ?: / 2\nclass TestHelper\nend\nratio = 8 / 2",
+  'matcher = /#{ %q!}!.ord / 2 }/',
+  'matcher = /prefix#{%q!}/!}\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{%Q!#{%q!}/!}!}\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{%!}/!}\nclass RegexText\nsuffix/',
+  'matcher = cached || %r!prefix\nmodule RegexText\nsuffix!',
+  'matcher = %r!prefix\\!\nclass RegexText\nsuffix!i',
+  '!%r{prefix{2}#{ { "}" => 8 }["}"] / 2 }\nmodule RegexText\nsuffix}',
+  'matcher = %r#prefix\nclass RegexText\nsuffix#',
+  'matcher = %r\\prefix\nclass RegexText\nsuffix\\',
+  'matcher = %r prefix\nclass RegexText\nsuffix ',
+  'ratio = 8%r!\nclass TestHelper\nend\nratio % r!',
+  'if /prefix\nclass RegexText\nsuffix/\n  true\nend',
+  'if false\n  false\nelsif /prefix\nmodule RegexText\nsuffix/\n  true\nend',
+  'unless /prefix\nclass RegexText\nsuffix/\n  true\nend',
+  'ratio = 8 / 2\nclass TestHelper\nend\nratio / 2',
+].forEach((expression) => {
+  test(`preserves Gemfile group boundaries around ${expression}`, () => {
+    const gemfile = `group :test do
+${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
