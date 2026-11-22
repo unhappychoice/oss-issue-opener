@@ -34,9 +34,10 @@ const bumps = Array.from({ length: 100 }, (_, index) => ({
 }));
 const messages = bumps.map(({ pkg, from, to }) => `Bump ${pkg} from ${from} to ${to}`);
 
-test('Gradle resolves production catalog accessors and reads the catalog once', async () => {
+test('Gradle finds direct and catalog dependencies and reads the catalog once', async () => {
   const calls = stubRepository({
     'build.gradle': `dependencies {
+      implementation("org.example:direct:1.0")
       api libs.example.core
       implementation(platform(libs.example.bom))
       testImplementation(libs.example.test)
@@ -55,10 +56,20 @@ test('Gradle resolves production catalog accessors and reads the catalog once', 
     `,
   });
   const check = createDependencyChecker('owner', 'repo', 'kotlin');
-  assert.deepEqual(await Promise.all(['core', 'bom', 'test', 'invalid', 'missing'].map(
+  assert.deepEqual(await Promise.all(['direct', 'core', 'bom', 'test', 'invalid', 'missing'].map(
     (name) => check(`org.example:${name}`)
-  )), [true, true, false, false, false]);
+  )), [true, true, true, false, false, false]);
   assert.deepEqual(calls.map(({ path }) => path), ['build.gradle', 'gradle/libs.versions.toml']);
+});
+
+test('Gradle skips the catalog for direct-only scripts', async () => {
+  const calls = stubRepository({
+    'build.gradle': 'implementation("org.example:direct:1.0")',
+    'gradle/libs.versions.toml': '[libraries]\nunused = "org.example:unused:1.0"',
+  });
+  const check = createDependencyChecker('owner', 'repo', 'kotlin');
+  assert.equal(await check('org.example:direct'), true);
+  assert.deepEqual(calls.map(({ path }) => path), ['build.gradle']);
 });
 
 [['missing', {}], ['malformed', { 'gradle/libs.versions.toml': '[libraries' }]].forEach(([state, catalog]) => {

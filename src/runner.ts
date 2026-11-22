@@ -1,6 +1,7 @@
 import { getDefaultBranchHead, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
+import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, closeRecoveredCIAlerts, createIssuesInBatch, listCIAlerts } from './issue.js';
 import { ORGS, type CIStatus, type Repository, type PendingIssue } from './types.js';
 
@@ -8,21 +9,6 @@ const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, c
 type Dependencies = typeof defaultDependencies;
 
 const REPO_CONCURRENCY = 8;
-
-// Claims indices sequentially so call order stays deterministic, while a bounded number of
-// repositories are in flight at once instead of fully serialized.
-const mapWithConcurrency = async <T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> => {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-};
 
 export const runChecks = async (
   deps: Dependencies = defaultDependencies,
@@ -39,22 +25,18 @@ export const runChecks = async (
   for (const org of ORGS) {
     console.log(`\n━━━ Organization: ${org} ━━━`);
 
-    const repos: Repository[] = [];
+    const scan = createConcurrencyLimiter(REPO_CONCURRENCY);
+    const scans: Promise<PendingIssue[]>[] = [];
     await attempt(`${org}: repository investigation`, failures, async () => {
       for await (const repo of deps.listOrgRepos(org)) {
-        repos.push(repo);
+        scans.push(scan(() => attempt(
+          `${repo.fullName}: repository investigation`, failures, () => checkRepo(repo, deps, failures, recoveries), []
+        )));
       }
     });
-    console.log(`  Found ${repos.length} repositories`);
-
-    const issuesByRepo = await mapWithConcurrency(repos, REPO_CONCURRENCY, async (repo) => {
-      totalRepos++;
-      const issues: PendingIssue[] = [];
-      await attempt(`${repo.fullName}: repository investigation`, failures, async () => {
-        issues.push(...await checkRepo(repo, deps, failures, recoveries));
-      });
-      return issues;
-    });
+    console.log(`  Found ${scans.length} repositories`);
+    totalRepos += scans.length;
+    const issuesByRepo = await Promise.all(scans);
     allIssues.push(...issuesByRepo.flat());
   }
 
