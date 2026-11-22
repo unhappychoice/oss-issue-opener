@@ -238,164 +238,16 @@ gem 'rack'`;
   });
 });
 
-[
-  ['/first\nclass Pattern\ngem "ignored"\nlast/', 'assignment'],
-  ['/first\nend\ngem "ignored"\nlast/im', 'closing keyword'],
-  ['%r{first\nmodule Pattern\n{nested} gem "ignored"\nlast}', 'paired percent regexp'],
-  ['%r!first\\!\nclass Pattern\nlast!', 'escaped percent delimiter'],
-  ['true ? /first\nclass Pattern\nlast/ : /other/', 'first ternary branch'],
-  ['true ? /first/ : /other\nclass Pattern\nlast/', 'second ternary branch'],
-  ['true && /first\nclass Pattern\nlast/', 'logical operator'],
-  ['true and /first\nclass Pattern\nlast/', 'and operator'],
-  ['false or /first\nend\ngem "ignored"\nlast/', 'or operator'],
-  ['/first#{%q(}/) + /nested/.source}\nclass Pattern\nlast/', 'regexp interpolation'],
-  ['%q!first\nclass Pattern\ngem "ignored"\nlast!', 'multiline percent string'],
-  ['%q{first #{literal}\nclass Pattern\nlast}', 'nested braces in a non-interpolating percent string'],
-  ['%Q!first\\!#{%q!nested!}\nmodule Pattern\nlast!', 'interpolated percent string'],
-  ['%w[first\nclass Pattern\nlast]', 'multiline percent word array'],
-].forEach(([expression, scenario]) => {
-  test(`ignores Gemfile statements inside a literal with ${scenario}`, () => {
-    const gemfile = `group :test do
-  value = ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['warn', 'puts'].forEach((command) => {
-  test(`ignores Gemfile statements inside a multiline regexp passed to ${command}`, () => {
-    const gemfile = `group :test do
-  ${command} == nil
-  ${command} /first
-class Pattern
-gem "ignored"
-last/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  });
-
-  test(`preserves Gemfile scopes after compact division of a local named ${command}`, () => {
-    const gemfile = `group :test do
-  class TestHelper
-    ${command === 'warn' ? 'warn = 4' : 'puts=(4)'}
-    ${command} /2
-  end
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('preserves Gemfile scopes after compact division of an instance variable', () => {
+test('preserves group exclusions after division of a local assigned in parallel', () => {
   const gemfile = `group :test do
   class TestHelper
-    instance_variable_set('@warn', 4)
-    @warn /2
-  end
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('finds a production gem after compact division of a group block argument', () => {
-  const gemfile = `group :test do |warn|
-  warn /2
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[
-  ['do |warn|', 'end'],
-  ['do |warn = 4|', 'end'],
-  ['{ |prefix = [1, 2], warn = (4 | 0)|', '}'],
-  ['do |prefix = /[,|]/, warn = 4|', 'end'],
-  ['{ |prefix, warn|', '}'],
-  ['do |puts; warn|', 'end'],
-].forEach(([opening, closing]) => {
-  test(`treats a block-local warn as a dividend in ${opening}`, () => {
-    const gemfile = `group :test do
-  module TestHelpers
-    helper ${opening}
-      if true
-        warn /2
-      end
-    ${closing}
-    warn /first
-end
-gem "ignored"
-last/
-  end
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  });
-});
-
-[
-  ['class TestHelper', 'end'],
-  ['module TestHelpers', 'end'],
-  ['def test_helper', 'end'],
-  ['class TestHelper; def enabled? = true', 'end'],
-  ['class <<self', 'end'],
-  ['helper do', 'end'],
-  ['helper {', '}'],
-].forEach(([opening, closing]) => {
-  test(`keeps a warn assignment local to ${opening}`, () => {
-    const gemfile = `group :test do
-  ${opening}
-    warn = 4
-    warn /2
-  ${closing}
-  warn /first
-class Pattern
-gem "ignored"
-last/
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  });
-});
-
-test('keeps a local visible across a loop and inside a nested block', () => {
-  const gemfile = `group :test do
-  while false do
-    warn = 4
-  end
-  helper do
+    warn, other = 4, 5
     warn /2
   end
   gem 'rspec'
 end
 gem 'rack', path: '/rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });

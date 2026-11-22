@@ -1,4 +1,4 @@
-import { gemfileTokens, isEndlessMethod } from './gemfile-tokens.js';
+import { gemfileTokens } from './gemfile-tokens.js';
 import { rubyDependencyName } from './ruby.js';
 
 export const isProductionGem = (content: string, pkg: string): boolean =>
@@ -34,6 +34,16 @@ const opensNamespace = (tokens: string[]): boolean => {
 };
 
 const isNamespaceKeyword = (token?: string): boolean => token === 'class' || token === 'module';
+
+const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
+};
 
 const hasExcludedGroup = (tokens: string[]): boolean => {
   const groups = tokens.filter((token) => /^:\w+$|^['"]/.test(token));
