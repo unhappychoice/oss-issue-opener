@@ -346,6 +346,52 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  'class TestHelper',
+  'module TestHelpers',
+  'helper = class <<self',
+].forEach((opener) => {
+  test(`recognizes a regexp argument after leaving ${opener} with a warn local`, () => {
+    const gemfile = `group :test do
+  ${opener}
+    warn = 4
+    warn /2
+  end
+  warn /first
+class Fake
+gem "ignored"
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('isolates warn in a nested class and restores the enclosing module local', () => {
+  const gemfile = `group :test do
+  module TestHelpers
+    warn = 4
+    class TestHelper
+      warn /first
+module Fake
+gem "ignored"
+last/
+    end
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+});
+
 ['/first', '%r/first'].forEach((opening) => {
   test(`ignores scope keywords inside a multiline warn argument starting with ${opening}`, () => {
     const gemfile = `group :test do

@@ -36,6 +36,7 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (!isSpacing(token)) {
       const statementStart = /^(?:\n|;|do|\{|then|end)$/.test(previous);
+      const opensNamespace = (statementStart || previous === '=') && /^(?:class|module)$/.test(token);
       if (token === 'def' && statementStart) {
         const method = methodParameters(content, pattern.lastIndex);
         if (!method.endless) {
@@ -49,9 +50,10 @@ export const gemfileTokens = (content: string): string[] => {
         const closing = token === '{' ? '}' : 'end';
         scopes.push(bindsWarn ? { closing, warnIsLocal } : { closing });
         warnIsLocal ||= bindsWarn;
-      } else if (
-        statementStart && /^(?:if|unless|case|begin|while|until|for)$/.test(token) ||
-        (statementStart || previous === '=') && /^(?:class|module)$/.test(token)) {
+      } else if (opensNamespace) {
+        scopes.push({ closing: 'end', warnIsLocal });
+        warnIsLocal = false;
+      } else if (statementStart && /^(?:if|unless|case|begin|while|until|for)$/.test(token)) {
         scopes.push({ closing: 'end' });
       }
       if (statementStart) loopHeader = /^(?:while|until|for)$/.test(token);
@@ -61,7 +63,7 @@ export const gemfileTokens = (content: string): string[] => {
         warnIsLocal ||= previous === 'in' || startsAssignment(content, pattern.lastIndex);
       }
       warnArgumentExpected = token === 'warn' && !warnIsLocal && regexpExpected;
-      classHeader = token === 'class' && /^(?:\n|;|=|do|\{|then)$/.test(previous);
+      classHeader = opensNamespace && token === 'class';
       regexpExpected = expectsRegexpAfter(token, previous);
       previous = token;
     }
