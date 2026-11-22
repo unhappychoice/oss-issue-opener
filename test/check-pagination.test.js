@@ -1,10 +1,50 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { setTimeout } from 'node:timers/promises';
+import { setImmediate, setTimeout } from 'node:timers/promises';
 import { checkCIStatus } from '../dist/checker.js';
 import { getCheckRuns, getOctokit, initOctokit } from '../dist/github.js';
 
 const sha = 'a'.repeat(40);
+
+test('starts suite five while suite one is still paginating', async () => {
+  initOctokit('test-token');
+  const octokit = getOctokit();
+  const suiteIds = [1, 2, 3, 4, 5, 6, 7, 8];
+  const slowPageStarted = Promise.withResolvers();
+  const releaseSlowPage = Promise.withResolvers();
+  const started = [];
+  octokit.hook.wrap('request', async (_request, options) => {
+    const { url } = octokit.request.endpoint.parse(options);
+    const respond = (data, headers = {}) => ({ status: 200, url, headers, data });
+    const pageUrl = new URL(url);
+    if (pageUrl.pathname.endsWith('/check-suites')) {
+      return respond({ total_count: 1001, check_suites: suiteIds.map((id) => ({ id })) });
+    }
+
+    const [, suiteId] = pageUrl.pathname.match(/^\/repos\/owner\/repo\/check-suites\/(\d+)\/check-runs$/);
+    const page = pageUrl.searchParams.get('page') ?? '1';
+    if (page === '1') started.push(Number(suiteId));
+    if (suiteId === '1' && page === '2') {
+      slowPageStarted.resolve();
+      await releaseSlowPage.promise;
+    }
+    pageUrl.searchParams.set('page', '2');
+    return respond({
+      total_count: suiteId === '1' ? 2 : 1,
+      check_runs: [{ name: `${suiteId}-${page}`, status: 'completed', conclusion: 'success' }],
+    }, suiteId === '1' && page === '1' ? { link: `<${pageUrl}>; rel="next"` } : {});
+  });
+
+  const scan = Array.fromAsync(getCheckRuns('owner', 'repo', sha));
+  await Promise.race([slowPageStarted.promise, scan]);
+  await setImmediate();
+  const startedWhilePaginating = started.slice();
+  releaseSlowPage.resolve();
+  const results = await scan;
+  assert.ok(startedWhilePaginating.includes(5));
+  assert.deepEqual(results.flat().map(({ context }) => context),
+    ['1-1', '1-2', ...suiteIds.slice(1).map((id) => `${id}-1`)]);
+});
 
 test('shares four suite slots across repositories for the full pagination and yields runs in suite order', async () => {
   initOctokit('test-token');
