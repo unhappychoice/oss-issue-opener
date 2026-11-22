@@ -4,6 +4,7 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   const localNames = new Set<string>();
   const assignment = /[^\S\n]*(?:,[^\S\n]*[a-z_]\w*[^\S\n]*)*(?:,[^\S\n]*)?=(?!=|>|~)/y;
+  const blockParameters = /\s*\|([a-z_\w\s,;*&]*)\|/y;
   let previous = '\n';
   let previousIsLocal = false;
   let literalExpected = true;
@@ -39,6 +40,11 @@ export const gemfileTokens = (content: string): string[] => {
       if (previous !== '.' && /^[a-z_]\w*$/.test(token)) {
         assignment.lastIndex = pattern.lastIndex;
         if (assignment.test(content)) localNames.add(token);
+      }
+      if ((token === 'do' && previous !== '.') || token === '{') {
+        blockParameters.lastIndex = pattern.lastIndex;
+        const names = blockParameters.exec(content)?.[1];
+        names?.match(/[a-z_]\w*/g)?.forEach((name) => localNames.add(name));
       }
       previousIsLocal = previous !== '.' && localNames.has(token);
       previous = token;
