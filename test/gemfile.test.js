@@ -322,9 +322,15 @@ gem 'rack', path: '/rack'`;
 });
 
 test('preserves group exclusions after compact division of multiple assignment targets', () => {
-  const gemfile = `amount,
-  quantity, total = 8, 4, 2
-group :test do
+  const assignments = [
+    ['amount,\n  quantity, total = 8, 4, 2', ['amount', 'quantity', 'total']],
+    ['amount, *rest = 8, 4, 2', ['amount']],
+    ['*, amount = 4, 8', ['amount']],
+    ['amount, = 8, 4', ['amount']],
+    ['(amount, (\n  quantity, total,\n)) = [8, [4, 2]]', ['amount', 'quantity', 'total']],
+    ['amount, @rate, @@quantity, $total = 8, 4, 2, 1', ['amount']],
+  ];
+  const excludedGroup = `group :test do
   class TestHelper
   end
   module TestHelpers
@@ -332,10 +338,12 @@ group :test do
   gem 'rspec'
 end`;
 
-  ['amount', 'quantity', 'total'].forEach((name) => {
-    const withDivision = `${gemfile}\n${name} /2\ngem 'rack', path: '/rack'`;
-    assert.equal(isProductionGem(withDivision, 'rspec'), false);
-    assert.equal(isProductionGem(withDivision, 'rack'), true, name);
+  assignments.forEach(([assignment, names]) => {
+    names.forEach((name) => {
+      const gemfile = `${assignment}\n${excludedGroup}\n${name} /2\ngem 'rack', path: '/rack'`;
+      assert.equal(isProductionGem(gemfile, 'rspec'), false, assignment);
+      assert.equal(isProductionGem(gemfile, 'rack'), true, `${assignment}: ${name}`);
+    });
   });
 });
 

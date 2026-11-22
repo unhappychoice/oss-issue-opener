@@ -147,27 +147,50 @@ const recordAssignmentLocals = (tokens: string[], previous: number, locals: Set<
   const compound = previous === tokens.length - 1 && /^(?:&&|\|\||\*\*|<<|>>|[-+*/%&|^])$/.test(tokens[previous] ?? '');
   const last = compound ? previousSignificantToken(tokens, previous - 1) : previous;
   const qualifier = tokens[previousSignificantToken(tokens, last - 1)];
-  if (!isCommandName(tokens[last]) || ['.', '@', '$'].includes(qualifier)) return;
-  locals.add(tokens[last]);
+  if (isCommandName(tokens[last]) && !['.', '@', '$'].includes(qualifier)) locals.add(tokens[last]);
   if (compound) return;
+
   const targets: string[] = [];
-  let separator = assignmentSeparator(tokens, last);
-  while (tokens[separator] === ',') {
-    const target = previousSignificantToken(tokens, separator - 1);
-    if (!isCommandName(tokens[target])) return;
-    targets.push(tokens[target]);
-    separator = assignmentSeparator(tokens, target);
-  }
-  if (separator < 0 || ['\n', ';', 'do'].includes(tokens[separator])) {
+  const boundary = readAssignmentTargets(tokens, last, targets);
+  if (boundary !== undefined && (boundary < 0 || ['\n', ';', 'do'].includes(tokens[boundary]))) {
     targets.forEach((target) => locals.add(target));
   }
+};
+
+const readAssignmentTargets = (tokens: string[], end: number, targets: string[]): number | undefined => {
+  let target = tokens[end] === ',' ? previousSignificantToken(tokens, end - 1) : end;
+  while (target >= 0) {
+    const separator = readAssignmentTarget(tokens, target, targets);
+    if (separator === undefined || tokens[separator] !== ',') return separator;
+    target = previousSignificantToken(tokens, separator - 1);
+  }
+  return undefined;
+};
+
+const readAssignmentTarget = (tokens: string[], target: number, targets: string[]): number | undefined => {
+  const token = tokens[target];
+  if (token === ')') {
+    let inner = previousSignificantToken(tokens, target - 1);
+    while (tokens[inner] === '\n') inner = previousSignificantToken(tokens, inner - 1);
+    const opening = readAssignmentTargets(tokens, inner, targets);
+    return opening !== undefined && tokens[opening] === '(' ? assignmentSeparator(tokens, opening) : undefined;
+  }
+  if (token === '*') return assignmentSeparator(tokens, target);
+  if (!isCommandName(token)) return undefined;
+  const separator = assignmentSeparator(tokens, target);
+  if (tokens[separator] === '@' || tokens[separator] === '$') {
+    const prefix = tokens[separator] === '@' && tokens[separator - 1] === '@' ? separator - 1 : separator;
+    return assignmentSeparator(tokens, prefix);
+  }
+  targets.push(token);
+  return tokens[separator] === '*' ? assignmentSeparator(tokens, separator) : separator;
 };
 
 const assignmentSeparator = (tokens: string[], target: number): number => {
   const previous = previousSignificantToken(tokens, target - 1);
   let separator = previous;
   while (tokens[separator] === '\n') separator = previousSignificantToken(tokens, separator - 1);
-  return tokens[separator] === ',' ? separator : previous;
+  return [',', '('].includes(tokens[separator]) ? separator : previous;
 };
 
 const previousSignificantToken = (tokens: string[], start: number): number => {
