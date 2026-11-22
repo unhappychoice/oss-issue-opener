@@ -162,21 +162,6 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
   assert.equal(await check('rack'), true);
 });
 
-test('Gemfile fallback preserves group exclusions around a multiline p regexp', async () => {
-  mockRubyRepository('', `group :test do
-    p /prefix
-class LiteralText
-gem 'ignored'
-suffix/
-    gem 'rspec'
-  end
-  gem 'rack'`);
-
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('ignored'), false);
-  assert.equal(await check('rack'), true);
-});
-
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';

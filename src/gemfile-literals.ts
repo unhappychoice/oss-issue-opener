@@ -1,23 +1,7 @@
-export const isCompoundAssignment = (token: string): boolean =>
-  /^(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=$/.test(token);
-
-export const expectsRegexp = (token = '\n', previous?: string): boolean =>
-  isCompoundAssignment(token) || /^(?:\n|;|=|=>|<|>|~|\+|-|\*|\/|%|\(|\[|\{|,|&&?|\|\|?|\^|\?|:)$/.test(token) ||
-  (previous !== '.' && previous !== '::' && /^(?:!|do|if|elsif|unless|case|when|then|return|and|or|not)$/.test(token));
-
-export const canOpenLiteral = (token: string): boolean =>
-  ['?', '/', '%', '/=', '%=', '`'].includes(token);
-
-export const opensBacktickLiteral = (token: string, previous = ''): boolean =>
-  token === '`' && previous !== '.' && previous !== '::' && previous !== 'def';
-
-export const startsPercentLiteral = (content: string, start: number): boolean =>
-  percentLiteralOpening(content, start) !== null;
-
-export const characterLiteralEnd = (content: string, start: number): number | undefined => {
-  const character = /\?(?:\\[^\n]|[^\s\\])/uy;
-  character.lastIndex = start;
-  return character.test(content) ? character.lastIndex : undefined;
+export const opensGemfileLiteral = (token: string, previous = '\n'): boolean => {
+  if (token === '`') return !['.', ':', 'def'].includes(previous);
+  return (token === '/' || token === '%') &&
+    /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|do|if|elsif|unless|case|when|then|return)$/.test(previous);
 };
 
 export const rubyLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {
@@ -73,7 +57,6 @@ const literalEnd = (
 
 const interpolationEnd = (content: string, start: number, expression: RegExp): number | undefined => {
   let previous = '{';
-  let regexpExpected = true;
   let depth = 1;
   let offset = start;
   while (offset < content.length) {
@@ -85,18 +68,14 @@ const interpolationEnd = (content: string, start: number, expression: RegExp): n
     if (token.startsWith('#') || token.startsWith('=begin') || /^(?:[^\S\n]+|\\\r?\n)$/.test(token)) continue;
     if (token === '{') depth++;
     if (token === '}' && --depth === 0) return offset;
-    if (token === '`' ? opensBacktickLiteral(token, previous) : regexpExpected && canOpenLiteral(token)) {
-      const end = token === '?'
-        ? characterLiteralEnd(content, tokenStart)
-        : rubyLiteralEnd(content, tokenStart, expression);
+    if (opensGemfileLiteral(token, previous)) {
+      const end = rubyLiteralEnd(content, tokenStart, expression);
       if (end !== undefined) {
         offset = end;
-        regexpExpected = false;
-        previous = token;
+        previous = '';
         continue;
       }
     }
-    regexpExpected = expectsRegexp(token, previous);
     previous = token;
   }
   return undefined;

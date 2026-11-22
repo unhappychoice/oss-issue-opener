@@ -1,38 +1,24 @@
-import {
-  canOpenLiteral, characterLiteralEnd, expectsRegexp, isCompoundAssignment, opensBacktickLiteral,
-  rubyLiteralEnd, startsPercentLiteral,
-} from './gemfile-regexp.js';
-import { hasGemfileBinding } from './gemfile-statements.js';
+import { opensGemfileLiteral, rubyLiteralEnd } from './gemfile-literals.js';
 
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = new RegExp(tokenPattern, 'g');
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (canOpenLiteral(token)) {
-      const index = previousSignificantToken(tokens, tokens.length - 1);
-      const previousIndex = previousSignificantToken(tokens, index - 1);
-      const previous = tokens[previousIndex];
-      const opensLiteral = token === '`' ? opensBacktickLiteral(token, tokens[index]) :
-        expectsRegexp(tokens[index], previous) || ((token === '/' || token === '%') &&
-          opensCommandLiteral(content, match.index, tokens, index, previousIndex));
-      if (opensLiteral) {
-        const end = token === '?'
-          ? characterLiteralEnd(content, match.index)
-          : rubyLiteralEnd(content, match.index, tokenPattern);
-        if (end !== undefined) {
-          tokens.push(content.slice(match.index, end));
-          pattern.lastIndex = end;
-          continue;
-        }
+    const previous = previousSignificantToken(tokens, tokens.length - 1);
+    if (opensGemfileLiteral(token, tokens[previous])) {
+      const end = rubyLiteralEnd(content, match.index, pattern);
+      if (end !== undefined) {
+        tokens.push(content.slice(match.index, end));
+        pattern.lastIndex = end;
+        continue;
       }
     }
-    if (token.startsWith('<<') && token !== '<<=') {
-      // A singleton class uses the shift token where the pattern can match a heredoc opener.
-      if (opensSingletonClass(tokens)) {
+    if (token.startsWith('<<')) {
+      if (opensSingletonClass(tokens, previous)) {
         tokens.push('<<');
         pattern.lastIndex = match.index + 2;
         continue;
@@ -53,28 +39,9 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|->|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
-
-const opensCommandLiteral = (
-  content: string, start: number, tokens: string[], index: number, previousIndex: number,
-): boolean => {
-  const previous = tokens[previousIndex] ?? '\n';
-  const command = tokens[index];
-  const startsLiteral = startsPercentLiteral(content, start) ||
-    (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
-  if (!startsLiteral || !/^[A-Za-z_]\w*[!?]?$/.test(command) || index === tokens.length - 1) return false;
-  if (previous === '.' || previous === '::') return true;
-  return (['\n', ';', 'do', 'then', '='].includes(previous) || isCompoundAssignment(previous)) &&
-    !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(command) &&
-    !hasGemfileBinding(tokens.slice(0, index), command);
-};
-
-const opensSingletonClass = (tokens: string[]): boolean => {
-  const index = previousSignificantToken(tokens, tokens.length - 1);
-  if (tokens[index] !== 'class') return false;
-  const previous = tokens[previousSignificantToken(tokens, index - 1)] ?? '\n';
-  return ['\n', ';', '=', 'do'].includes(previous) || isCompoundAssignment(previous);
-};
+const opensSingletonClass = (tokens: string[], index: number): boolean =>
+  tokens[index] === 'class' &&
+  ['\n', ';', '=', 'do'].includes(tokens[previousSignificantToken(tokens, index - 1)] ?? '\n');
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
