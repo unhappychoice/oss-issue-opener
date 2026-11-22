@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import type { CISource, Repository } from './types.js';
 
 let octokit: Octokit;
@@ -204,26 +205,19 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
 }
 
 const CHECK_SUITE_CONCURRENCY = 4;
-let activeCheckSuites = 0;
-const waitingCheckSuites: (() => void)[] = [];
+const limitCheckSuite = createConcurrencyLimiter(CHECK_SUITE_CONCURRENCY);
 
 async function loadCheckSuite(client: Octokit, owner: string, repo: string, check_suite_id: number) {
   const iterator = client.paginate.iterator(client.checks.listForSuite, { owner, repo, check_suite_id, per_page: 100 });
-  const pages: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'][] = [];
-  if (activeCheckSuites < CHECK_SUITE_CONCURRENCY) activeCheckSuites++;
-  else await new Promise<void>((resolve) => waitingCheckSuites.push(resolve));
-
-  try {
-    for await (const { data } of iterator) pages.push(data);
-    return { pages };
-  } catch (error) {
-    return { pages, failure: { error } };
-  } finally {
-    // Hand the occupied slot directly to the next waiting suite.
-    const next = waitingCheckSuites.shift();
-    if (next) next();
-    else activeCheckSuites--;
-  }
+  return limitCheckSuite(async () => {
+    const pages: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'][] = [];
+    try {
+      for await (const { data } of iterator) pages.push(data);
+      return { pages };
+    } catch (error) {
+      return { pages, failure: { error } };
+    }
+  });
 }
 
 export const getLatestRelease = async (owner: string, repo: string): Promise<string | null> => {
