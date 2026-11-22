@@ -239,6 +239,8 @@ gem 'rack'`;
 });
 
 const multilineRegexps = [
+  ['command argument', 'warn /prefix\nclass RegexText\nsuffix/'],
+  ['command argument with options', 'warn /prefix\nmodule RegexText\nsuffix/i'],
   ['assignment', 'matcher = /prefix\nclass RegexText\nsuffix/'],
   ['standalone regexp', '/prefix\nmodule RegexText\nsuffix/'],
   ['escaped slash and options', 'matcher = /prefix\\/\nend\nsuffix/i'],

@@ -2,26 +2,38 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const localNames = new Set<string>();
+  const assignment = /([a-z_]\w*(?:[ \t]*,[ \t]*[a-z_]\w*)*)[ \t]*=(?!=|>|~)/y;
   let previous = '\n';
   let regexpExpected = true;
+  let commandArgument = false;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && regexpExpected) {
+    const commandRegexp = commandArgument && token === '/' &&
+      /[ \t]/.test(content[match.index - 1] ?? '') && /\S/.test(content[match.index + 1] ?? '');
+    if ((token === '/' || token === '%') && (regexpExpected || commandRegexp)) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push('<regexp>');
         previous = '<regexp>';
         regexpExpected = false;
+        commandArgument = false;
         classHeader = false;
         continue;
       }
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
+      const statementStart = /^(?:\n|;|do)$/.test(previous);
+      commandArgument = statementStart && /^[a-z_]\w*[!?]?$/.test(token) && !localNames.has(token);
+      if (statementStart) {
+        assignment.lastIndex = match.index;
+        assignment.exec(content)?.[1]?.split(/\s*,\s*/).forEach((name) => localNames.add(name));
+      }
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       regexpExpected = !singletonClass && expectsRegexp(token, previous);
       previous = singletonClass ? '<<' : token;
