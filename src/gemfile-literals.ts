@@ -1,10 +1,11 @@
 export const opensGemfileLiteral = (token: string, previous = '\n', beforePrevious?: string): boolean => {
   if (token === '`') return !['.', ':', 'def'].includes(previous);
-  return (token === '/' || token === '%') && beforePrevious !== '.' &&
+  return (token === '/' || token === '%' || token === '?') && beforePrevious !== '.' &&
     /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&&|\|\||do|if|elsif|unless|case|when|then|return)$/.test(previous);
 };
 
 export const rubyLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {
+  if (content[start] === '?') return content[start + 1] === '/' ? start + 2 : undefined;
   if (content[start] === '`') return literalEnd(content, start + 1, '`', true, new RegExp(expression, 'y'));
   if (content[start] === '/') return regexpEnd(content, start, expression);
   const match = percentLiteralOpening(content, start);

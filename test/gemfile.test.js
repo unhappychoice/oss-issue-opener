@@ -222,6 +222,7 @@ gem 'rack'`;
   'matcher = /prefix\\/ #{ %q!}! }\nclass LiteralText\nmodule LiteralText\nsuffix/i',
   'matcher = %r{prefix\nclass LiteralText\nmodule LiteralText\nsuffix}',
   'matcher = flag ? /prefix\nclass LiteralText\nmodule LiteralText\nsuffix/ : nil',
+  'matcher = true ?/prefix\nclass LiteralText\nsuffix/ : nil',
   'matcher = flag ? nil : /prefix\nclass LiteralText\nsuffix/',
   'matcher = !/prefix\nclass LiteralText\nsuffix/',
   'matcher = flag && /prefix\nclass LiteralText\nsuffix/',
@@ -247,6 +248,13 @@ gem 'rack', path: '/rack'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('detects a production gem after a slash character literal', () => {
+  const gemfile = `separator = ?/
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 test('recognizes a multiline regexp after the if keyword', () => {
