@@ -266,3 +266,26 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const multilinePatterns = {
+  'slash delimiters and options': '/start\nclass PatternText\nfinish/i',
+  'escaped slash': '/start\\/\nmodule PatternText\nfinish/',
+  'paired percent delimiters': '%r{start{nested}\nclass PatternText\nfinish}',
+  'first ternary branch': 'enabled ? /start\nclass PatternText\nfinish/ : /fallback/',
+  'second ternary branch': 'enabled ? /fallback/ : /start\nclass PatternText\nfinish/',
+  'percent string interpolation': '/#{%q!}/!}\nclass PatternText\nfinish/',
+  'nested regexp interpolation': '/#{ { pattern: /}/ } }\nclass PatternText\nfinish/',
+};
+
+Object.entries(multilinePatterns).forEach(([description, pattern]) => {
+  test(`ignores namespace keywords inside multiline regexp with ${description}`, () => {
+    const gemfile = `group :test do
+  pattern = ${pattern}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
