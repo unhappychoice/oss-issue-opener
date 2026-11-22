@@ -252,6 +252,20 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('detects production gems after division of a local from a multiple assignment', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    first, second = [4, 8]
+    first /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('preserves Gemfile group boundaries around a multiline regexp passed to warn', () => {
   const gemfile = `group :test do
   warn /first

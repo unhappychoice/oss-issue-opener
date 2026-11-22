@@ -3,7 +3,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const localNames = new Set<string>();
-  const assignment = /[^\S\n]*(?:,[^\S\n]*)?=(?!=|>|~)/y;
+  const assignment = /[^\S\n]*(?:,[^\S\n]*[a-z_]\w*[^\S\n]*)*(?:,[^\S\n]*)?=(?!=|>|~)/y;
   let previous = '\n';
   let previousIsLocal = false;
   let literalExpected = true;
