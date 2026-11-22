@@ -270,6 +270,8 @@ gem 'rack', path: '/.rack'`;
 [
   'matcher = /prefix\nclass RegexText\nend\\/suffix/',
   'matcher = /prefix\nmodule RegexText\nsuffix/',
+  'warn /prefix\nclass RegexText\nsuffix/',
+  'warn /prefix\nmodule RegexText\nsuffix/i # diagnostic',
   'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
   '/prefix\nclass RegexText\nsuffix/',
   '! /prefix\nclass RegexText\nsuffix/',

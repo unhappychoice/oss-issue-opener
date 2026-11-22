@@ -5,18 +5,20 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let regexpExpected = true;
   let classHeader = false;
+  let commandRegexp = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
     if (isComment(token)) continue;
-    if ((token === '/' || token === '%') && regexpExpected) {
+    if ((token === '/' || token === '%') && regexpExpected || token === '/' && commandRegexp) {
       const literal = readRegexp(content, match.index);
-      if (literal) {
+      if (literal && (regexpExpected || isMultilineCommandRegexp(content, match.index, literal))) {
         pattern.lastIndex = match.index + literal.length;
         tokens.push(literal);
         previous = literal;
         regexpExpected = false;
         classHeader = false;
+        commandRegexp = false;
         continue;
       }
     }
@@ -26,9 +28,12 @@ export const gemfileTokens = (content: string): string[] => {
       previous = '<<';
       regexpExpected = false;
       classHeader = false;
+      commandRegexp = false;
       continue;
     }
     if (!isSpacing(token)) {
+      commandRegexp = token === 'warn' && /^(?:\n|;)$/.test(previous) &&
+        /^[ \t]+\/[^\s]/.test(content.slice(pattern.lastIndex));
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;
@@ -51,6 +56,9 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const isMultilineCommandRegexp = (content: string, start: number, literal: string): boolean =>
+  literal.includes('\n') && /^[ \t]*(?:[;#\r\n]|$)/.test(content.slice(start + literal.length));
 
 const isComment = (token: string): boolean => token.startsWith('#') || token.startsWith('=begin');
 
