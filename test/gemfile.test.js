@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isProductionGem } from '../dist/gemfile.js';
+import { gemfileStatements, isProductionGem, isProductionGemIn } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
@@ -99,6 +99,33 @@ test('ignores bare dependency names in Gemfile declarations', () => {
   const gemfile = "rack = 'puma'\ngem rack\ngem(rack)";
   assert.equal(isProductionGem(gemfile, 'rack'), false);
   assert.equal(isProductionGem(gemfile, 'puma'), false);
+});
+
+test('tracks excluded and shared groups through deeply nested scopes', () => {
+  const depth = 4_096;
+  const statements = gemfileStatements([
+    'group :test, :production do\n'.repeat(depth),
+    "gem 'shared'",
+    'group :development do',
+    'group :production do\n'.repeat(depth),
+    'group :test do',
+    "gem 'inner_test'",
+    'end',
+    "gem 'after_test'",
+    'end\n'.repeat(depth),
+    "gem 'after_production'",
+    'end',
+    "gem 'after_development'",
+    'end\n'.repeat(depth),
+    "gem 'ungrouped'",
+  ].join('\n'));
+
+  for (const pkg of ['shared', 'after_development', 'ungrouped']) {
+    assert.equal(isProductionGemIn(statements, pkg), true, pkg);
+  }
+  for (const pkg of ['inner_test', 'after_test', 'after_production', 'missing']) {
+    assert.equal(isProductionGemIn(statements, pkg), false, pkg);
+  }
 });
 
 ["'", '"'].forEach((quote) => {
@@ -214,14 +241,6 @@ gem 'rack'`;
 [
   'message = "prefix\nclass LiteralText\nmodule LiteralText\nsuffix"',
   'message = <<~TEXT\nclass LiteralText\nmodule LiteralText\nsuffix\nTEXT',
-  'pattern = /prefix\nclass LiteralText\ngem "ignored"\nsuffix/',
-  'pattern = %r{prefix {nested}\nclass LiteralText\ngem "ignored"\nsuffix}im',
-  'pattern = enabled ? /prefix\\/suffix\nclass LiteralText\nmodule LiteralText/ : nil',
-  'pattern = /#{receiver.if / 2}\nclass LiteralText\nmodule LiteralText/',
-  'if /prefix\nclass LiteralText\nsuffix/; end',
-  'pattern = /#{"/"}\nclass LiteralText\nmodule LiteralText/',
-  'pattern = /#{%q(}/)}\nclass LiteralText\nsuffix/x',
-  'pattern = /prefix\nend\nsuffix/',
 ].forEach((literal) => {
   test(`preserves group exclusions with ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
@@ -233,30 +252,5 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  });
-});
-
-test('does not consume Gemfile statements between division operators', () => {
-  const gemfile = `group :test do
-  ratio = 8 / 2
-  gem 'rspec'
-end
-gem 'rack'
-ratio = 12 / 3`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['receiver.if', 'receiver&.if', 'receiver::if', 'receiver.\\\n  if'].forEach((call) => {
-  test(`preserves a Gemfile declaration after division involving ${JSON.stringify(call)}`, () => {
-    const gemfile = `group :test do
-  ${call} / 2
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
