@@ -289,3 +289,23 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const percentStrings = [
+  '%q{prefix\nclass StringText\n#{suffix}\nmodule MoreText\n}',
+  '%q!prefix\\!\nmodule StringText\nsuffix!',
+  '%Q{prefix#{%q[}]}\nclass StringText\nsuffix}',
+  '%{prefix\nclass StringText\nsuffix}',
+];
+
+percentStrings.forEach((literal) => {
+  test(`preserves Gemfile group boundaries around ${literal}`, () => {
+    const gemfile = `group :test do
+  message = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
