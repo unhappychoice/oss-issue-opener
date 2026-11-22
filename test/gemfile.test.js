@@ -214,8 +214,14 @@ gem 'rack'`;
 [
   'message = "prefix\nclass LiteralText\nmodule LiteralText\nsuffix"',
   'message = <<~TEXT\nclass LiteralText\nmodule LiteralText\nsuffix\nTEXT',
+  'pattern = /prefix\nclass LiteralText\ngem "ignored"\nsuffix/',
+  'pattern = %r{prefix {nested}\nclass LiteralText\ngem "ignored"\nsuffix}im',
+  'pattern = enabled ? /prefix\\/suffix\nclass LiteralText\nmodule LiteralText/ : nil',
+  'pattern = /#{"/"}\nclass LiteralText\nmodule LiteralText/',
+  'pattern = /#{%q(}/)}\nclass LiteralText\nsuffix/x',
+  'pattern = /prefix\nend\nsuffix/',
 ].forEach((literal) => {
-  test(`ignores namespace keywords in ${literal.split('\n')[0]}`, () => {
+  test(`preserves group exclusions with ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
   ${literal}
   gem 'rspec'
@@ -226,4 +232,16 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
+});
+
+test('does not consume Gemfile statements between division operators', () => {
+  const gemfile = `group :test do
+  ratio = 8 / 2
+  gem 'rspec'
+end
+gem 'rack'
+ratio = 12 / 3`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
