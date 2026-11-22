@@ -442,6 +442,41 @@ suffix/`;
   });
 });
 
+[
+  ['an assignment', 'output = `prefix\nclass CommandText\ngem "ignored"\nsuffix`'],
+  ['a command argument with an escaped backtick', 'warn `prefix\\`\nmodule CommandText\ngem "ignored"\nsuffix`'],
+  ['a nested backtick in interpolation', '`prefix #{ `inner` }\nclass CommandText\ngem "ignored"\nsuffix`'],
+  ['a regexp interpolation', '/#{ `prefix\n}\nclass CommandText\ngem "ignored"\nsuffix` }/'],
+].forEach(([description, command]) => {
+  test(`preserves group exclusions around a backtick literal in ${description}`, () => {
+    const gemfile = `group :test do
+  ${command}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps scope boundaries visible around a backtick method definition and call', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    def \`(command)
+      command
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'
+TestHelper.new.\`('ignored')`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 const regexpExpressions = [
   ['slash delimiters', '/prefix\nclass RegexText\nend\ngem "ignored"\nsuffix/i'],
   ['a preceding slash character literal', '?/\n  matcher = /prefix\nclass RegexText\nsuffix/'],

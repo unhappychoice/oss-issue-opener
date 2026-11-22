@@ -1,4 +1,4 @@
-import { canOpenLiteral, characterLiteralEnd, expectsRegexp, rubyLiteralEnd } from './gemfile-regexp.js';
+import { canOpenLiteral, characterLiteralEnd, expectsRegexp, opensBacktickLiteral, rubyLiteralEnd } from './gemfile-regexp.js';
 import { hasGemfileBinding } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
@@ -13,8 +13,10 @@ export const gemfileTokens = (content: string): string[] => {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previousIndex = previousSignificantToken(tokens, index - 1);
       const previous = tokens[previousIndex];
-      if (expectsRegexp(tokens[index], previous) || ((token === '/' || token === '%') &&
-        opensCommandRegexp(content, match.index, tokens, index, previousIndex))) {
+      const opensLiteral = token === '`' ? opensBacktickLiteral(token, tokens[index]) :
+        expectsRegexp(tokens[index], previous) || ((token === '/' || token === '%') &&
+          opensCommandRegexp(content, match.index, tokens, index, previousIndex));
+      if (opensLiteral) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
           : rubyLiteralEnd(content, match.index, tokenPattern);

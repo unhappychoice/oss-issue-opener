@@ -6,7 +6,10 @@ export const expectsRegexp = (token = '\n', previous?: string): boolean =>
   (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|and|or|not)$/.test(token));
 
 export const canOpenLiteral = (token: string): boolean =>
-  ['?', '/', '%', '/=', '%='].includes(token);
+  ['?', '/', '%', '/=', '%=', '`'].includes(token);
+
+export const opensBacktickLiteral = (token: string, previous = ''): boolean =>
+  token === '`' && previous !== '.' && previous !== 'def';
 
 export const characterLiteralEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\[^\n]|[^\s\\])/uy;
@@ -15,6 +18,7 @@ export const characterLiteralEnd = (content: string, start: number): number | un
 };
 
 export const rubyLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {
+  if (content[start] === '`') return literalEnd(content, start + 1, '`', true, new RegExp(expression, 'y'));
   if (content[start] === '/') return regexpEnd(content, start, expression);
   const opening = /%([qQwWiIrxs]?)([^\p{L}\p{N}\s])/uy;
   opening.lastIndex = start;
@@ -74,7 +78,7 @@ const interpolationEnd = (content: string, start: number, expression: RegExp): n
     if (token.startsWith('#') || token.startsWith('=begin') || /^(?:[^\S\n]+|\\\r?\n)$/.test(token)) continue;
     if (token === '{') depth++;
     if (token === '}' && --depth === 0) return offset;
-    if (regexpExpected && canOpenLiteral(token)) {
+    if (token === '`' ? opensBacktickLiteral(token, previous) : regexpExpected && canOpenLiteral(token)) {
       const end = token === '?'
         ? characterLiteralEnd(content, tokenStart)
         : rubyLiteralEnd(content, tokenStart, expression);
