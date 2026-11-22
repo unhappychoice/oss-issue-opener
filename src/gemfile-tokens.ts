@@ -5,18 +5,21 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let regexpExpected = true;
   let classHeader = false;
+  let warnCommand = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && regexpExpected) {
+    if (((token === '/' || token === '%') && regexpExpected) ||
+      (warnCommand && isWarnRegexp(token, tokens.at(-1), content[match.index + 1]))) {
       const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
+      if (end !== undefined && (!warnCommand || !/^\w$/.test(content[end] ?? ''))) {
         pattern.lastIndex = end;
         tokens.push('/.../');
         previous = '/.../';
         regexpExpected = false;
         classHeader = false;
+        warnCommand = false;
         continue;
       }
     }
@@ -29,6 +32,7 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
+      warnCommand = token === 'warn' && /^(?:\n|;|do|then|else)$/.test(previous);
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;
@@ -53,6 +57,9 @@ export const gemfileTokens = (content: string): string[] => {
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const isWarnRegexp = (token: string, spacing?: string, next?: string): boolean =>
+  token === '/' && spacing !== undefined && isSpacing(spacing) && next !== undefined && !/[\s=]/.test(next);
 
 const readToken = (pattern: RegExp, match: RegExpExecArray, content: string, operandExpected: boolean): string => {
   if (match[0] !== '?' || !operandExpected) return match[0];

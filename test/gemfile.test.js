@@ -267,6 +267,16 @@ gem 'rack'`;
   });
 });
 
+['/ 2', '/2'].forEach((division) => {
+  test(`preserves production gems after warn ${division}`, () => {
+    const gemfile = `warn = 4
+warn ${division}
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('detects production gems after division of self inside a class', () => {
   const gemfile = `group :test do
   class TestHelper
