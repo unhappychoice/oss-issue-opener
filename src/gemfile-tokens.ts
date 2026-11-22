@@ -3,16 +3,18 @@ import { expectsLiteral, readCharacter, readLiteral } from './gemfile-regexp.js'
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const blockParameters = /\s*\|([\s\w,*&;()]+)\|/y;
+  const methodParameters = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?=]?(?:[ \t]*\(\s*|[ \t]+)((?:[*&]{0,2}[a-z_]\w*\s*,\s*)*[*&]{0,2}[a-z_]\w*)/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const commandLocals = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
-    if (token === 'do' || token === '{') {
-      blockParameters.lastIndex = pattern.lastIndex;
-      const parameters = blockParameters.exec(content)?.[1];
-      parameters?.match(/\b[a-z_]\w*/g)?.forEach((name) => commandLocals.add(name));
+    const parameters = token === 'def' ? methodParameters :
+      token === 'do' || token === '{' ? blockParameters : undefined;
+    if (parameters) {
+      parameters.lastIndex = pattern.lastIndex;
+      parameters.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => commandLocals.add(name));
     }
     if (token === '=' || token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);

@@ -330,3 +330,16 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+test('preserves production gems after compact division of method parameters', () => {
+  ['divide(value)', 'divide value', 'self.divide(divisor, value)'].forEach((signature) => {
+    const gemfile = `group :test do
+end
+def ${signature}
+  value /2
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
