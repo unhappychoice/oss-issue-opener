@@ -329,6 +329,21 @@ test('preserves production gems after compact division of block parameters', () 
   });
 });
 
+test('preserves group exclusions and production gems after compact division of for loop targets', () => {
+  ['amount in [8]', 'index, amount in [[0, 8]]'].forEach((header) => {
+    const gemfile = `group :test do
+  for ${header}
+    amount /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves production gems after compact division of non-command operands', () => {
   ['self', '@value', '$value', '8'].forEach((operand) => {
     const gemfile = `${operand} /2\ngem 'rack', path: '/rack'`;
