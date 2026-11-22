@@ -56,7 +56,7 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 
 const expectsRegexpAfter = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless|when|then|else|return|and|or)$/.test(token));
+  (previous !== '.' && /^(?:!|do|if|elsif|unless|when|in|then|else|return|and|or)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 

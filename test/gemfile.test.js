@@ -238,6 +238,25 @@ gem 'rack'`;
   });
 });
 
+['/first\nclass Fake\ngem "ignored"\nlast/', '%r{first\nclass Fake\ngem "ignored"\nlast}'].forEach((pattern) => {
+  test(`ignores scope keywords inside a case pattern ${JSON.stringify(pattern)}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    case 'example'
+    in ${pattern}
+      nil
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
 test('detects production gems after division of a pattern-bound local', () => {
   const gemfile = `group :test do
   module TestHelpers
