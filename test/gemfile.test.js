@@ -252,3 +252,231 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('detects production gems after division of a local with a trailing comma in its assignment', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    warn, = [4]
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('detects production gems after division of a local from a multiple assignment', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    first, second = [4, 8]
+    first /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['||=', '&&=', '+=', '/=', '<<='].forEach((operator) => {
+  test(`detects production gems after division of a local assigned with ${operator}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    count ${operator} 4
+    count /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['for count in [4] do', 'for count, other in [[4, 8]]'].forEach((header) => {
+  test(`detects production gems after division of a loop variable declared by ${header}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${header}
+      count /2
+    end
+    count /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('detects production gems after division of a block parameter', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    [4].each do |count|
+      count /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['(count)', ' count'].forEach((parameters) => {
+  test(`detects production gems after division of a method parameter declared as ${parameters}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    def half${parameters}
+      count /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['@count', '@@count', '$count'].forEach((variable) => {
+  test(`detects production gems after division of ${variable}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${variable} /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves Gemfile group boundaries around a multiline regexp passed to warn', () => {
+  const gemfile = `group :test do
+  warn /first
+class RegexText
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+const regexpExpressions = [
+  ['slash literal', '/first\nclass RegexText\nlast/i'],
+  ['percent literal', '%r{first\nclass RegexText\n{last}}m'],
+  ['unary negation', '!/first\nclass RegexText\nlast/'],
+  ['ternary branch', 'enabled ? /first\nclass RegexText\nlast/ : nil'],
+  ['ternary alternative', 'enabled ? nil : /first\nclass RegexText\nlast/'],
+  ['escaped delimiter', '/first\\/\nclass RegexText\nlast/'],
+  ['nested regexp', '/first#{/nested/}\nclass RegexText\nlast/'],
+  ['division after a percent string in interpolation', '/first#{ %q!}!.ord / 2 }\nclass RegexText\nlast/'],
+  ['percent string in interpolation', '/first#{%q[}/]}\nclass RegexText\nlast/'],
+  ['regexp argument to a predicate', '"value".match? /first\nclass RegexText\nlast/'],
+  ['regexp argument to a bare predicate', 'match? /first\nclass RegexText\nlast/'],
+  ['regexp argument inside interpolation', '/first#{"value".match? /[}]/}\nclass RegexText\nlast/'],
+];
+
+regexpExpressions.forEach(([description, expression]) => {
+  test(`preserves Gemfile group boundaries around a ${description}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves Gemfile group boundaries around division after a predicate call', () => {
+  const gemfile = `group :test do
+  "value".match? / 2
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('detects production gems after division following a keyword-shaped method name', () => {
+  const gemfile = `ratio = receiver.if / 2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('ignores Gemfile declarations inside a multiline regexp', () => {
+  const gemfile = `group :test do
+  pattern = /first
+end
+gem 'fake'
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'fake'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
+  ['class', 'class Helper; warn = 4; end'],
+  ['module', 'module Helper; warn = 4; end'],
+  ['singleton class', 'helper = class <<self; warn = 4; end'],
+  ['method', 'def helper(warn); warn /2; end'],
+  ['endless method', 'def helper(warn) = warn /2'],
+  ['do block', '[4].each do |warn|; warn /2; end'],
+  ['brace block', '[4].each { |warn| warn /2 }'],
+  ['nested control flow', 'class Helper; if true; warn = 4; end; end'],
+].forEach(([scope, definition]) => {
+  test(`recognizes a regexp passed to warn after leaving the ${scope} scope`, () => {
+    const gemfile = `group :test do
+  ${definition}
+  warn /first
+class RegexText
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('retains outer locals across class scopes and inside nested blocks', () => {
+  const gemfile = `group :test do
+  warn = 4
+  class Helper < (warn /2; Object)
+    warn /first
+class RegexText
+last/
+  end
+  [1].each do
+    warn /2
+  end
+  warn /2
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

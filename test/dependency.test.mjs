@@ -152,6 +152,9 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
   mockRubyRepository('', `group :test do
     module TestHelpers
       class TestHelper
+        pattern = /first
+class RegexText
+last/
       end
     end
     gem 'rspec'
