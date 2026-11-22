@@ -1,6 +1,6 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
-import type { CIResult, ComparedCommit } from './github.js';
+import type { CIResult, ComparedCommits } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
@@ -100,18 +100,13 @@ export const checkPendingRelease = async (
 const findDependencyUpdates = async (
   owner: string,
   repo: string,
-  getCommits: () => Promise<ComparedCommit[]>,
+  getCommits: () => Promise<ComparedCommits>,
   types: ProjectType[],
   headSha: string,
   getContents: GetContents
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
-  let commits: ComparedCommit[];
-  try {
-    commits = await getCommits();
-  } catch (error) {
-    return { dependencyUpdates: [], lookupErrors: [error] };
-  }
+  const { commits, lookupErrors } = await getCommits();
   const checkers = types.map((type) => ({
     type,
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
@@ -137,6 +132,7 @@ const findDependencyUpdates = async (
   return {
     dependencyUpdates: lookups.flatMap((lookup) => lookup.status === 'fulfilled' ? lookup.value : []),
     lookupErrors: [
+      ...lookupErrors,
       ...new Set(candidates.flatMap(({ productionErrors }) => productionErrors)),
       ...lookups.flatMap((lookup): unknown[] => lookup.status === 'rejected' ? [lookup.reason] : []),
     ],
