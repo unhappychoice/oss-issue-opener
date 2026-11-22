@@ -151,10 +151,9 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
     for (let start = 0; start < suites.length; start += CHECK_SUITE_CONCURRENCY) {
       const batch = suites.slice(start, start + CHECK_SUITE_CONCURRENCY);
       const results = await Promise.all(batch.map(({ id }) => loadCheckSuite(client, owner, repo, id)));
-      for (const result of results) {
-        yield* result.pages;
-        if (result.failure) throw result.failure.error;
-      }
+      for (const { pages } of results) yield* pages;
+      const failure = results.find((result) => result.failure)?.failure;
+      if (failure) throw failure.error;
     }
   }
 }
