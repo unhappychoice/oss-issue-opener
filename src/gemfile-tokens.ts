@@ -22,7 +22,7 @@ export const gemfileTokens = (content: string): string[] => {
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
-      if ((token === 'warn' || token === 'puts') && previous !== '.') {
+      if (/^(?:warn|puts|print)$/.test(token) && previous !== '.') {
         // A possible local binding makes the bare command form ambiguous.
         localBinding.lastIndex = pattern.lastIndex;
         if (localBinding.test(content)) boundCommands.add(token);

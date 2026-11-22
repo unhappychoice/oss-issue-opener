@@ -312,7 +312,7 @@ gem 'rack'`;
   });
 });
 
-['warn', 'puts'].forEach((command) => {
+['warn', 'puts', 'print'].forEach((command) => {
   test(`ignores class keywords inside a multiline regexp passed to ${command}`, () => {
     const gemfile = `group :test do
   ${command} /start
@@ -327,10 +327,11 @@ gem 'rack'`;
   });
 });
 
-test('distinguishes puts division from a regexp passed to warn', () => {
-  const gemfile = `group :test do
-  puts = 4
-  puts /divisor
+['puts', 'print'].forEach((local) => {
+  test(`distinguishes ${local} division from a regexp passed to warn`, () => {
+    const gemfile = `group :test do
+  ${local} = 4
+  ${local} /divisor
   warn /start
 class PatternText
 finish/
@@ -338,8 +339,9 @@ finish/
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 Object.entries(multilinePatterns).forEach(([description, pattern]) => {
