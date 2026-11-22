@@ -258,27 +258,57 @@ test('completes successfully when investigations and creation succeed', async ()
   assert.equal(batches[0].length, 6);
 });
 
-test('investigates repositories within an organization concurrently instead of one at a time', async () => {
-  const pending = [];
+test('scans repositories during pagination and drains queued scans after a listing failure', async () => {
+  initMockOctokit('test-token');
+  const client = getOctokit();
+  const listingFailure = new Error('Repository listing page 3 HTTP 503');
+  const names = Array.from({ length: 10 }, (_, index) => `owner/repo-${index}`);
+  const firstPage = names.slice(0, 8);
+  const pageTwoRequested = Promise.withResolvers();
+  const pageTwo = Promise.withResolvers();
+  const finishScans = Promise.withResolvers();
+  mock.method(client.users, 'getByUsername', async () => ({ data: { type: 'User' } }));
+  mock.method(client.paginate, 'iterator', async function* (_route, { username }) {
+    if (username !== 'unhappychoice') return;
+    yield { data: firstPage.map((full_name) => ({ full_name, default_branch: 'main' })) };
+    pageTwoRequested.resolve();
+    await pageTwo.promise;
+    yield { data: names.slice(8).map((full_name) => ({ full_name, default_branch: 'main' })) };
+    throw listingFailure;
+  });
+
+  const started = [];
   let inFlight = 0;
   let maxInFlight = 0;
-  const { deps } = setup({
-    checkCIStatus: async () => {
+  const { deps, batches } = setup({
+    listOrgRepos,
+    checkCIStatus: async (owner, repo) => {
+      started.push(`${owner}/${repo}`);
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((resolve) => pending.push(resolve));
+      await finishScans.promise;
       inFlight--;
-      return { status: 'success', failedChecks: [] };
+      return { status: 'failure', failedChecks: [] };
     },
     checkPendingRelease: async () => ({ status: 'up-to-date' }),
   });
 
-  const result = runChecks(deps);
-  while (pending.length < 3) await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(maxInFlight, 3);
-
-  pending.forEach((resolve) => resolve());
-  await result;
+  const result = expectFailures(deps, [['Failed unhappychoice: repository investigation', listingFailure]]);
+  try {
+    await pageTwoRequested.promise;
+    assert.deepEqual(started, firstPage);
+    pageTwo.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(console.error.mock.calls[0]?.arguments[1], listingFailure);
+    assert.deepEqual(started, firstPage);
+    assert.deepEqual(batches, []);
+  } finally {
+    pageTwo.resolve();
+    finishScans.resolve();
+    await result;
+  }
+  assert.equal(maxInFlight, 8);
+  assert.deepEqual(batches.map((issues) => issues.map(({ repo }) => repo)), [names]);
 });
 
 test('reports failures even when there are no notifications to create', async () => {
