@@ -266,6 +266,9 @@ gem 'rack'`;
 });
 
 const regexpBodies = [
+  'puts /prefix\nclass RegexText\nsuffix/',
+  'receiver.puts /prefix\nmodule RegexText\nsuffix/i',
+  'puts = 8; puts / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'matcher = /prefix\nclass RegexText\nsuffix/',
   'matcher = /prefix\nclass RegexText\nend\\/suffix/i',
   'matcher = !/prefix\nmodule RegexText\nsuffix/',
