@@ -24,7 +24,7 @@ export const gemfileTokens = (content: string): string[] => {
       const name = tokens[previous];
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       if (token === '=') {
-        if (isCommandName(name) && !['.', '@', '$'].includes(qualifier) && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
+        if (!/[=~]/.test(content[pattern.lastIndex] ?? '')) {
           recordAssignmentLocals(tokens, previous, commandLocals);
         }
       } else if (expectsLiteral(name ?? '\n', qualifier) ||
@@ -39,7 +39,7 @@ export const gemfileTokens = (content: string): string[] => {
       }
     }
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token.startsWith('<<')) {
+    if (token !== '<<' && token.startsWith('<<')) {
       if (opensSingletonClass(tokens, previousSignificantToken(tokens, tokens.length - 1))) {
         tokens.push('<<');
         pattern.lastIndex = match.index + 2;
@@ -61,10 +61,10 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||(?:\*\*|<<|>>)(?==)|[^\S\n]+|\n|./;
 
 const startsCommandRegexp = (content: string, start: number): boolean =>
-  /[^\S\r\n]/.test(content[start - 1] ?? '') && /\S/.test(content[start + 1] ?? '');
+  /[^\S\r\n]/.test(content[start - 1] ?? '') && /[^\s=]/.test(content[start + 1] ?? '');
 
 const isCommandName = (token?: string): token is string => /^[A-Za-z_]\w*[!?]?$/.test(token ?? '');
 
@@ -103,8 +103,13 @@ const opensSingletonClass = (tokens: string[], index: number): boolean =>
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const recordAssignmentLocals = (tokens: string[], last: number, locals: Set<string>): void => {
+const recordAssignmentLocals = (tokens: string[], previous: number, locals: Set<string>): void => {
+  const compound = previous === tokens.length - 1 && /^(?:&&|\|\||\*\*|<<|>>|[-+*/%&|^])$/.test(tokens[previous] ?? '');
+  const last = compound ? previousSignificantToken(tokens, previous - 1) : previous;
+  const qualifier = tokens[previousSignificantToken(tokens, last - 1)];
+  if (!isCommandName(tokens[last]) || ['.', '@', '$'].includes(qualifier)) return;
   locals.add(tokens[last]);
+  if (compound) return;
   const targets: string[] = [];
   let separator = assignmentSeparator(tokens, last);
   while (tokens[separator] === ',') {

@@ -277,6 +277,7 @@ const regexpBodies = [
   'values = [check, amount = 8]; check /prefix\nclass RegexText\nsuffix/',
   'puts = 8; puts / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'matcher = /prefix\nclass RegexText\nsuffix/',
+  'matcher = /=prefix\nclass RegexText\nsuffix/',
   'matcher = /prefix\nclass RegexText\nend\\/suffix/i',
   'matcher = !/prefix\nmodule RegexText\nsuffix/',
   'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
@@ -299,6 +300,24 @@ test('preserves production gems after compact division of local variables', () =
     const gemfile = `${name} = 8\n${name} /2\ngem 'rack', path: '/rack'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves production gems after compact division of compound assignment targets', () => {
+  ['||=', '&&=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '&=', '|=', '^='].forEach((operator) => {
+    const gemfile = `group :test do
+  class TestHelper
+  end
+  module TestHelpers
+  end
+  gem 'rspec'
+end
+amount ${operator} 8
+amount /2
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, operator);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, operator);
   });
 });
 
