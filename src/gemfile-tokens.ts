@@ -59,12 +59,19 @@ export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) 
 const trackWarnLocal = (onStatement?: (tokens: string[]) => void) => {
   const scopes = [{ warn: false }];
   const blocks: boolean[] = [];
+  const parameters = readBlockParameters((tokens) => {
+    if (hasWarnParameter(tokens)) {
+      scopes.push({ warn: true });
+      blocks[blocks.length - 1] = true;
+    }
+  });
   const statements = readStatements((tokens) => {
     if (tokens[0] === 'end' && blocks.pop()) scopes.pop();
     const method = tokens[0] === 'def';
     if (opensBlock(tokens)) {
       blocks.push(method);
-      if (method && hasWarnParameter(tokens)) scopes.at(-1)!.warn = true;
+      if (method && hasWarnParameter(methodParameters(tokens))) scopes.at(-1)!.warn = true;
+      if (!method && tokens.at(-1) === 'do') parameters.start();
     } else if (method) {
       scopes.pop();
     }
@@ -73,24 +80,58 @@ const trackWarnLocal = (onStatement?: (tokens: string[]) => void) => {
     if (token === 'def') scopes.push({ warn: false });
   });
   return {
-    ...statements,
+    push: (token: string) => {
+      if (!parameters.consume(token)) statements.push(token);
+    },
+    finish: statements.finish,
     isLocal: () => scopes.at(-1)!.warn,
-    assign: () => { scopes.at(-1)!.warn = true; },
+    assign: () => {
+      if (!parameters.isReading()) scopes.at(-1)!.warn = true;
+    },
   };
 };
 
-const hasWarnParameter = (tokens: string[]): boolean => {
-  const start = tokens[2] === '.' ? 4 : 2;
-  const first = tokens[start] === '(' ? start + 1 : start;
+const readBlockParameters = (onParameters: (tokens: string[]) => void) => {
+  let pending = false;
+  let tokens: string[] | undefined;
   let depth = 0;
-  let parameter = first;
-  return tokens.slice(first).some((token, offset) => {
-    const index = first + offset;
+  return {
+    start: () => { pending = true; },
+    isReading: () => tokens !== undefined,
+    consume: (token: string): boolean => {
+      if (tokens) {
+        if (token === '|' && depth === 0) {
+          onParameters(tokens);
+          tokens = undefined;
+        } else if (token !== '\n' && !isSpacing(token)) {
+          if (['(', '[', '{'].includes(token)) depth++;
+          if ([')', ']', '}'].includes(token)) depth--;
+          tokens.push(token);
+        }
+        return true;
+      }
+      if (!pending || token === '\n' || isSpacing(token)) return false;
+      pending = false;
+      if (token === '|') tokens = [];
+      return token === '|' || token === '||';
+    },
+  };
+};
+
+const methodParameters = (tokens: string[]): string[] => {
+  const start = tokens[2] === '.' ? 4 : 2;
+  return tokens.slice(tokens[start] === '(' ? start + 1 : start);
+};
+
+const hasWarnParameter = (tokens: string[]): boolean => {
+  let depth = 0;
+  let parameter = 0;
+  return tokens.some((token, index) => {
     if (depth === 0 && index === parameter) {
       if (token === 'warn' || token === 'warn=') return true;
       if (/^[*&]$/.test(token)) parameter++;
     }
-    if (depth === 0 && token === ',') parameter = index + 1;
+    if (depth === 0 && (token === ',' || token === ';')) parameter = index + 1;
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
     return false;

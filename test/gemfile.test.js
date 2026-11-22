@@ -276,6 +276,37 @@ gem 'rack', path: '/rack'`;
 });
 
 [
+  ['[4].each do |warn|', 'end'],
+  ['[4].each { |warn|', '}'],
+  ['[[nil, 4]].each do |value, warn|', 'end'],
+  ['[4].each do\n    |warn|', 'end'],
+  ['[4].each do |; warn|', 'end'],
+  ['[].each do |warn = (2 | 4)|', 'end'],
+].forEach(([opening, closing]) => {
+  test(`preserves Gemfile scopes after compact division in ${opening}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper
+      ${opening}
+        if true
+          warn /2
+        end
+      ${closing}
+    end
+  end
+  warn /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+[
   ['a sibling method', 'def other_helper; warn = 4; end', 'def test_helper', 'end'],
   ['an enclosing scope', 'warn = 4', 'def test_helper', 'end'],
   ['an endless method', 'def other_helper = (warn = 4)', '', ''],
