@@ -272,6 +272,8 @@ const percentLiterals = [
   ['interpolated word array', '%W!prefix #{"!"}\nmodule StringText\nsuffix!'],
   ['symbol array', '%i!prefix\nclass SymbolText\nsuffix!'],
   ['interpolated symbol array', '%I!prefix #{"!"}\nmodule SymbolText\nsuffix!'],
+  ['symbol', '%s!prefix #{\nclass SymbolText\nsuffix!'],
+  ['symbol with paired delimiters', '%s(prefix (nested)\nclass SymbolText\nsuffix)'],
   ['single-quoted', '%q{prefix {nested}\nclass StringText\nsuffix}'],
   ['interpolated', '%Q!prefix #{"!"}\nmodule StringText\nsuffix!'],
   ['implicit double-quoted', '%!prefix\nclass StringText\nsuffix!'],
@@ -284,6 +286,7 @@ percentLiterals.forEach(([name, literal]) => {
   gem 'rspec'
 end
 gem 'rack'`;
+    assert.deepEqual(gemfileStatements(gemfile)[1], ['message', '=', literal]);
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });

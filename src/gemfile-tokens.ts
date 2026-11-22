@@ -78,7 +78,7 @@ const expectsOperand = (token: string, previous: string): boolean =>
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([rqQwWiI]?)([^a-zA-Z0-9\u0080-\uffff])/y;
+  const opening = /\/|%([rqQwWiIs]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -88,7 +88,7 @@ const literalFrame = (content: string, start: number) => {
     delimiter,
     closing: pairedDelimiters.get(delimiter) ?? delimiter,
     regexp,
-    interpolated: !/^[qwi]$/.test(match[1] ?? ''),
+    interpolated: !/^[qwis]$/.test(match[1] ?? ''),
     start: opening.lastIndex,
     delimiters: 1,
     braces: 0,
