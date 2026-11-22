@@ -217,6 +217,7 @@ gem 'rack'`;
   'pattern = /prefix\nclass LiteralText\nmodule LiteralText\nend\ngem "ignored"\nsuffix/i',
   'pattern = %r{prefix {nested}\nclass LiteralText\nsuffix}x',
   'pattern = /prefix\\/\nclass LiteralText\nsuffix/',
+  'puts /prefix\nclass LiteralText\nmodule LiteralText\nend\ngem "ignored"\nsuffix/',
   'pattern = enabled ? /prefix\nclass LiteralText\nsuffix/ : /fallback/',
   'pattern = enabled ? /fallback/ : /prefix\nclass LiteralText\nsuffix/',
   'pattern = /#{%q(}/)}\nclass LiteralText\nsuffix/',
@@ -239,6 +240,7 @@ test('preserves group exclusions across division using a block argument', () => 
   const gemfile = `group :test do
   [12].each do |count|
     ratio = count /2
+    count / 2
     class TestHelper
     end
     gem 'rspec'

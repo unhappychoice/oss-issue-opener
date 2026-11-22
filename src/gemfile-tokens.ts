@@ -8,7 +8,9 @@ export const gemfileTokens = (content: string): string[] => {
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '/' || token === '%') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsRegexp(tokens[previous] ?? '\n', tokens[previousSignificantToken(tokens, previous - 1)])) {
+      const beforePrevious = tokens[previousSignificantToken(tokens, previous - 1)];
+      if (expectsRegexp(tokens[previous] ?? '\n', beforePrevious) ||
+        (token === '/' && startsCommandRegexp(tokens, previous, beforePrevious, content[match.index + 1]))) {
         const end = readRegexp(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
@@ -55,6 +57,12 @@ const previousSignificantToken = (tokens: string[], start: number): number => {
 const expectsRegexp = (token: string, previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|return|when|then|else)$/.test(token));
+
+const startsCommandRegexp = (tokens: string[], command: number, previous?: string, next = ''): boolean =>
+  ['\n', ';', 'do'].includes(previous ?? '\n') &&
+  /^[a-z_]\w*[!?]?$/.test(tokens[command] ?? '') &&
+  /^[^\S\n]+$/.test(tokens.at(-1) ?? '') &&
+  /^[^\s=]/.test(next);
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
