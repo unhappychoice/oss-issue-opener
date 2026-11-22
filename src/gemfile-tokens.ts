@@ -1,14 +1,31 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let previous = '\n';
+  let operandExpected = true;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
-    const token = match[0];
+    const token = readToken(pattern, match, content, operandExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (operandExpected && (token === '/' || (token === '%' && content[match.index + 1] === 'r'))) {
+      const literal = readRegexp(content, match.index);
+      if (literal) {
+        pattern.lastIndex = match.index + literal.length;
+        tokens.push(literal);
+        previous = literal;
+        operandExpected = false;
+        continue;
+      }
+    }
+    if (!isSpacing(token)) {
+      operandExpected = expectsOperand(token, previous);
+      previous = token;
+    }
     if (token.startsWith('<<')) {
       if (opensSingletonClass(tokens)) {
-        tokens.push('<<');
+        previous = '<<';
+        tokens.push(previous);
         pattern.lastIndex = match.index + 2;
         continue;
       }
@@ -28,6 +45,8 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
 const opensSingletonClass = (tokens: string[]): boolean => {
   const classIndex = previousSignificantToken(tokens, tokens.length - 1);
   if (tokens[classIndex] !== 'class') return false;
@@ -40,6 +59,97 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 const previousSignificantToken = (tokens: string[], index: number): number => {
   while (index >= 0 && isSpacing(tokens[index])) index--;
   return index;
+};
+
+const readToken = (pattern: RegExp, match: RegExpExecArray, content: string, operandExpected: boolean): string => {
+  if (match[0] !== '?' || !operandExpected) return match[0];
+  const character = /\?(?:\\[^\r\n]|[^\s\\])/uy;
+  character.lastIndex = match.index;
+  const literal = character.exec(content);
+  if (!literal) return match[0];
+  pattern.lastIndex = character.lastIndex;
+  return literal[0];
+};
+
+const expectsOperand = (token: string, previous: string): boolean =>
+  /^(?:\n|;|=|=>|~|\(|\[|,|&&|\|\||\?|:)$/.test(token) ||
+  (previous !== '.' && /^(?:!|do|if|elsif|unless|and|or)$/.test(token));
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalFrame = (content: string, start: number) => {
+  const opening = /\/|%([rqQ]?)([^a-zA-Z0-9\u0080-\uffff])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const regexp = match[1] === undefined || match[1] === 'r';
+  const delimiter = match[2] ?? '/';
+  return {
+    delimiter,
+    closing: pairedDelimiters.get(delimiter) ?? delimiter,
+    regexp,
+    interpolated: match[1] !== 'q',
+    start: opening.lastIndex,
+    delimiters: 1,
+    braces: 0,
+    previous: '{',
+    operandExpected: true,
+  };
+};
+
+const readRegexp = (content: string, start: number): string | undefined => {
+  const initial = literalFrame(content, start);
+  if (!initial) return undefined;
+  const frames = [initial];
+  const regexpPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const expressionPart = new RegExp(tokenPattern, 'gy');
+  const options = /[imxounes]*/y;
+  let offset = initial.start;
+
+  while (offset < content.length) {
+    const frame = frames.at(-1)!;
+    if (frame.braces === 0 && content[offset] === frame.closing && --frame.delimiters === 0) {
+      offset++;
+      if (frame.regexp) {
+        options.lastIndex = offset;
+        options.exec(content);
+        offset = options.lastIndex;
+      }
+      frames.pop();
+      if (frames.length === 0) return content.slice(start, offset);
+      continue;
+    }
+    const part = frame.braces === 0 ? regexpPart : expressionPart;
+    part.lastIndex = offset;
+    const match = part.exec(content);
+    if (!match) return undefined;
+    const token = frame.braces === 0 ? match[0] : readToken(part, match, content, frame.operandExpected);
+    if (frame.braces === 0) {
+      if (frame.delimiter !== frame.closing && token === frame.delimiter) frame.delimiters++;
+      if (frame.interpolated && token === '#{') {
+        frame.braces++;
+        frame.previous = '{';
+        frame.operandExpected = true;
+      }
+    } else if (!token.startsWith('#') && !isSpacing(token)) {
+      if ((token === '/' || token === '%') && frame.operandExpected) {
+        const nested = literalFrame(content, offset);
+        if (nested) {
+          frames.push(nested);
+          frame.previous = token;
+          frame.operandExpected = false;
+          offset = nested.start;
+          continue;
+        }
+      }
+      if (token === '{') frame.braces++;
+      if (token === '}') frame.braces--;
+      frame.operandExpected = token === '{' || expectsOperand(token, frame.previous);
+      frame.previous = token;
+    }
+    offset = part.lastIndex;
+  }
+  return undefined;
 };
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {

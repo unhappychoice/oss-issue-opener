@@ -251,3 +251,38 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const regexpExpressions = [
+  ['slash delimiters and escaped slashes', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
+  ['quoted slash in interpolation', 'matcher = /#{" / "}/'],
+  ['nested regexp in interpolation', 'matcher = /#{ /[}]/ }\nclass RegexText\nsuffix/'],
+  ['percent string and division in interpolation', 'matcher = /#{ %q!}!.ord / 2 }/'],
+  ['paired percent delimiters', 'matcher = %r{prefix{2}\nmodule RegexText\nsuffix}'],
+  ['unpaired percent delimiters', 'matcher = %r!prefix\nclass RegexText\nsuffix!'],
+  ['unary negation', 'matcher = !/prefix\nclass RegexText\nsuffix/'],
+  ['logical operator', 'matcher = enabled && /prefix\nclass RegexText\nsuffix/'],
+  ['first ternary branch', 'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : nil'],
+  ['second ternary branch', 'matcher = enabled ? nil : /prefix\nclass RegexText\nsuffix/'],
+  ['if condition', 'if /prefix\nclass RegexText\nsuffix/\nend'],
+  ['incomplete regexp', 'matcher = /prefix'],
+];
+
+regexpExpressions.forEach(([name, expression]) => {
+  test(`preserves Gemfile scopes around ${name}`, () => {
+    const gemfile = `group :test do
+  ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['receiver.if', 'receiver.!', '?:', '?/'].forEach((expression) => {
+  test(`preserves division after ${expression}`, () => {
+    const gemfile = `ratio = ${expression} / 2
+gem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
