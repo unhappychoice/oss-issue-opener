@@ -1,4 +1,6 @@
-import { canOpenLiteral, characterLiteralEnd, expectsRegexp, opensBacktickLiteral, rubyLiteralEnd } from './gemfile-regexp.js';
+import {
+  canOpenLiteral, characterLiteralEnd, expectsRegexp, opensBacktickLiteral, rubyLiteralEnd, startsPercentLiteral,
+} from './gemfile-regexp.js';
 import { hasGemfileBinding } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
@@ -15,7 +17,7 @@ export const gemfileTokens = (content: string): string[] => {
       const previous = tokens[previousIndex];
       const opensLiteral = token === '`' ? opensBacktickLiteral(token, tokens[index]) :
         expectsRegexp(tokens[index], previous) || ((token === '/' || token === '%') &&
-          opensCommandRegexp(content, match.index, tokens, index, previousIndex));
+          opensCommandLiteral(content, match.index, tokens, index, previousIndex));
       if (opensLiteral) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
@@ -52,14 +54,14 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|->|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
 
-const opensCommandRegexp = (
+const opensCommandLiteral = (
   content: string, start: number, tokens: string[], index: number, previousIndex: number,
 ): boolean => {
   const previous = tokens[previousIndex] ?? '\n';
   const command = tokens[index];
-  const startsRegexp = content.startsWith('%r', start) ||
+  const startsLiteral = startsPercentLiteral(content, start) ||
     (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
-  if (!startsRegexp || !/^[A-Za-z_]\w*[!?]?$/.test(command) || index === tokens.length - 1) return false;
+  if (!startsLiteral || !/^[A-Za-z_]\w*[!?]?$/.test(command) || index === tokens.length - 1) return false;
   if (previous === '.') return true;
   return ['\n', ';', 'do'].includes(previous) &&
     !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(command) &&

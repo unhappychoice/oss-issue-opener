@@ -11,6 +11,9 @@ export const canOpenLiteral = (token: string): boolean =>
 export const opensBacktickLiteral = (token: string, previous = ''): boolean =>
   token === '`' && previous !== '.' && previous !== 'def';
 
+export const startsPercentLiteral = (content: string, start: number): boolean =>
+  percentLiteralOpening(content, start) !== null;
+
 export const characterLiteralEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\[^\n]|[^\s\\])/uy;
   character.lastIndex = start;
@@ -20,12 +23,16 @@ export const characterLiteralEnd = (content: string, start: number): number | un
 export const rubyLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {
   if (content[start] === '`') return literalEnd(content, start + 1, '`', true, new RegExp(expression, 'y'));
   if (content[start] === '/') return regexpEnd(content, start, expression);
-  const opening = /%([qQwWiIrxs]?)([^\p{L}\p{N}\s])/uy;
-  opening.lastIndex = start;
-  const match = opening.exec(content);
+  const match = percentLiteralOpening(content, start);
   if (!match) return undefined;
   if (match[1] === 'r') return regexpEnd(content, start, expression);
-  return literalEnd(content, opening.lastIndex, match[2], !/^[qwis]$/.test(match[1]), expression);
+  return literalEnd(content, start + match[0].length, match[2], !/^[qwis]$/.test(match[1]), expression);
+};
+
+const percentLiteralOpening = (content: string, start: number): RegExpExecArray | null => {
+  const opening = /%([qQwWiIrxs]?)([^\p{L}\p{N}\s])/uy;
+  opening.lastIndex = start;
+  return opening.exec(content);
 };
 
 const regexpEnd = (content: string, start: number, tokenPattern: RegExp): number | undefined => {

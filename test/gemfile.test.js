@@ -706,6 +706,27 @@ gem 'rack'`;
   });
 });
 
+[
+  ['warn', '%q'],
+  ['Kernel.warn', '%Q'],
+  ['register_message', '%'],
+].forEach(([command, opening]) => {
+  test(`preserves group exclusions around a multiline percent string passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} ${opening}!prefix
+class LiteralText
+gem 'ignored'
+suffix!
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
 ['warn', 'Kernel.warn', 'abort', 'register_pattern'].forEach((command) => {
   test(`preserves group exclusions around a multiline percent regexp passed to ${command}`, () => {
     const gemfile = `group :test do
@@ -723,17 +744,19 @@ gem 'rack'`;
   });
 });
 
-test('keeps modulo of a local variable named warn visible', () => {
-  const gemfile = `warn = 12
+['%r', '%q'].forEach((opening) => {
+  test(`keeps modulo of a local variable named warn visible before ${opening.slice(1)}!`, () => {
+    const gemfile = `warn = 12
 group :test do
-  warn %r!
+  warn ${opening}!
   gem 'rspec'
 end
 gem 'rack'
 matcher = %r!suffix!`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  });
 });
 
 test('keeps division after an explicit warn call visible', () => {
