@@ -250,3 +250,26 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  '/first\nclass Phantom\nlast/',
+  '%r{first\nclass Phantom\nlast}',
+  'enabled ? /first\nclass Phantom\nlast/ : /fallback/',
+  'enabled ? /fallback/ : /first\nclass Phantom\nlast/',
+  '/#{%q(/)} first\nclass Phantom\nlast/',
+  '%r{#{%Q!#{/}/}!} first\nclass Phantom\nlast}im',
+  '/first\\/\nmodule Phantom\nlast/',
+].forEach((expression) => {
+  test(`keeps Gemfile scopes intact across ${expression}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+  end
+  matcher = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
