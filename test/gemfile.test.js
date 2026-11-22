@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isProductionGem } from '../dist/gemfile.js';
+import { gemfileStatements, isProductionGem, isProductionGemIn } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
@@ -99,6 +99,33 @@ test('ignores bare dependency names in Gemfile declarations', () => {
   const gemfile = "rack = 'puma'\ngem rack\ngem(rack)";
   assert.equal(isProductionGem(gemfile, 'rack'), false);
   assert.equal(isProductionGem(gemfile, 'puma'), false);
+});
+
+test('tracks excluded and shared groups through deeply nested scopes', () => {
+  const depth = 4_096;
+  const statements = gemfileStatements([
+    'group :test, :production do\n'.repeat(depth),
+    "gem 'shared'",
+    'group :development do',
+    'group :production do\n'.repeat(depth),
+    'group :test do',
+    "gem 'inner_test'",
+    'end',
+    "gem 'after_test'",
+    'end\n'.repeat(depth),
+    "gem 'after_production'",
+    'end',
+    "gem 'after_development'",
+    'end\n'.repeat(depth),
+    "gem 'ungrouped'",
+  ].join('\n'));
+
+  for (const pkg of ['shared', 'after_development', 'ungrouped']) {
+    assert.equal(isProductionGemIn(statements, pkg), true, pkg);
+  }
+  for (const pkg of ['inner_test', 'after_test', 'after_production', 'missing']) {
+    assert.equal(isProductionGemIn(statements, pkg), false, pkg);
+  }
 });
 
 ["'", '"'].forEach((quote) => {

@@ -6,12 +6,15 @@ export const isProductionGem = (content: string, pkg: string): boolean =>
 
 export const isProductionGemIn = (statements: string[][], pkg: string): boolean => {
   const blocks: boolean[] = [];
+  let excludedScopes = 0;
   return statements.some((tokens) => {
-    if (tokens[0] === 'end') blocks.pop();
-    const excluded = blocks.includes(true);
+    if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
+    const excluded = excludedScopes > 0;
     if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
       /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
-      blocks.push(tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1)));
+      const excludesGroup = tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1));
+      blocks.push(excludesGroup);
+      if (excludesGroup) excludedScopes++;
     }
     if (tokens[0] !== 'gem') return false;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
