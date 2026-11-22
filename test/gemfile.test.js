@@ -251,3 +251,41 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+const regexpExpressions = [
+  ['slash literal', '/first\nclass RegexText\nlast/i'],
+  ['percent literal', '%r{first\nclass RegexText\n{last}}m'],
+  ['ternary branch', 'enabled ? /first\nclass RegexText\nlast/ : nil'],
+  ['ternary alternative', 'enabled ? nil : /first\nclass RegexText\nlast/'],
+  ['escaped delimiter', '/first\\/\nclass RegexText\nlast/'],
+  ['nested regexp', '/first#{/nested/}\nclass RegexText\nlast/'],
+  ['percent string in interpolation', '/first#{%q[}/]}\nclass RegexText\nlast/'],
+];
+
+regexpExpressions.forEach(([description, expression]) => {
+  test(`preserves Gemfile group boundaries around a ${description}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('ignores Gemfile declarations inside a multiline regexp', () => {
+  const gemfile = `group :test do
+  pattern = /first
+end
+gem 'fake'
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'fake'), false);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

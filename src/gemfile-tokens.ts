@@ -1,22 +1,36 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
+  let regexpExpected = true;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (regexpExpected && (token === '/' || token === '%')) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push('regexp');
+        previous = 'regexp';
+        regexpExpected = false;
+        classHeader = false;
+        continue;
+      }
+    }
     if (classHeader && token.startsWith('<<')) {
       pattern.lastIndex = match.index + 2;
       tokens.push('<<');
       previous = '<<';
+      regexpExpected = false;
       classHeader = false;
       continue;
     }
-    if (!/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) {
+    if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|end|=)$/.test(previous);
+      regexpExpected = expectsRegexp(token, previous);
       previous = token;
     }
     if (token.startsWith('<<')) {
@@ -34,6 +48,92 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
+
+const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const expectsRegexp = (token: string, previous: string): boolean =>
+  /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&|\|)$/.test(token) ||
+  (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|then)$/.test(token));
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalFrame = (content: string, start: number, inInterpolation: boolean) => {
+  const opening = inInterpolation
+    ? /\/|%([rQqWwIisx]?)([^\s\p{L}\p{N}])/uy
+    : /\/|%(r)([^\s\p{L}\p{N}])/uy;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const delimiter = match[2] ?? '/';
+  return {
+    delimiter,
+    closing: pairedDelimiters.get(delimiter) ?? delimiter,
+    start: opening.lastIndex,
+    regexp: match[1] === undefined || match[1] === 'r',
+    interpolates: !/^[qwis]$/.test(match[1] ?? ''),
+    delimiters: 1,
+    braces: 0,
+    previous: '{',
+    regexpExpected: true,
+  };
+};
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const initial = literalFrame(content, start, false);
+  if (!initial) return undefined;
+  const frames = [initial];
+  const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const expressionPart = new RegExp(tokenPattern, 'y');
+  const flags = /[imxounes]*/y;
+  let offset = initial.start;
+
+  while (offset < content.length) {
+    const frame = frames.at(-1)!;
+    if (frame.braces === 0 && content[offset] === frame.closing && --frame.delimiters === 0) {
+      offset++;
+      if (frame.regexp) {
+        flags.lastIndex = offset;
+        flags.exec(content);
+        offset = flags.lastIndex;
+      }
+      frames.pop();
+      if (frames.length === 0) return offset;
+      continue;
+    }
+    const part = frame.braces === 0 ? literalPart : expressionPart;
+    part.lastIndex = offset;
+    const match = part.exec(content);
+    if (!match) return undefined;
+    const token = match[0];
+    if (frame.braces === 0) {
+      if (frame.delimiter !== frame.closing && token === frame.delimiter) frame.delimiters++;
+      if (frame.interpolates && token === '#{') {
+        frame.braces = 1;
+        frame.previous = '{';
+        frame.regexpExpected = true;
+      }
+    } else if (!token.startsWith('#') && !isSpacing(token)) {
+      if (frame.regexpExpected && (token === '/' || token === '%')) {
+        const nested = literalFrame(content, offset, true);
+        if (nested) {
+          frames.push(nested);
+          frame.previous = 'literal';
+          frame.regexpExpected = false;
+          offset = nested.start;
+          continue;
+        }
+      }
+      if (token === '{') frame.braces++;
+      if (token === '}') frame.braces--;
+      frame.regexpExpected = expectsRegexp(token, frame.previous);
+      frame.previous = token;
+    }
+    offset = part.lastIndex;
+  }
+  return undefined;
 };
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {
