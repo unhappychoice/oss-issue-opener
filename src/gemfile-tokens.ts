@@ -58,7 +58,7 @@ const opensCommandRegexp = (
   const command = tokens[index];
   const startsRegexp = content.startsWith('%r', start) ||
     (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
-  return startsRegexp && ['warn', 'puts', 'print', 'p'].includes(command) && index < tokens.length - 1 &&
+  return startsRegexp && ['warn', 'puts', 'print', 'p', 'abort'].includes(command) && index < tokens.length - 1 &&
     (previous === '.' ||
       (['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), command)));
 };

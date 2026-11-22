@@ -629,6 +629,8 @@ gem 'rack'`;
   ['a multiline Kernel.print regexp', 'Kernel.print /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline p regexp', 'p /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline Kernel.p regexp', 'Kernel.p /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline abort regexp', 'abort /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline Kernel.abort regexp', 'Kernel.abort /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
 ].forEach(([description, statement]) => {
   test(`preserves group exclusions around ${description}`, () => {
     const gemfile = `group :test do
@@ -644,7 +646,7 @@ gem 'rack'`;
   });
 });
 
-['warn', 'Kernel.warn'].forEach((command) => {
+['warn', 'Kernel.warn', 'abort'].forEach((command) => {
   test(`preserves group exclusions around a multiline percent regexp passed to ${command}`, () => {
     const gemfile = `group :test do
   ${command} %r!prefix
@@ -686,7 +688,7 @@ matcher = /suffix/`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['puts', 'print', 'p'].forEach((name) => {
+['puts', 'print', 'p', 'abort'].forEach((name) => {
   test(`keeps division of a local variable named ${name} visible`, () => {
     const gemfile = `${name} = 12
 group :test do
