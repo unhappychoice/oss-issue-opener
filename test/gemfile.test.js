@@ -471,3 +471,37 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+['[4].each do |warn|\n    warn /divisor\n  end', '[4].each { |warn| warn /divisor }'].forEach((block) => {
+  test(`keeps block parameters local to ${block.split('\n')[0]}`, () => {
+    const gemfile = `divisor = 2
+group :test do
+  ${block}
+  warn /start
+class PatternText
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  });
+});
+
+test('inherits outer locals in blocks and retains bindings made in hashes', () => {
+  const gemfile = `divisor = 2
+group :test do
+  values = { value: (warn = 4) }
+  [4].each do
+    warn /divisor
+  end
+  [4].each { warn /divisor }
+  warn /divisor
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+});

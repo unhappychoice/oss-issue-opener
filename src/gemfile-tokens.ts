@@ -82,7 +82,7 @@ class LocalScopes {
       if (token !== 'do' && this.scopes.at(-1)?.endless) this.close('end');
       if (token === 'end') this.close(token);
       if (token === 'do' && !/^(?:for|while|until)$/.test(this.statement[0] ?? '')) {
-        this.scopes.push({ closer: 'end' });
+        this.openLocalScope('end', new Set(this.locals));
       }
       this.statement = [];
       return;
@@ -90,11 +90,13 @@ class LocalScopes {
 
     if (token === '(' || token === '[') this.parentheses++;
     if (token === ')' || token === ']') this.parentheses--;
-    if (token === '{') this.scopes.push({ closer: '}' });
+    if (token === '{') {
+      if (expressionStart.test(previous)) this.scopes.push({ closer: '}' });
+      else this.openLocalScope('}', new Set(this.locals));
+    }
     if (token === '}') this.close(token);
     if (/^(?:class|module|def)$/.test(token) && namespaceStart.test(previous)) {
-      this.scopes.push({ closer: 'end', outerLocals: this.locals });
-      this.locals = new Set();
+      this.openLocalScope('end', new Set());
     }
     if (/^(?:if|unless|case|begin|while|until|for)$/.test(token) && namespaceStart.test(previous)) {
       this.scopes.push({ closer: 'end' });
@@ -109,6 +111,11 @@ class LocalScopes {
   private isBoundary(token: string): boolean {
     return token === 'end' || token === 'do' ||
       (this.parentheses === 0 && (token === '\n' || token === ';'));
+  }
+
+  private openLocalScope(closer: Scope['closer'], locals: Set<string>): void {
+    this.scopes.push({ closer, outerLocals: this.locals });
+    this.locals = locals;
   }
 
   private close(closer: Scope['closer']): void {
