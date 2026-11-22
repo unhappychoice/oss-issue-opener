@@ -2,12 +2,12 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const warnArgument = /[ \t]+\/(?=\S)/y;
-  const warnBinding = /[ \t]*(?:[,)|]|=(?!=|>|~))/y;
+  const commandArgument = /[ \t]+\/(?=\S)/y;
+  const localBinding = /[ \t]*(?:[,)|]|=(?!=|>|~))/y;
+  const boundCommands = new Set<string>();
   let previous = '\n';
   let classHeader = false;
   let commandSlash = -1;
-  let hasWarnBinding = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -22,13 +22,13 @@ export const gemfileTokens = (content: string): string[] => {
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
-      if (token === 'warn' && previous !== '.') {
+      if ((token === 'warn' || token === 'puts') && previous !== '.') {
         // A possible local binding makes the bare command form ambiguous.
-        warnBinding.lastIndex = pattern.lastIndex;
-        hasWarnBinding ||= warnBinding.test(content);
-        warnArgument.lastIndex = pattern.lastIndex;
-        if (!hasWarnBinding && /^(?:\n|;|do)$/.test(previous) && warnArgument.test(content)) {
-          commandSlash = warnArgument.lastIndex - 1;
+        localBinding.lastIndex = pattern.lastIndex;
+        if (localBinding.test(content)) boundCommands.add(token);
+        commandArgument.lastIndex = pattern.lastIndex;
+        if (!boundCommands.has(token) && /^(?:\n|;|do)$/.test(previous) && commandArgument.test(content)) {
+          commandSlash = commandArgument.lastIndex - 1;
         }
       }
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);

@@ -312,11 +312,28 @@ gem 'rack'`;
   });
 });
 
-test('ignores class keywords inside a multiline regexp passed to warn', () => {
-  const gemfile = `group :test do
-  warn /start
+['warn', 'puts'].forEach((command) => {
+  test(`ignores class keywords inside a multiline regexp passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} /start
 class PatternText
 finish/i
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('distinguishes puts division from a regexp passed to warn', () => {
+  const gemfile = `group :test do
+  puts = 4
+  puts /divisor
+  warn /start
+class PatternText
+finish/
   gem 'rspec'
 end
 gem 'rack'`;
