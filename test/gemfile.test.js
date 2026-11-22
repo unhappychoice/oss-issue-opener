@@ -260,6 +260,9 @@ const regexpExpressions = [
   ['escaped delimiter', '/first\\/\nclass RegexText\nlast/'],
   ['nested regexp', '/first#{/nested/}\nclass RegexText\nlast/'],
   ['percent string in interpolation', '/first#{%q[}/]}\nclass RegexText\nlast/'],
+  ['regexp argument to a predicate', '"value".match? /first\nclass RegexText\nlast/'],
+  ['regexp argument to a bare predicate', 'match? /first\nclass RegexText\nlast/'],
+  ['regexp argument inside interpolation', '/first#{"value".match? /[}]/}\nclass RegexText\nlast/'],
 ];
 
 regexpExpressions.forEach(([description, expression]) => {
@@ -273,6 +276,17 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('preserves Gemfile group boundaries around division after a predicate call', () => {
+  const gemfile = `group :test do
+  "value".match? / 2
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 test('ignores Gemfile declarations inside a multiline regexp', () => {

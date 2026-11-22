@@ -9,7 +9,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (literalExpected && (token === '/' || token === '%')) {
+    if (startsLiteral(content, match.index, token, previous, literalExpected)) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -57,6 +57,21 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|then)$/.test(token));
+
+const startsLiteral = (
+  content: string,
+  offset: number,
+  token: string,
+  previous: string,
+  expected: boolean,
+): boolean => {
+  if (token !== '/') return token === '%' && expected;
+  return expected || (
+    /^[A-Za-z_]\w*[!?]$/.test(previous) &&
+    /\s/.test(content[offset - 1] ?? '') &&
+    /\S/.test(content[offset + 1] ?? '')
+  );
+};
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
@@ -115,7 +130,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
         frame.literalExpected = true;
       }
     } else if (!token.startsWith('#') && !isSpacing(token)) {
-      if (frame.literalExpected && (token === '/' || token === '%')) {
+      if (startsLiteral(content, offset, token, frame.previous, frame.literalExpected)) {
         const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);
