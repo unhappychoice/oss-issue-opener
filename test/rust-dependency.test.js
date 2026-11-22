@@ -62,12 +62,11 @@ const cases = [
 cases.forEach(([name, content, pkg, expected]) => {
   test(`Rust production dependency detection: ${name}`, async (t) => {
     const getContent = t.mock.method(getOctokit().repos, 'getContent', async () => ({
-      data: { content: Buffer.from(content).toString('base64') },
+      data: content,
     }));
 
     assert.equal(await isProductionDependency('owner', 'repo', pkg, 'rust'), expected);
-    assert.deepEqual(getContent.mock.calls[0].arguments, [{
-      owner: 'owner', repo: 'repo', path: 'Cargo.toml',
-    }]);
+    assert.deepEqual(getContent.mock.calls.map(({ arguments: [{ owner, repo, path }] }) => [owner, repo, path]),
+      [['owner', 'repo', 'Cargo.toml']]);
   });
 });

@@ -42,8 +42,8 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
   if (!label && !hashKey) return false;
   const values = tokens.slice(index + 2);
   if (values[0] === '[') return hasExcludedGroup(values.slice(1, values.indexOf(']')));
-  const valueIndex = values[0] === ':' ? 1 : 0;
-  return hasExcludedGroup(values.slice(valueIndex, valueIndex + 1));
+  const valueLength = values[0] === ':' ? 2 : 1;
+  return hasExcludedGroup(values.slice(0, valueLength));
 });
 
 export const gemfileStatements = (content: string): string[][] => {

@@ -26,9 +26,7 @@ export const mockRubyRepository = (gemspec, gemfile = '') => {
   initMockOctokit('test-token');
   const repos = getOctokit().repos;
   mock.method(repos, 'getContent', async ({ path }) => ({
-    data: path === '' ? [{ name: 'example.gemspec' }, { name: 'Gemfile' }] : {
-      content: Buffer.from(path.endsWith('.gemspec') ? gemspec : gemfile).toString('base64'),
-    },
+    data: path === '' ? [{ name: 'example.gemspec' }, { name: 'Gemfile' }] : path.endsWith('.gemspec') ? gemspec : gemfile,
   }));
   mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
   mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));

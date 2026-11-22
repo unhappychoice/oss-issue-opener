@@ -30,7 +30,7 @@ test('detects a production bump after the first 250 commits', async (t) => {
     },
   }));
   t.mock.method(repos, 'getContent', async () => ({
-    data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
+    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
   }));
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
@@ -69,7 +69,7 @@ test('detects the original final production bump and links to the scanned commit
       : [] } };
   });
   const manifest = t.mock.method(repos, 'getContent', async () => ({
-    data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
+    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
   }));
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
@@ -82,7 +82,7 @@ test('detects the original final production bump and links to the scanned commit
   assert.deepEqual(resolve.mock.calls.map(({ arguments: [{ ref }] }) => ref), ['refs/tags/v1', 'bump']);
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
-  assert.deepEqual(manifest.mock.calls.map(({ arguments: [params] }) => params),
+  assert.deepEqual(manifest.mock.calls.map(({ arguments: [{ owner, repo, path, ref }] }) => ({ owner, repo, path, ref })),
     [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
 });
 
@@ -122,7 +122,10 @@ test('finishes on an empty page after an exactly full page', async (t) => {
     headSha: commitSha('main'),
     files: [],
   });
-  assert.deepEqual(await getCommits(), commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })));
+  assert.deepEqual(await getCommits(), {
+    commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
+    lookupErrors: [],
+  });
   assert.equal(compare.mock.callCount(), 2);
 });
 
@@ -134,7 +137,7 @@ test('returns no changed files or commits for matching SHAs without comparing', 
   const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', { sha, treeSha: 'head-tree' });
 
   assert.deepEqual(comparison, { baseSha: sha, headSha: sha, files: [] });
-  assert.deepEqual(await getCommits(), []);
+  assert.deepEqual(await getCommits(), { commits: [], lookupErrors: [] });
   assert.equal(compare.mock.callCount(), 0);
 });
 
@@ -233,7 +236,7 @@ test('uses the pinned head tree to find a dependency change that requires later 
   }));
   mockCommitFiles(t.mock, ['package-lock.json']);
   t.mock.method(getOctokit().repos, 'getContent', async () => ({
-    data: { content: Buffer.from(JSON.stringify({ dependencies: { example: '^2.0.0' } })).toString('base64') },
+    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
   }));
 
   const result = await checkPendingRelease('owner', 'repo', 'node');

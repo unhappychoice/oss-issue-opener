@@ -21,10 +21,10 @@ const stubRepository = (t, message, paths = ['package-lock.json']) => {
     },
   }));
   t.mock.method(repos, 'getContent', async () => ({
-    data: { content: Buffer.from(JSON.stringify({
+    data: JSON.stringify({
       dependencies: { '@octokit/rest': '^22.0.1' },
       devDependencies: { typescript: '^7.0.2' },
-    })).toString('base64') },
+    }),
   }));
 };
 
@@ -77,9 +77,9 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
     })),
   } }));
   repos.getContent.mock.mockImplementation(async () => ({
-    data: { content: Buffer.from(JSON.stringify({
+    data: JSON.stringify({
       devDependencies: Object.fromEntries(packages.map((pkg) => [pkg, '1.1.0'])),
-    })).toString('base64') },
+    }),
   }));
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
@@ -130,7 +130,7 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
     const message = 'Bump serde from 1.0.218 to 1.0.219';
     stubRepository(t, message, ['Cargo.toml', 'Cargo.lock']);
     t.mock.method(getOctokit().repos, 'getContent', async () => ({
-      data: { content: Buffer.from(manifest).toString('base64') },
+      data: manifest,
     }));
 
     const expected = isProduction ? {
@@ -235,6 +235,8 @@ test('detects source changes without dependency updates', async (t) => {
   ["gem 'rack', group: :'test'", false],
   ['gem "rack", group: :"development"', false],
   ["gem 'rack', group: :'production'", true],
+  ["gem 'rack', :group => :'test'", false],
+  ["gem 'rack', group: :'production', require: 'test'", true],
   ["gem 'rack', groups: [:'test', :production]", true],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :development do\n  def test_helper\n    def nested_helper\n      true\n    end\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
@@ -258,7 +260,7 @@ test('detects source changes without dependency updates', async (t) => {
     const message = `Bump ${pkg} from 3.1.0 to 3.1.1`;
     stubRepository(t, message, ['Gemfile.lock']);
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [{ name: 'Gemfile', type: 'file' }] : { content: Buffer.from(gemfile).toString('base64') },
+      data: path === '' ? [{ name: 'Gemfile', type: 'file' }] : gemfile,
     }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'ruby'), production ? {
@@ -282,7 +284,7 @@ test('detects source changes without dependency updates', async (t) => {
     const message = 'Bump org.example:bom from 1.0 to 1.1';
     stubRepository(t, message, [manifest]);
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: { content: Buffer.from(path === manifest ? `dependencies { ${declaration} }` : '').toString('base64') },
+      data: path === manifest ? `dependencies { ${declaration} }` : '',
     }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), declaration.startsWith('test') ? {
@@ -324,7 +326,7 @@ test('detects source changes without dependency updates', async (t) => {
       `,
     };
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: { content: Buffer.from(files[path] ?? '').toString('base64') },
+      data: files[path] ?? '',
     }));
 
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), production ? {
@@ -362,7 +364,7 @@ test('detects source changes without dependency updates', async (t) => {
       const content = path === 'Gemfile' ? "gem 'dotenv'" : JSON.stringify({
         [production ? 'dependencies' : 'devDependencies']: { dotenv: '16.4.7' },
       });
-      return { data: { content: Buffer.from(content).toString('base64') } };
+      return { data: content };
     });
 
     const result = await checkPendingRelease('owner', 'repo', ['node', 'ruby']);
@@ -392,7 +394,7 @@ test('detects source changes without dependency updates', async (t) => {
       const content = path === 'Gemfile'
         ? (rubyProduction ? "gem 'dotenv'" : "gem 'rack'")
         : JSON.stringify({ dependencies: { dotenv: '16.4.7' } });
-      return { data: { content: Buffer.from(content).toString('base64') } };
+      return { data: content };
     });
     const pages = [];
     t.mock.method(repos, 'getCommit', async ({ ref, page }) => {

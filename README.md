@@ -35,7 +35,7 @@ Archived, private and forked repositories are skipped.
 ## Setup
 
 1. Create a GitHub Personal Access Token (Classic) with `public_repo` scope. The tool only reads
-   public repositories and only creates issues in `unhappychoice/oss-issue-opener`, so the broader
+   public repositories and only writes issues in `unhappychoice/oss-issue-opener`, so the broader
    `repo` scope (which also grants write access to every private repository you can reach) is not
    needed. A fine-grained PAT limited to read access on the target orgs' public repositories plus
    Issues: write on `unhappychoice/oss-issue-opener` works as well. For either token type, the
@@ -49,6 +49,7 @@ Archived, private and forked repositories are skipped.
 |---------|-----------------------|----------|
 | `GH_TOKEN` | Environment variable | Required GitHub token used to read repositories and create issues. The process exits with status 1 when it is missing. |
 | `OSS_GITHUB_TOKEN` | GitHub Actions repository secret | The weekly workflow passes this secret to the process as `GH_TOKEN`. |
+| `AUTO_CLOSE_CI_ALERTS` | Environment variable or GitHub Actions repository variable | Set to `true` to close verified CI alerts. Defaults to off. |
 | `ORGS` | `src/types.ts` | Accounts to scan; defaults to the accounts listed under Target Organizations. |
 | `ISSUE_REPO` | `src/types.ts` | Destination for all created issues; defaults to `unhappychoice/oss-issue-opener`. Issues are created here, not in each scanned repository. |
 
@@ -144,3 +145,22 @@ All detected issues are collected, sorted by:
 Then created in batch, skipping any that already exist.
 Creation failures are logged per issue, and remaining issues are still attempted.
 After the batch, any failures are reported together and the process exits with a nonzero status.
+
+### Closing Recovered CI Alerts
+
+Set `AUTO_CLOSE_CI_ALERTS=true` to enable automatic closure. For the weekly workflow,
+set the `AUTO_CLOSE_CI_ALERTS` Actions repository variable to `true`.
+
+The scanner considers open `ci-failure` issues authored by the account authenticated
+with `GH_TOKEN` that carry scanner-generated recovery metadata for the scanned repository.
+The existing alert must be present when the scan starts. Its recorded check runs and
+commit statuses must each explicitly pass on the checked default-branch commit,
+and the overall CI scan must succeed. GitHub Actions jobs must match both the
+recorded job name and workflow ID. A missing, pending, skipped, neutral, or
+unreadable recorded check leaves the issue open. The scanner comments with a link
+to the verified commit and closes the issue as completed.
+
+Alerts require manual closure when the initial CI scan could not retrieve all
+results, when the recovery metadata is missing, when a check run has no verified
+GitHub Actions workflow ID, or when the complete check list cannot fit in the
+metadata. Linear links do not affect eligibility.

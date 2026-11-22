@@ -2,10 +2,22 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { getDefaultBranchHead, initOctokit } from '../dist/github.js';
+import { getDefaultBranchHead, getFileContent, initOctokit } from '../dist/github.js';
 
 const entryPoint = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const sha = 'a'.repeat(40);
+
+test('propagates a raw manifest body read failure', async (t) => {
+  const failure = new Error('Manifest stream interrupted');
+  initOctokit('test-token');
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    pull(stream) {
+      stream.error(failure);
+    },
+  })));
+
+  await assert.rejects(getFileContent('owner', 'repo', 'package.json', sha), (error) => error === failure);
+});
 
 test('CLI reports a stalled CI page and submits findings from another repository before exiting', () => {
   const preload = `
@@ -75,7 +87,7 @@ test('CLI reports a stalled CI page and submits findings from another repository
   assert.ifError(result.error);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /\[failed\] unhappychoice\/stalled: CI investigation.*TimeoutError/);
-  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 maintenance operations/);
   assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/completed/);
 });
 

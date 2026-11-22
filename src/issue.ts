@@ -1,11 +1,11 @@
-import { createIssue, listOpenIssues } from './github.js';
-import type { DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
-import { ISSUE_REPO } from './types.js';
+import { completeIssue, createIssue, getAuthenticatedLogin, listOpenIssueDetails, listOpenIssues } from './github.js';
+import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
+import { ISSUE_REPO, recoveryCheckKey } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 const ISSUE_BODY_LIMIT = 65_536;
 
-export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): PendingIssue => {
+export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[], scanComplete = true): PendingIssue => {
   const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
   const links = `\n\n**Repository**: https://github.com/${repo}
 **Actions**: https://github.com/${repo}/actions`;
@@ -14,7 +14,7 @@ export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[]): 
     type: 'ci-failure',
     repo,
     title: `[CI Failure] ${repo}`,
-    body: formatIssueBody(intro, items, links),
+    body: formatIssueBody(intro, items, links + (scanComplete ? recoveryMarker(repo, failedChecks) : '')),
   };
 };
 
@@ -37,6 +37,62 @@ export const buildPendingReleaseIssue = (
     title: `[Pending Release] ${repo}`,
     body: formatIssueBody(intro + heading, items, links),
   };
+};
+
+export const listCIAlerts = async () => listOpenIssueDetails(issueOwner, issueRepo, 'ci-failure');
+
+export const closeRecoveredCIAlerts = async (
+  alerts: Awaited<ReturnType<typeof listCIAlerts>>,
+  recoveries: ReadonlyMap<string, NonNullable<CIStatus['recovery']>>
+): Promise<void> => {
+  const author = await getAuthenticatedLogin();
+  const failures: Error[] = [];
+  for (const alert of alerts) {
+    const { number } = alert;
+    const recorded = recordedChecks(alert, author);
+    if (!recorded) continue;
+    const { repo, checks } = recorded;
+    const recovery = recoveries.get(repo);
+    if (!recovery || !/^[a-f0-9]{40}$/i.test(recovery.sha)) continue;
+    const passed = new Set(recovery.passedChecks.map(recoveryCheckKey));
+    if (!checks.every((check) => passed.has(check))) continue;
+
+    try {
+      const url = `https://github.com/${repo}/commit/${recovery.sha}`;
+      const closed = await completeIssue(issueOwner, issueRepo, number, author,
+        `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`,
+        (issue) => {
+          const current = recordedChecks(issue, author);
+          return current?.repo === repo && current.checks.every((check) => passed.has(check));
+        });
+      if (closed) console.log(`  [closed] ${alert.title} (#${number})`);
+    } catch (cause) {
+      failures.push(new Error(`Failed to complete CI alert #${number}`, { cause }));
+      console.error(`  [failed] Completing CI alert #${number}`, cause);
+    }
+  }
+  if (failures.length > 0) throw new AggregateError(failures, 'CI alert closure failed');
+};
+
+const recordedChecks = (
+  issue: Awaited<ReturnType<typeof listCIAlerts>>[number], author: string
+): { repo: string; checks: string[] } | undefined => {
+  const { state, user, labels, body, pull_request } = issue;
+  if (state !== 'open' || pull_request || user?.login !== author || !labels.some((label) =>
+    (typeof label === 'string' ? label : label.name) === 'ci-failure')) return undefined;
+
+  const marker = body?.trimEnd().split('\n').at(-1)?.match(/^<!-- oss-issue-opener:ci:v1 ([\w.-]+\/[\w.-]+) ([\w-]+(?: [\w-]+)*) -->$/);
+  if (!marker) return undefined;
+  const [, repo, checks] = marker;
+  return { repo, checks: checks.split(' ') };
+};
+
+const recoveryMarker = (repo: string, checks: FailedCheck[]): string => {
+  const identities = checks.map(recoveryCheckKey);
+  const keys = [...new Set(identities)].join(' ');
+  const marker = `\n\n<!-- oss-issue-opener:ci:v1 ${repo} ${keys} -->`;
+  return identities.every(Boolean) && keys && marker.length <= ISSUE_BODY_LIMIT / 2
+    ? marker : `\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`;
 };
 
 const formatIssueBody = (intro: string, items: string[], links: string): string => {

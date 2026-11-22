@@ -18,7 +18,7 @@ const cases = [
 cases.forEach(([name, manifest, pkg, expected]) => {
   test(`Node production dependency detection: ${name} for ${pkg}`, async (t) => {
     t.mock.method(getOctokit().repos, 'getContent', async () => ({
-      data: { content: Buffer.from(JSON.stringify(manifest)).toString('base64') },
+      data: JSON.stringify(manifest),
     }));
 
     assert.equal(await isProductionDependency('owner', 'repo', pkg, 'node'), expected);
@@ -27,7 +27,7 @@ cases.forEach(([name, manifest, pkg, expected]) => {
   test(`Node dependency-only release decision: ${name} for ${pkg}`, async (t) => {
     const repos = getOctokit().repos;
     t.mock.method(repos, 'getContent', async () => ({
-      data: { content: Buffer.from(JSON.stringify(manifest)).toString('base64') },
+      data: JSON.stringify(manifest),
     }));
     t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
     t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));

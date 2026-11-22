@@ -322,7 +322,7 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
       assert.equal(ref, headSha('repo'));
       if (path === '') return { data: entries };
       assert.equal(path, 'package.json');
-      return { data: { content: Buffer.from('{"dependencies":{"runtime":"1.1"}}').toString('base64') } };
+      return { data: '{"dependencies":{"runtime":"1.1"}}' };
     });
     const tree = mock.method(getOctokit().git, 'getTree', async () => {
       if (outcome === 'request failed') throw failure;
@@ -528,10 +528,10 @@ test('skips root listings when neither releases nor tags provide a baseline', as
       if (path === failedPath) throw cause;
       if (path === '') return { data: manifests.map((name) => ({ name })) };
       if (path === 'build.gradle') {
-        return { data: { content: Buffer.from('implementation(libs.runtime)').toString('base64') } };
+        return { data: 'implementation(libs.runtime)' };
       }
       assert.equal(path, 'example.gemspec');
-      return { data: { content: '' } };
+      return { data: '' };
     });
     const { deps, batches } = setup({
       listOrgRepos: async function* (org) {
@@ -556,20 +556,31 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   });
 });
 
-for (const hasSourceChange of [true, false]) {
-  test(`reports comparison page failures ${hasSourceChange ? 'with' : 'without'} a confirmed source change`, async () => {
+for (const reason of ['source change', 'production bump', 'development bump', 'no candidate']) {
+  test(`reports comparison page failures with ${reason}`, async () => {
+    const hasSourceChange = reason === 'source change';
+    const hasProductionBump = reason === 'production bump';
+    const hasBump = hasProductionBump || reason === 'development bump';
     const repos = stubInvestigations();
     const failure = Object.assign(new Error('Comparison page 2 HTTP 503'), { status: 503 });
+    const commit = mock.method(repos, 'getCommit', async ({ ref }) => ({
+      data: ref === 'commit-0' ? { files: [{ filename: 'package-lock.json' }] } : commitSha(ref),
+    }));
     const compare = mock.method(repos, 'compareCommits', async ({ page }) => {
       if (page === 2) throw failure;
       return { data: {
         files: ['package-lock.json', ...(hasSourceChange ? ['src/index.ts'] : [])].map((filename) => ({ filename })),
         commits: Array.from({ length: 100 }, (_, index) => ({
-          sha: `commit-${index}`, commit: { message: 'docs: update documentation' },
+          sha: `commit-${index}`,
+          commit: { message: hasBump && index === 0 ? 'Bump lodash from 4.17.20 to 4.17.21' : 'docs: update documentation' },
         })),
       } };
     });
-    mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+    const manifest = { [hasProductionBump ? 'dependencies' : 'devDependencies']: { lodash: '4.17.21' } };
+    const content = mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(ref, headSha('repo'));
+      return { data: path === '' ? [{ name: 'package.json' }] : JSON.stringify(manifest) };
+    });
     const { deps, batches } = setup({
       listOrgRepos: async function* (org) {
         if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
@@ -581,9 +592,15 @@ for (const hasSourceChange of [true, false]) {
 
     await expectFailures(deps, [['Failed owner/repo: release investigation', failure]]);
     assert.deepEqual(compare.mock.calls.map(({ arguments: [{ page }] }) => page), [1, 2]);
-    const status = hasSourceChange ? 'pending' : 'incomplete';
+    assert.deepEqual(content.mock.calls.map(({ arguments: [{ path }] }) => path), hasBump ? ['', 'package.json'] : ['']);
+    assert.deepEqual(commit.mock.calls.map(({ arguments: [{ ref }] }) => ref), [
+      'refs/tags/v1', ...(hasProductionBump ? ['commit-0'] : []),
+    ]);
+    const pending = hasSourceChange || hasProductionBump;
+    const status = pending ? 'pending' : 'incomplete';
     assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes(`Release: ${status}`)));
-    assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), hasSourceChange ? [['pending-release']] : []);
+    assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), pending ? [['pending-release']] : []);
+    if (hasProductionBump) assert.match(batches[0][0].body, /lodash.*4\.17\.20.*4\.17\.21/);
     if (hasSourceChange) assert.match(batches[0][0].body, /src\/index\.ts/);
   });
 }
@@ -610,7 +627,7 @@ test('submits confirmed release notifications before reporting incomplete bump f
   } }));
   mock.method(repos, 'getContent', async ({ path }) => ({ data: path === ''
     ? [{ name: 'package.json' }]
-    : { content: Buffer.from('{"dependencies":{"runtime":"2","unavailable":"2"}}').toString('base64') },
+    : '{"dependencies":{"runtime":"2","unavailable":"2"}}',
   }));
   const repoNames = ['source', 'dependency', 'unconfirmed'];
   const { deps, batches } = setup({
@@ -663,7 +680,7 @@ test('submits confirmed release notifications before reporting incomplete bump f
       if (path === 'package.json') throw failure;
       if (path === '') return { data: ['package.json', ...(hasGoBump ? ['go.mod'] : [])].map((name) => ({ name })) };
       assert.equal(path, 'go.mod');
-      return { data: { content: Buffer.from('require example.com/runtime v1.1.0').toString('base64') } };
+      return { data: 'require example.com/runtime v1.1.0' };
     });
     const { deps, batches } = setup({
       listOrgRepos: async function* (org) {
@@ -687,7 +704,7 @@ test('submits confirmed release notifications before reporting incomplete bump f
   });
 });
 
-test('notifies about a production bump at the compared head after the default branch advances', async () => {
+test('notifies about a production bump in a 1.5 MB manifest at the compared head', async () => {
   const repos = stubInvestigations();
   const pinnedHead = commitSha('heads/main');
   let branchHead = pinnedHead;
@@ -704,16 +721,21 @@ test('notifies about a production bump at the compared head after the default br
     branchHead = commitSha('advanced');
     return { data: {
       files: [{ filename: 'package.json' }],
-      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 1.1.0' } }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump lodash from 4.17.20 to 4.17.21' } }],
     } };
   });
-  const content = mock.method(repos, 'getContent', async ({ path, ref = branchHead }) => {
-    const manifest = ref === pinnedHead
-      ? { dependencies: { runtime: '1.1.0' } }
-      : { devDependencies: { runtime: '1.1.0' } };
-    return { data: path === ''
-      ? [{ name: 'package.json' }]
-      : { content: Buffer.from(JSON.stringify(manifest)).toString('base64') } };
+  const getContent = repos.getContent.bind(repos);
+  const content = mock.method(repos, 'getContent', async (params) => params.path === ''
+    ? { data: [{ name: 'package.json' }] }
+    : getContent(params));
+  const manifest = '{"dependencies":{"lodash":"4.17.21"}}'.padEnd(1.5 * 1024 * 1024);
+  const fetchManifest = mock.method(globalThis, 'fetch', async (url, { headers }) => {
+    const { pathname, searchParams } = new URL(url);
+    assert.equal(pathname, '/repos/owner/repo/contents/package.json');
+    assert.equal(searchParams.get('ref'), pinnedHead);
+    assert.notEqual(branchHead, pinnedHead);
+    assert.equal(headers.accept, 'application/vnd.github.raw+json');
+    return new Response(manifest, { headers: { 'content-type': 'application/json' } });
   });
   const { deps, batches } = setup({
     listOrgRepos: async function* (org) {
@@ -728,7 +750,8 @@ test('notifies about a production bump at the compared head after the default br
 
   const issues = batches.flat();
   assert.deepEqual(issues.map(({ type }) => type), ['pending-release']);
-  assert.match(issues[0].body, /runtime.*1\.0\.0.*1\.1\.0/);
+  assert.match(issues[0].body, /lodash.*4\.17\.20.*4\.17\.21/);
+  assert.equal(fetchManifest.mock.callCount(), 1);
   assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Types: node')));
   assert.deepEqual(content.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]), [
     ['', pinnedHead], ['package.json', pinnedHead],
@@ -753,7 +776,7 @@ test('reuses one root listing per repository after finding a tag baseline', asyn
     return {
       data: path === ''
         ? [{ name: 'Gemfile' }]
-        : { content: Buffer.from("gem 'rack'\n").toString('base64') },
+        : "gem 'rack'\n",
     };
   });
   const { deps, batches } = setup({ checkCIStatus, checkPendingRelease, detectProjectTypes });
@@ -782,7 +805,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     const content = mock.method(repos, 'getContent', async ({ path }) => {
       if (path === '') return { data: Object.keys(manifests).map((name) => ({ name })) };
       if (!Object.hasOwn(manifests, path)) throw new Error('Not found');
-      return { data: { content: Buffer.from(manifests[path]).toString('base64') } };
+      return { data: manifests[path] };
     });
     const { deps, batches } = setup({
       listOrgRepos: async function* (org) {
