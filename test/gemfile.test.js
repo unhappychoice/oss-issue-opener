@@ -246,6 +246,8 @@ gem 'rack'`;
   ['true ? /first\nclass Pattern\nlast/ : /other/', 'first ternary branch'],
   ['true ? /first/ : /other\nclass Pattern\nlast/', 'second ternary branch'],
   ['true && /first\nclass Pattern\nlast/', 'logical operator'],
+  ['true and /first\nclass Pattern\nlast/', 'and operator'],
+  ['false or /first\nend\ngem "ignored"\nlast/', 'or operator'],
   ['/first#{%q(}/) + /nested/.source}\nclass Pattern\nlast/', 'interpolation'],
 ].forEach(([expression, scenario]) => {
   test(`ignores Gemfile statements inside a regexp with ${scenario}`, () => {
