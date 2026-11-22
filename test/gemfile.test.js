@@ -432,6 +432,7 @@ const literalExpressions = [
   ['slash literal', '/first\nclass RegexText\nlast/i'],
   ['percent literal', '%r{first\nclass RegexText\n{last}}m'],
   ['unary negation', '!/first\nclass RegexText\nlast/'],
+  ['a regexp on the right of addition', '1 + /first\nclass RegexText\nlast/'],
   ['keyword disjunction', 'enabled or / first\nclass RegexText\nlast/'],
   ['keyword conjunction', 'enabled and / first\nclass RegexText\nlast/'],
   ['ternary branch', 'enabled ? /first\nclass RegexText\nlast/ : nil'],
