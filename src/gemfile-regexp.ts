@@ -13,6 +13,7 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
   if (!initial) return undefined;
   const frames = [initial];
   const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const rawLiteralPart = /\\[\s\S]|[\s\S]/y;
   const expressionPart = new RegExp(tokenPattern, 'y');
   const options = /[imxounes]*/y;
   let offset = initial.start;
@@ -30,7 +31,7 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
       if (frames.length === 0) return content.slice(start, offset);
       continue;
     }
-    const part = frame.braces === 0 ? literalPart : expressionPart;
+    const part = frame.braces > 0 ? expressionPart : frame.interpolated ? literalPart : rawLiteralPart;
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;
@@ -40,7 +41,7 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
     part.lastIndex = offset + token.length;
     if (frame.braces === 0) {
       if (frame.delimiter !== frame.closing && token === frame.delimiter) frame.delimiters++;
-      if (frame.interpolated && token === '#{') {
+      if (token === '#{') {
         frame.braces++;
         frame.previous = '{';
         frame.literalExpected = true;
@@ -69,7 +70,7 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([rqQ]?)([^a-zA-Z0-9\u0080-\uffff])/y;
+  const opening = /\/|%([rqQw]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -79,7 +80,7 @@ const literalFrame = (content: string, start: number) => {
     delimiter,
     closing: pairedDelimiters.get(delimiter) ?? delimiter,
     regexp,
-    interpolated: match[1] !== 'q',
+    interpolated: match[1] !== 'q' && match[1] !== 'w',
     start: opening.lastIndex,
     delimiters: 1,
     braces: 0,
