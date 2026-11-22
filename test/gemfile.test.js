@@ -294,3 +294,10 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('preserves production gems after division of the Array constant', () => {
+  const gemfile = `Array / 2
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
