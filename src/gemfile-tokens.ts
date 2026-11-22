@@ -8,21 +8,23 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   const commandLocals = new Set<string>();
   const scopes: CommandScope[] = [];
-  let methodHeader: MethodHeader | undefined;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     const scope = trackCommandScope(scopes, token, tokens);
-    if (token === 'def') {
-      methodHeader = readMethodHeader(content, pattern.lastIndex, commandLocals);
-    } else if (methodHeader && match.index >= methodHeader.offset) {
-      methodHeader = advanceMethodHeader(methodHeader, token, content, pattern.lastIndex, commandLocals);
+    const methodIndex = currentMethodIndex(scopes);
+    const method = scopes[methodIndex];
+    const locals = method?.parameters ?? commandLocals;
+    if (scope?.method) {
+      beginMethodHeader(scope, content, pattern.lastIndex);
+    } else if (method?.header && match.index >= method.header.offset) {
+      advanceMethodHeader(method, method.header, token, content, pattern.lastIndex);
     }
     const parameters = token === 'for' ? loopTargets :
-      scope ? blockParameters : undefined;
+      scope && !scope.method ? blockParameters : undefined;
     if (parameters) {
       parameters.lastIndex = pattern.lastIndex;
-      parameters.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => (scope ?? commandLocals).add(name));
+      parameters.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => (scope?.parameters ?? locals).add(name));
     }
     if (token === '=' || token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
@@ -30,10 +32,10 @@ export const gemfileTokens = (content: string): string[] => {
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       if (token === '=') {
         if (!/[=~]/.test(content[pattern.lastIndex] ?? '')) {
-          recordAssignmentLocals(tokens, previous, commandLocals);
+          recordAssignmentLocals(tokens, previous, locals);
         }
       } else if (expectsLiteral(name ?? '\n', qualifier) ||
-          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, commandLocals, scopes) &&
+          (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, locals, scopes.slice(methodIndex + 1)) &&
             startsCommandRegexp(content, match.index))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
@@ -68,16 +70,29 @@ export const gemfileTokens = (content: string): string[] => {
 
 type MethodHeader = { offset: number; depth: number; parenthesized: boolean };
 
-const readMethodHeader = (content: string, offset: number, locals: Set<string>): MethodHeader | undefined => {
-  const header = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?=]?(?:[ \t]*(\()|[ \t]+(?=[*&]{0,2}[a-z_]))/y;
-  header.lastIndex = offset;
-  const match = header.exec(content);
-  if (!match) return undefined;
-  return {
-    offset: readMethodParameter(content, header.lastIndex, locals),
-    depth: 0,
-    parenthesized: match[1] === '(',
-  };
+const beginMethodHeader = (scope: CommandScope, content: string, offset: number): void => {
+  const name = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?]?(?:=(?=[ \t]*\())?/y;
+  name.lastIndex = offset;
+  if (!name.test(content)) return;
+
+  const parameters = /[ \t]*(\()|[ \t]+(?=[*&]{0,2}[a-z_])/y;
+  parameters.lastIndex = name.lastIndex;
+  const match = parameters.exec(content);
+  if (match) {
+    scope.header = {
+      offset: readMethodParameter(content, parameters.lastIndex, scope.parameters),
+      depth: 0,
+      parenthesized: match[1] === '(',
+    };
+  } else if (startsEndlessBody(content, name.lastIndex)) {
+    scope.endlessDepth = 0;
+  }
+};
+
+const startsEndlessBody = (content: string, offset: number): boolean => {
+  const equals = /[ \t]*=/y;
+  equals.lastIndex = offset;
+  return equals.test(content);
 };
 
 const readMethodParameter = (content: string, offset: number, locals: Set<string>): number => {
@@ -90,15 +105,18 @@ const readMethodParameter = (content: string, offset: number, locals: Set<string
 };
 
 const advanceMethodHeader = (
-  header: MethodHeader, token: string, content: string, offset: number, locals: Set<string>,
-): MethodHeader | undefined => {
+  scope: CommandScope, header: MethodHeader, token: string, content: string, offset: number,
+): void => {
   if (header.depth === 0) {
-    if (token === ')' || (!header.parenthesized && (token === '\n' || token === ';'))) return undefined;
-    if (token === ',') header.offset = readMethodParameter(content, offset, locals);
+    if (token === ')' || (!header.parenthesized && (token === '\n' || token === ';'))) {
+      delete scope.header;
+      if (token === ')' && startsEndlessBody(content, offset)) scope.endlessDepth = 0;
+      return;
+    }
+    if (token === ',') header.offset = readMethodParameter(content, offset, scope.parameters);
   }
   if (['(', '[', '{'].includes(token)) header.depth++;
   if ([')', ']', '}'].includes(token)) header.depth--;
-  return header;
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||(?:\*\*|<<|>>)(?==)|[^\S\n]+|\n|./;
@@ -115,24 +133,49 @@ const canTakeCommandRegexp = (
   (!['@', '$'].includes(qualifier ?? '') && !locals.has(name) && !scopes.some(({ parameters }) => parameters.has(name)) &&
     !/^(?:true|false|nil|self|__FILE__|__LINE__|__ENCODING__|end)$/.test(name));
 
-type CommandScope = { closer: 'end' | '}'; parameters: Set<string>; loopHeader?: boolean };
+type CommandScope = {
+  closer: 'end' | '}';
+  parameters: Set<string>;
+  loopHeader?: boolean;
+  method?: boolean;
+  header?: MethodHeader;
+  endlessDepth?: number;
+};
 
-const trackCommandScope = (scopes: CommandScope[], token: string, tokens: string[]): Set<string> | undefined => {
-  if (!/^(?:do|end|[{};\n]|class|module|def|if|unless|case|begin|while|until|for)$/.test(token)) return;
+const currentMethodIndex = (scopes: CommandScope[]): number => {
+  let index = scopes.length - 1;
+  while (index >= 0 && !scopes[index].method) index--;
+  return index;
+};
+
+const trackCommandScope = (scopes: CommandScope[], token: string, tokens: string[]): CommandScope | undefined => {
+  if (!/^(?:do|end|[{};\n()\[\]]|class|module|def|if|unless|case|begin|while|until|for)$/.test(token)) return;
   const scope = scopes.at(-1);
   const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)];
   if (previous === '.' || previous === '@' || previous === '$') return;
+  if (scope?.endlessDepth !== undefined) {
+    if (token === '(' || token === '[') scope.endlessDepth++;
+    if (token === ')' || token === ']') scope.endlessDepth--;
+    if (scope.endlessDepth === 0 && ['\n', ';'].includes(token)) scopes.pop();
+  }
   if (scope?.closer === token) {
     scopes.pop();
   } else if (scope?.loopHeader && ['do', '\n', ';'].includes(token)) {
     scope.loopHeader = false;
   } else if (token === '{' || token === 'do') {
-    const parameters = new Set<string>();
-    scopes.push({ closer: token === '{' ? '}' : 'end', parameters });
-    return parameters;
+    const block: CommandScope = { closer: token === '{' ? '}' : 'end', parameters: new Set() };
+    scopes.push(block);
+    return block;
   } else if (/^(?:class|module|def|if|unless|case|begin|while|until|for)$/.test(token) &&
     ['\n', ';', '=', 'do', '{', '('].includes(previous ?? '\n')) {
-    scopes.push({ closer: 'end', parameters: new Set(), loopHeader: /^(?:while|until|for)$/.test(token) });
+    const block: CommandScope = {
+      closer: 'end',
+      parameters: new Set(),
+      loopHeader: /^(?:while|until|for)$/.test(token),
+      method: token === 'def',
+    };
+    scopes.push(block);
+    if (block.method) return block;
   }
   return undefined;
 };

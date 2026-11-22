@@ -444,3 +444,29 @@ gem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true, signature);
   });
 });
+
+test('recognizes command regexps after method locals go out of scope', () => {
+  const methods = [
+    'def helper(warn)\n  warn /2\nend',
+    'def helper warn\n  warn /2\nend',
+    'def self.helper(warn:)\n  warn /2\nend',
+    'def helper\n  warn = 8\n  warn /2\nend',
+    'def helper(warn) = (\n  warn /2\n)',
+    'def helper = (warn = 8)',
+    'def helper(warn)\n  [1].each do |item|\n    warn /2\n  end\nend',
+  ];
+
+  methods.forEach((method) => {
+    const gemfile = `${method}
+group :test do
+  warn /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, method);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, method);
+  });
+});
