@@ -15,10 +15,11 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (token === '/' || token === '%') {
       const preceding = tokens[previousSignificantToken(tokens, previous - 1)];
-      if (expectsRegexp(tokens[previous], preceding) ||
-        (token === '/' && isCommandRegexp(content, match.index, tokens, previous, preceding, locals))) {
+      const expected = expectsRegexp(tokens[previous], preceding);
+      if (expected ||
+        (token === '/' && couldStartCommandRegexp(content, match.index, tokens, previous, preceding, locals))) {
         const end = regexpEnd(content, match.index);
-        if (end !== undefined) {
+        if (end !== undefined && (expected || !/^[\p{L}\p{N}_'"`]/u.test(content.slice(end)))) {
           tokens.push(content.slice(match.index, end));
           pattern.lastIndex = end;
           continue;
@@ -52,7 +53,7 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 const bareIdentifier = /^[a-z_]\w*[!?]?$/;
 const atStatementStart = (previous = '\n'): boolean => ['\n', ';', 'do'].includes(previous);
 
-const isCommandRegexp = (
+const couldStartCommandRegexp = (
   content: string, start: number, tokens: string[], previous: number, preceding: string, locals: Set<string>,
 ): boolean => {
   const name = tokens[previous];
