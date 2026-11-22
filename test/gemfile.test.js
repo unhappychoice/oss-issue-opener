@@ -644,6 +644,36 @@ gem 'rack'`;
   });
 });
 
+['warn', 'Kernel.warn'].forEach((command) => {
+  test(`preserves group exclusions around a multiline percent regexp passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} %r!prefix
+class LiteralText
+gem 'ignored'
+suffix!
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('keeps modulo of a local variable named warn visible', () => {
+  const gemfile = `warn = 12
+group :test do
+  warn %r!
+  gem 'rspec'
+end
+gem 'rack'
+matcher = %r!suffix!`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+});
+
 test('keeps division after an explicit warn call visible', () => {
   const gemfile = `group :test do
   logger.warn / 2

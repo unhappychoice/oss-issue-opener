@@ -13,7 +13,8 @@ export const gemfileTokens = (content: string): string[] => {
       const index = previousSignificantToken(tokens, tokens.length - 1);
       const previousIndex = previousSignificantToken(tokens, index - 1);
       const previous = tokens[previousIndex];
-      const commandRegexp = token === '/' && opensCommandRegexp(content, match.index, tokens, index, previousIndex);
+      const commandRegexp = (token === '/' || token === '%') &&
+        opensCommandRegexp(content, match.index, tokens, index, previousIndex);
       if (expectsRegexp(tokens[index], previous) || commandRegexp) {
         const end = token === '?'
           ? characterLiteralEnd(content, match.index)
@@ -55,8 +56,9 @@ const opensCommandRegexp = (
 ): boolean => {
   const previous = tokens[previousIndex] ?? '\n';
   const command = tokens[index];
-  return ['warn', 'puts', 'print', 'p'].includes(command) && index < tokens.length - 1 &&
-    /\S/.test(content[start + 1] ?? '') &&
+  const startsRegexp = content.startsWith('%r', start) ||
+    (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
+  return startsRegexp && ['warn', 'puts', 'print', 'p'].includes(command) && index < tokens.length - 1 &&
     (previous === '.' ||
       (['\n', ';', 'do'].includes(previous) && !hasGemfileBinding(tokens.slice(0, index), command)));
 };
