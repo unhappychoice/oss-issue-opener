@@ -2,19 +2,23 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const localNames = new Set<string>();
+  const assignment = /[^\S\n]*(?:,[^\S\n]*)?=(?!=|>|~)/y;
   let previous = '\n';
+  let previousIsLocal = false;
   let literalExpected = true;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (startsLiteral(content, match.index, token, previous, literalExpected)) {
+    if (startsLiteral(content, match.index, token, previous, literalExpected, !previousIsLocal)) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push('literal');
         previous = 'literal';
+        previousIsLocal = false;
         literalExpected = false;
         classHeader = false;
         continue;
@@ -24,6 +28,7 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex = match.index + 2;
       tokens.push('<<');
       previous = '<<';
+      previousIsLocal = false;
       literalExpected = false;
       classHeader = false;
       continue;
@@ -31,6 +36,11 @@ export const gemfileTokens = (content: string): string[] => {
     if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|end|=)$/.test(previous);
       literalExpected = expectsLiteral(token, previous);
+      if (previous !== '.' && /^[a-z_]\w*$/.test(token)) {
+        assignment.lastIndex = pattern.lastIndex;
+        if (assignment.test(content)) localNames.add(token);
+      }
+      previousIsLocal = previous !== '.' && localNames.has(token);
       previous = token;
     }
     if (token.startsWith('<<')) {
@@ -64,12 +74,15 @@ const startsLiteral = (
   token: string,
   previous: string,
   expected: boolean,
+  allowsBareCommand = false,
 ): boolean => {
   if (token !== '/') return token === '%' && expected;
+  const command = /^[A-Za-z_]\w*[!?]$/.test(previous) ||
+    (allowsBareCommand && /^[a-z_]\w*$/.test(previous));
   return expected || (
-    /^[A-Za-z_]\w*[!?]$/.test(previous) &&
+    command &&
     /\s/.test(content[offset - 1] ?? '') &&
-    /\S/.test(content[offset + 1] ?? '')
+    /[^\s=]/.test(content[offset + 1] ?? '')
   );
 };
 

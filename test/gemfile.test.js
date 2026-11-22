@@ -252,6 +252,19 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('preserves Gemfile group boundaries around a multiline regexp passed to warn', () => {
+  const gemfile = `group :test do
+  warn /first
+class RegexText
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 const regexpExpressions = [
   ['slash literal', '/first\nclass RegexText\nlast/i'],
   ['percent literal', '%r{first\nclass RegexText\n{last}}m'],
