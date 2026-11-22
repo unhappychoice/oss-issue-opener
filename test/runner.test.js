@@ -56,6 +56,9 @@ const expectFailures = async (deps, expected) => {
       if (status === 200) return { data: { default_branch: null } };
       throw cause;
     });
+    const refresh = method === 'getBranch'
+      ? mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }))
+      : undefined;
     mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
     const repository = method === 'get' ? { fullName: 'owner/repo' } : { fullName: 'owner/repo', defaultBranch: 'main' };
     const { deps, batches } = setup({
@@ -84,6 +87,7 @@ const expectFailures = async (deps, expected) => {
     }
 
     assert.equal(request.mock.callCount(), 1);
+    if (refresh) assert.equal(refresh.mock.callCount(), status === 404 ? 1 : 0);
     if (method === 'get') assert.equal(repos.getBranch.mock.callCount(), 0);
     assert.equal(repos.getCommit.mock.callCount(), 0);
     assert.deepEqual(batches, []);
@@ -369,6 +373,32 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
       outcome === 'complete' ? ['', 'package.json'] : ['']);
   });
 }
+
+test('shares the replacement branch head after the listed branch disappears', async () => {
+  const repos = stubInvestigations();
+  const head = commitSha('main');
+  const metadata = mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  const branches = mock.method(repos, 'getBranch', async ({ branch }) => {
+    if (branch === 'old') throw Object.assign(new Error('HTTP 404'), { status: 404 });
+    return { data: { commit: { sha: head, commit: { tree: { sha: 'head-tree' } } } } };
+  });
+  const comparison = mock.method(repos, 'compareCommits', async () => ({ data: { files: [], commits: [] } }));
+  const { deps } = setup({
+    listOrgRepos: async function* (org) {
+      if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'old' };
+    },
+    checkCIStatus,
+    checkPendingRelease,
+  });
+
+  await runChecks(deps);
+
+  assert.equal(metadata.mock.callCount(), 1);
+  assert.deepEqual(branches.mock.calls.map(({ arguments: [{ branch }] }) => branch), ['old', 'main']);
+  assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), [head]);
+  assert.deepEqual(getOctokit().paginate.iterator.mock.calls.map(({ arguments: [_, { ref }] }) => ref), [head]);
+  assert.deepEqual(comparison.mock.calls.map(({ arguments: [params] }) => params.head), [head]);
+});
 
 test('shares default branch heads per repository and refreshes them on each scan', async () => {
   const repos = stubInvestigations();
