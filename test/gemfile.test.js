@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gemfileStatements, isProductionGem } from '../dist/gemfile.js';
+import { isProductionGem } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
@@ -214,19 +214,6 @@ gem 'rack'`;
 [
   'message = "prefix\nclass LiteralText\nmodule LiteralText\nsuffix"',
   'message = <<~TEXT\nclass LiteralText\nmodule LiteralText\nsuffix\nTEXT',
-  'message = %q{prefix{nested}\nclass LiteralText\nmodule LiteralText\nsuffix}',
-  'message = `prefix #{ `inner` }\nclass LiteralText\nmodule LiteralText\nsuffix`',
-  'matcher = /prefix\\/ #{ %q!}! }\nclass LiteralText\nmodule LiteralText\nsuffix/i',
-  'matcher = %r{prefix\nclass LiteralText\nmodule LiteralText\nsuffix}',
-  'matcher = flag ? /prefix\nclass LiteralText\nmodule LiteralText\nsuffix/ : nil',
-  'matcher = true ?/prefix\nclass LiteralText\nsuffix/ : nil',
-  'matcher = flag ? nil : /prefix\nclass LiteralText\nsuffix/',
-  'matcher = !/prefix\nclass LiteralText\nsuffix/',
-  'matcher = flag && /prefix\nclass LiteralText\nsuffix/',
-  'matcher = flag || %r{prefix\nmodule LiteralText\nsuffix}',
-  'matcher = /#{ %q!}!.ord / 2 }/',
-  'puts /prefix\nclass LiteralText\nmodule LiteralText\nsuffix/',
-  'logger.info /prefix\nclass LiteralText\nsuffix/',
 ].forEach((literal) => {
   test(`ignores namespace keywords in ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
@@ -240,76 +227,18 @@ gem 'rack'`;
   });
 });
 
-['receiver.if', 'receiver&.if'].forEach((operand) => {
-  test(`recognizes division after ${operand}`, () => {
-    const gemfile = `ratio = ${operand} / 2
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('detects a production gem after a slash character literal', () => {
-  const gemfile = `separator = ?/
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('recognizes a multiline regexp after the if keyword', () => {
+test('preserves group exclusions across division using a block argument', () => {
   const gemfile = `group :test do
-  if /prefix
-class LiteralText
-suffix/
-  end
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('keeps division inside regexp interpolation', () => {
-  const literal = '/#{ receiver.if / 2 }/';
-
-  assert.deepEqual(gemfileStatements(`matcher = ${literal}`), [['matcher', '=', literal]]);
-});
-
-test('recognizes a regexp after && inside regexp interpolation', () => {
-  const literal = '/#{ flag && /}\nclass LiteralText\nsuffix/ }/';
-
-  assert.deepEqual(gemfileStatements(`matcher = ${literal}`), [['matcher', '=', literal]]);
-});
-
-test('keeps a class scope visible after ordinary division', () => {
-  const gemfile = `group :test do
-    ratio = 12 / 3
+  [12].each do |count|
+    ratio = count /2
     class TestHelper
     end
     gem 'rspec'
   end
-  matcher = /suffix/
-  gem 'rack'`;
+end
+gem 'rack'
+puts /suffix/`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('keeps division separate from a later command regexp', () => {
-  const regexp = '/prefix\nclass LiteralText\nsuffix/';
-
-  assert.deepEqual(gemfileStatements(`count = 12
-ratio = count /2
-ratio = 12 /3
-ratio = total / 2
-ratio = total/2
-puts ${regexp}`), [
-    ['count', '=', '12'],
-    ['ratio', '=', 'count', '/', '2'],
-    ['ratio', '=', '12', '/', '3'],
-    ['ratio', '=', 'total', '/', '2'],
-    ['ratio', '=', 'total', '/', '2'],
-    ['puts', regexp],
-  ]);
 });

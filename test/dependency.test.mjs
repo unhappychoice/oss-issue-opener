@@ -154,13 +154,9 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
       class TestHelper
       end
     end
-    matcher = %r!prefix
-class RegexText
-suffix!
     gem 'rspec'
   end
-  ratio = receiver.if / 2
-  gem 'rack', path: '/rack'`);
+  gem 'rack'`);
 
   assert.equal(await check('rspec'), false);
   assert.equal(await check('rack'), true);

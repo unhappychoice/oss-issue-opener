@@ -579,9 +579,7 @@ for (const reason of ['source change', 'production bump', 'development bump', 'n
     const manifest = { [hasProductionBump ? 'dependencies' : 'devDependencies']: { lodash: '4.17.21' } };
     const content = mock.method(repos, 'getContent', async ({ path, ref }) => {
       assert.equal(ref, headSha('repo'));
-      return { data: path === '' ? [{ name: 'package.json' }] : {
-        content: Buffer.from(JSON.stringify(manifest)).toString('base64'),
-      } };
+      return { data: path === '' ? [{ name: 'package.json' }] : JSON.stringify(manifest) };
     });
     const { deps, batches } = setup({
       listOrgRepos: async function* (org) {
