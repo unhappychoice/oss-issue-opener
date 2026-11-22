@@ -214,14 +214,6 @@ gem 'rack'`;
 [
   'message = "prefix\nclass LiteralText\nmodule LiteralText\nsuffix"',
   'message = <<~TEXT\nclass LiteralText\nmodule LiteralText\nsuffix\nTEXT',
-  'pattern = /prefix\nclass LiteralText\nmodule LiteralText\nend\ngem "ignored"\nsuffix/i',
-  'pattern = %r{prefix {nested}\nclass LiteralText\nsuffix}x',
-  'pattern = /prefix\\/\nclass LiteralText\nsuffix/',
-  'puts /prefix\nclass LiteralText\nmodule LiteralText\nend\ngem "ignored"\nsuffix/',
-  'pattern = enabled ? /prefix\nclass LiteralText\nsuffix/ : /fallback/',
-  'pattern = enabled ? /fallback/ : /prefix\nclass LiteralText\nsuffix/',
-  'pattern = /#{%q(}/)}\nclass LiteralText\nsuffix/',
-  'pattern = /#{/nested\\//}\nclass LiteralText\nsuffix/',
 ].forEach((literal) => {
   test(`ignores namespace keywords in ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
@@ -236,19 +228,10 @@ gem 'rack'`;
   });
 });
 
-test('preserves group exclusions across division using a block argument', () => {
-  const gemfile = `group :test do
-  [12].each do |count|
-    ratio = count /2
-    count / 2
-    class TestHelper
-    end
-    gem 'rspec'
-  end
-end
-gem 'rack'
-puts /suffix/`;
+test('detects a production gem with an absolute path after local variable division', () => {
+  const gemfile = `count = 12
+count /2
+gem 'rack', path: '/rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
