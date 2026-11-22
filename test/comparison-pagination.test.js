@@ -223,6 +223,21 @@ test('rejects missing comparison tree metadata instead of declaring up to date',
   await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /missing tree SHA/);
 });
 
+for (const field of ['path', 'sha', 'mode', 'type']) {
+  test(`rejects a comparison tree entry without ${field}`, async (t) => {
+    const getTree = stubCappedComparison(t);
+    const entry = { path: 'src/index.ts', sha: 'blob-sha', mode: '100644', type: 'blob' };
+    delete entry[field];
+    getTree.mock.mockImplementation(async ({ tree_sha }) => ({
+      data: { truncated: false, tree: tree_sha === 'head-tree' ? [entry] : [] },
+    }));
+
+    await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), {
+      message: 'Cannot establish complete comparison: incomplete tree entry',
+    });
+  });
+}
+
 test('uses the pinned head tree to find a dependency change that requires later pages', async (t) => {
   const getTree = stubCappedComparison(t, [['package-lock.json', 'old', 'new']]);
   const compare = getOctokit().repos.compareCommits;
