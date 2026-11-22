@@ -15,7 +15,7 @@ const stubRepository = (manifests, commitMessages = []) => {
       const content = path === '' ? manifests[''] ?? Object.keys(manifests) : manifests[path];
       if (content === undefined) throw Object.assign(new Error('Not found'), { status: 404 });
       return { data: Array.isArray(content) ? content.map((name) => ({ name })) :
-        { content: Buffer.from(content).toString('base64') } };
+        content };
     },
     listReleases: async () => ({ data: [{ tag_name: 'v1' }] }),
     get: async () => ({ data: { default_branch: 'main' } }),
@@ -153,9 +153,7 @@ test('overlapping Ruby release scans share a gemspec download limit', async (t) 
     peak = Math.max(peak, ++inFlight);
     await setImmediate();
     inFlight--;
-    return { data: {
-      content: Buffer.from(path === last ? 'spec.add_runtime_dependency "rack"' : '').toString('base64'),
-    } };
+    return { data: path === last ? 'spec.add_runtime_dependency "rack"' : '' };
   });
 
   const results = await Promise.all(repos.map((repo) => checkPendingRelease('owner', repo, 'ruby')));
@@ -264,7 +262,7 @@ dialects.forEach(({ file, declaration }) => {
         ${declaration('runtimeOnly', 'org.example:runtime-only:1.0')}
       }`;
       const getContent = t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-        data: { content: Buffer.from(path === file ? content : '').toString('base64') },
+        data: path === file ? content : '',
       }));
       const check = createDependencyChecker('owner', 'repo', 'kotlin');
 
@@ -289,7 +287,7 @@ test('Kotlin declarations accept whitespace, single quotes, and unversioned coor
     api("org.example:public:1.0")
   }`;
   t.mock.method(getOctokit().repos, 'getContent', async () => ({
-    data: { content: Buffer.from(content).toString('base64') },
+    data: content,
   }));
 
   assert.equal(await isProductionDependency('owner', 'repo', 'org.example:runtime', 'kotlin'), true);

@@ -52,11 +52,13 @@ export const getFileContent = async (
   owner: string, repo: string, path: string, ref?: string, optional = false
 ): Promise<string> => {
   try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
-    if ('content' in data && data.content) {
-      return Buffer.from(data.content, 'base64').toString('utf-8');
-    }
-    return '';
+    const { data } = await getOctokit().repos.getContent({
+      owner, repo, path, ...(ref === undefined ? {} : { ref }),
+      headers: { accept: 'application/vnd.github.raw+json' },
+      request: { parseSuccessResponseBody: false },
+    });
+    // Read the raw body directly so stream errors propagate to the caller.
+    return await new Response(data as unknown as ReadableStream<Uint8Array> | null).text();
   } catch (error) {
     if (optional && isNotFound(error)) return '';
     throw error;
