@@ -70,7 +70,7 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([rqQw]?)([^a-zA-Z0-9\u0080-\uffff])/y;
+  const opening = /\/|%([iIqQrswWx]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
@@ -80,7 +80,7 @@ const literalFrame = (content: string, start: number) => {
     delimiter,
     closing: pairedDelimiters.get(delimiter) ?? delimiter,
     regexp,
-    interpolated: match[1] !== 'q' && match[1] !== 'w',
+    interpolated: !/^[iqsw]$/.test(match[1] ?? ''),
     start: opening.lastIndex,
     delimiters: 1,
     braces: 0,

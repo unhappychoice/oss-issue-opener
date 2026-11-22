@@ -246,6 +246,11 @@ gem 'rack'`;
   "message = %!prefix\nend\ngem 'ignored'\nsuffix!",
   "words = %w!prefix\nclass LiteralText\nmodule LiteralText\ngem 'ignored'\nsuffix!",
   'words = %w{prefix #{literal}\nclass LiteralText\nsuffix}',
+  "symbols = %i!prefix #{literal\nclass LiteralText\ngem 'ignored'\nsuffix!",
+  "symbols = %I{prefix #{%q!}!}\nmodule LiteralText\ngem 'ignored'\nsuffix}",
+  "words = %W{prefix #{%q!}!}\nclass LiteralText\ngem 'ignored'\nsuffix}",
+  "symbol = %s!prefix #{literal\nend\ngem 'ignored'\nsuffix!",
+  "command = %x!prefix #{%q(x)}\nclass LiteralText\ngem 'ignored'\nsuffix!",
 ].forEach((literal) => {
   test(`preserves group exclusions with ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
