@@ -270,6 +270,8 @@ const regexpBodies = [
   'warn = 8; warn / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'puts /prefix\nclass RegexText\nsuffix/',
   'receiver.puts /prefix\nmodule RegexText\nsuffix/i',
+  'puts = 8; receiver.puts /prefix\nmodule RegexText\nsuffix/i',
+  'warn == 8; warn /prefix\nclass RegexText\nsuffix/',
   'puts = 8; puts / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'matcher = /prefix\nclass RegexText\nsuffix/',
   'matcher = /prefix\nclass RegexText\nend\\/suffix/i',
@@ -288,6 +290,14 @@ const regexpBodies = [
   'character = ?: / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'ratio = receiver.if / 2\nclass TestHelper\nend\nratio / 2',
 ];
+
+test('preserves production gems after compact division of command-named locals', () => {
+  ['puts', 'warn'].forEach((name) => {
+    const gemfile = `${name} = 8\n${name} /2\ngem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
 
 regexpBodies.forEach((body) => {
   test(`preserves group exclusions across ${body.split('\n')[0]}`, () => {

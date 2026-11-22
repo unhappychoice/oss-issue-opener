@@ -4,13 +4,21 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const commandLocals = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
-    if (token === '/' || token === '%' || token === '?') {
+    if (token === '=' || token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsLiteral(tokens[previous] ?? '\n', tokens[previousSignificantToken(tokens, previous - 1)]) ||
-          (token === '/' && startsCommandRegexp(content, match.index, tokens[previous]))) {
+      const name = tokens[previous];
+      const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
+      if (token === '=') {
+        if (isRegexpCommand(name) && !['.', '@', '$'].includes(qualifier) && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
+          commandLocals.add(name);
+        }
+      } else if (expectsLiteral(name ?? '\n', qualifier) ||
+          (token === '/' && isRegexpCommand(name) && (qualifier === '.' || !commandLocals.has(name)) &&
+            startsCommandRegexp(content, match.index))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
           pattern.lastIndex = match.index + literal.length;
@@ -44,9 +52,10 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
-const startsCommandRegexp = (content: string, start: number, previous?: string): boolean =>
-  (previous === 'puts' || previous === 'warn') &&
+const startsCommandRegexp = (content: string, start: number): boolean =>
   /[^\S\r\n]/.test(content[start - 1] ?? '') && /\S/.test(content[start + 1] ?? '');
+
+const isRegexpCommand = (token?: string): token is 'puts' | 'warn' => token === 'puts' || token === 'warn';
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
   tokens[index] === 'class' &&
