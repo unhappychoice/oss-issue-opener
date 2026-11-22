@@ -255,8 +255,8 @@ gem 'rack' # /`;
 test('preserves group boundaries after division with method parameters', () => {
   const gemfile = `group :test do
   class TestHelper
-    def ratio(total, divisor)
-      total /divisor
+    def ratio(warn, divisor)
+      warn /divisor
     end
   end
   gem 'rspec'
@@ -292,6 +292,19 @@ const multilinePatterns = {
   'nested regexp interpolation': '/#{ { pattern: /}/ } }\nclass PatternText\nfinish/',
   'division in interpolation': '/#{receiver.if / 2}\nclass PatternText\nfinish/',
 };
+
+test('ignores class keywords inside a multiline regexp passed to warn', () => {
+  const gemfile = `group :test do
+  warn /start
+class PatternText
+finish/i
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
 
 Object.entries(multilinePatterns).forEach(([description, pattern]) => {
   test(`ignores namespace keywords inside multiline regexp with ${description}`, () => {

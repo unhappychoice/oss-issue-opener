@@ -2,13 +2,17 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const warnArgument = /[ \t]+\/(?=\S)/y;
+  const warnBinding = /[ \t]*(?:[,)|]|=(?!=|>|~))/y;
   let previous = '\n';
   let classHeader = false;
+  let commandSlash = -1;
+  let hasWarnBinding = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const regexp = regexpEnd(content, match.index, token, previous);
+    const regexp = regexpEnd(content, match.index, token, previous, match.index === commandSlash);
     if (regexp !== undefined) {
       pattern.lastIndex = regexp;
       previous = content.slice(match.index, regexp);
@@ -18,6 +22,15 @@ export const gemfileTokens = (content: string): string[] => {
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
+      if (token === 'warn' && previous !== '.') {
+        // A possible local binding makes the bare command form ambiguous.
+        warnBinding.lastIndex = pattern.lastIndex;
+        hasWarnBinding ||= warnBinding.test(content);
+        warnArgument.lastIndex = pattern.lastIndex;
+        if (!hasWarnBinding && /^(?:\n|;|do)$/.test(previous) && warnArgument.test(content)) {
+          commandSlash = warnArgument.lastIndex - 1;
+        }
+      }
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
       previous = regexpContext(token, previous);
     }
@@ -53,8 +66,14 @@ const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']
 const regexpContext = (token: string, previous: string): string =>
   previous === '.' && /^(?:do|if|elsif|unless|when)$/.test(token) ? `.${token}` : token;
 
-const regexpEnd = (content: string, start: number, token: string, previous: string): number | undefined => {
-  if ((token !== '/' && token !== '%') || !expressionStart.test(previous)) return undefined;
+const regexpEnd = (
+  content: string,
+  start: number,
+  token: string,
+  previous: string,
+  commandArgument = false,
+): number | undefined => {
+  if ((token !== '/' && token !== '%') || (!commandArgument && !expressionStart.test(previous))) return undefined;
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
