@@ -4,7 +4,7 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   const commandArgument = /[ \t]+\/(?=\S)/y;
   const localBinding = /[ \t]*(?:[,)|]|=(?!=|>|~))/y;
-  const boundCommands = new Set<string>();
+  const commandBindings = new CommandBindings();
   let previous = '\n';
   let classHeader = false;
   let commandSlash = -1;
@@ -15,6 +15,7 @@ export const gemfileTokens = (content: string): string[] => {
     const literal = literalEnd(content, match.index, token, previous, match.index === commandSlash);
     if (literal !== undefined) {
       pattern.lastIndex = literal;
+      commandBindings.advance('literal', previous);
       previous = content.slice(match.index, literal);
       tokens.push(previous);
       classHeader = false;
@@ -22,6 +23,7 @@ export const gemfileTokens = (content: string): string[] => {
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
+      const boundCommands = commandBindings.advance(token, previous);
       if (/^(?:warn|puts|print)$/.test(token) && previous !== '.') {
         // A possible local binding makes the bare command form ambiguous.
         localBinding.lastIndex = pattern.lastIndex;
@@ -31,7 +33,7 @@ export const gemfileTokens = (content: string): string[] => {
           commandSlash = commandArgument.lastIndex - 1;
         }
       }
-      classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
+      classHeader = token === 'class' && namespaceStart.test(previous);
       previous = regexpContext(token, previous);
     }
     if (singletonClass) {
@@ -55,6 +57,76 @@ export const gemfileTokens = (content: string): string[] => {
   }
   return tokens;
 };
+
+export const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
+};
+
+const namespaceStart = /^(?:\n|;|=|do|\(|\{|then)$/;
+const statementStart = /^(?:\n|;|do|\{|then|else|ensure)$/;
+const controlOpener = /^(?:if|unless|case|begin|while|until|for)$/;
+const loopOpener = /^(?:while|until|for)$/;
+
+class CommandBindings {
+  private readonly scopes = [new Set<string>()];
+  private readonly blocks: boolean[] = [];
+  private methodHeader: string[] = [];
+  private methodParens = 0;
+  private loopHeader = false;
+
+  advance(token: string, previous: string): Set<string> {
+    this.trackMethodHeader(token);
+    if (token === 'end' && previous !== '.') {
+      if (this.blocks.pop()) this.scopes.pop();
+    } else if (/^(?:class|module)$/.test(token) && namespaceStart.test(previous)) {
+      this.openScope();
+    } else if (token === 'def' && statementStart.test(previous)) {
+      this.openScope();
+      this.methodHeader = [token];
+    } else {
+      this.trackControlBlock(token, previous);
+    }
+    return this.scopes.at(-1)!;
+  }
+
+  private openScope(): void {
+    this.blocks.push(true);
+    this.scopes.push(new Set());
+  }
+
+  private trackMethodHeader(token: string): void {
+    if (!this.methodHeader.length) return;
+    if (token === '(') this.methodParens++;
+    if (token === ')') this.methodParens--;
+    if (this.methodParens === 0 && /^(?:\n|;|end)$/.test(token)) {
+      if (isEndlessMethod(this.methodHeader)) {
+        this.blocks.pop();
+        this.scopes.pop();
+      }
+      this.methodHeader = [];
+    } else {
+      this.methodHeader.push(token);
+    }
+  }
+
+  private trackControlBlock(token: string, previous: string): void {
+    if (controlOpener.test(token) && (statementStart.test(previous) || previous === '=')) {
+      this.blocks.push(false);
+      this.loopHeader = loopOpener.test(token);
+    } else if (token === 'do' && previous !== '.') {
+      if (!this.loopHeader) this.blocks.push(false);
+      this.loopHeader = false;
+    } else if (/^(?:\n|;|then)$/.test(token)) {
+      this.loopHeader = false;
+    }
+  }
+}
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 

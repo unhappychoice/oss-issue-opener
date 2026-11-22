@@ -283,6 +283,8 @@ gem 'rack' # /`;
 });
 
 const multilinePatterns = {
+  'unary negation': '!/start\nclass PatternText\nfinish/',
+  'unpaired percent delimiters': '%r!start\nclass PatternText\nfinish!',
   'slash delimiters and options': '/start\nclass PatternText\nfinish/i',
   'escaped slash': '/start\\/\nmodule PatternText\nfinish/',
   'paired percent delimiters': '%r{start{nested}\nclass PatternText\nfinish}',
@@ -325,6 +327,59 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+[
+  'class TestHelper\n  warn = 4\nend',
+  'module TestHelpers\n  warn = 4\n  if enabled\n    warn /divisor\n  end\nend',
+  'helper = class <<self; warn = 4; end',
+  `class TestHelper
+    warn = 4
+    def count(value = 1)
+      value
+    end
+    def ratio(
+      divisor
+    ) = 4 / divisor
+    while enabled do
+      consume do
+        warn /divisor
+      end
+    end
+  end`,
+].forEach((definition) => {
+  test(`keeps regexp command recognition outside ${definition}`, () => {
+    const gemfile = `${definition}
+group :test do
+  warn /start
+class PatternText
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('restores outer command bindings when a namespace closes', () => {
+  const gemfile = `warn, divisor = 4, 2
+group :test do
+  module TestHelpers
+    class TestHelper
+      warn /start
+class PatternText
+finish/
+    end
+  end
+  warn /divisor
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 ['puts', 'print'].forEach((local) => {
