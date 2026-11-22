@@ -214,6 +214,13 @@ gem 'rack'`;
 [
   'message = "prefix\nclass LiteralText\nmodule LiteralText\nsuffix"',
   'message = <<~TEXT\nclass LiteralText\nmodule LiteralText\nsuffix\nTEXT',
+  'pattern = /prefix\nclass LiteralText\nmodule LiteralText\nend\ngem "ignored"\nsuffix/i',
+  'pattern = %r{prefix {nested}\nclass LiteralText\nsuffix}x',
+  'pattern = /prefix\\/\nclass LiteralText\nsuffix/',
+  'pattern = enabled ? /prefix\nclass LiteralText\nsuffix/ : /fallback/',
+  'pattern = enabled ? /fallback/ : /prefix\nclass LiteralText\nsuffix/',
+  'pattern = /#{%q(}/)}\nclass LiteralText\nsuffix/',
+  'pattern = /#{/nested\\//}\nclass LiteralText\nsuffix/',
 ].forEach((literal) => {
   test(`ignores namespace keywords in ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
@@ -224,6 +231,7 @@ gem 'rack'`;
 
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
 });
 
