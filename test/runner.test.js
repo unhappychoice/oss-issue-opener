@@ -556,20 +556,33 @@ test('skips root listings when neither releases nor tags provide a baseline', as
   });
 });
 
-for (const hasSourceChange of [true, false]) {
-  test(`reports comparison page failures ${hasSourceChange ? 'with' : 'without'} a confirmed source change`, async () => {
+for (const reason of ['source change', 'production bump', 'no confirmed change']) {
+  test(`reports a comparison page failure with ${reason}`, async () => {
     const repos = stubInvestigations();
+    const hasSourceChange = reason === 'source change';
+    const hasProductionBump = reason === 'production bump';
+    const pinnedHead = headSha('repo');
     const failure = Object.assign(new Error('Comparison page 2 HTTP 503'), { status: 503 });
     const compare = mock.method(repos, 'compareCommits', async ({ page }) => {
       if (page === 2) throw failure;
       return { data: {
         files: ['package-lock.json', ...(hasSourceChange ? ['src/index.ts'] : [])].map((filename) => ({ filename })),
         commits: Array.from({ length: 100 }, (_, index) => ({
-          sha: `commit-${index}`, commit: { message: 'docs: update documentation' },
+          sha: `commit-${index}`,
+          commit: { message: index === 0 ? 'Bump lodash from 4.17.20 to 4.17.21' : 'docs: update documentation' },
         })),
       } };
     });
-    mock.method(repos, 'getContent', async () => ({ data: [{ name: 'package.json' }] }));
+    mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(ref, pinnedHead);
+      const manifest = { [hasProductionBump ? 'dependencies' : 'devDependencies']: { lodash: '4.17.21' } };
+      return { data: path === ''
+        ? [{ name: 'package.json' }]
+        : { content: Buffer.from(JSON.stringify(manifest)).toString('base64') } };
+    });
+    const getCommit = mock.method(repos, 'getCommit', async ({ ref }) => ({
+      data: ref === 'commit-0' ? { files: [{ filename: 'package-lock.json' }] } : commitSha(ref),
+    }));
     const { deps, batches } = setup({
       listOrgRepos: async function* (org) {
         if (org === 'unhappychoice') yield { fullName: 'owner/repo', defaultBranch: 'main' };
@@ -581,10 +594,14 @@ for (const hasSourceChange of [true, false]) {
 
     await expectFailures(deps, [['Failed owner/repo: release investigation', failure]]);
     assert.deepEqual(compare.mock.calls.map(({ arguments: [{ page }] }) => page), [1, 2]);
-    const status = hasSourceChange ? 'pending' : 'incomplete';
+    assert.deepEqual(getCommit.mock.calls.map(({ arguments: [{ ref }] }) => ref),
+      ['refs/tags/v1', ...(hasProductionBump ? ['commit-0'] : [])]);
+    const pending = hasSourceChange || hasProductionBump;
+    const status = pending ? 'pending' : 'incomplete';
     assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes(`Release: ${status}`)));
-    assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), hasSourceChange ? [['pending-release']] : []);
+    assert.deepEqual(batches.map((issues) => issues.map(({ type }) => type)), pending ? [['pending-release']] : []);
     if (hasSourceChange) assert.match(batches[0][0].body, /src\/index\.ts/);
+    if (hasProductionBump) assert.match(batches[0][0].body, /lodash.*4\.17\.20.*4\.17\.21/);
   });
 }
 

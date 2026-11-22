@@ -122,7 +122,10 @@ test('finishes on an empty page after an exactly full page', async (t) => {
     headSha: commitSha('main'),
     files: [],
   });
-  assert.deepEqual(await getCommits(), commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })));
+  assert.deepEqual(await getCommits(), {
+    commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
+    lookupErrors: [],
+  });
   assert.equal(compare.mock.callCount(), 2);
 });
 
@@ -134,7 +137,7 @@ test('returns no changed files or commits for matching SHAs without comparing', 
   const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', { sha, treeSha: 'head-tree' });
 
   assert.deepEqual(comparison, { baseSha: sha, headSha: sha, files: [] });
-  assert.deepEqual(await getCommits(), []);
+  assert.deepEqual(await getCommits(), { commits: [], lookupErrors: [] });
   assert.equal(compare.mock.callCount(), 0);
 });
 

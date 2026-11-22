@@ -244,14 +244,16 @@ export async function* getCommitFilePages(owner: string, repo: string, ref: stri
   }
 }
 
-export type ComparedCommit = { sha: string; message: string };
+type ComparedCommit = { sha: string; message: string };
+type ComparedCommits = { commits: ComparedCommit[]; lookupErrors: unknown[] };
+export type GetComparedCommits = () => Promise<ComparedCommits>;
 
 export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
   head: BranchHead
-): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommit[]> }> => {
+): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: GetComparedCommits }> => {
   const { repos } = getOctokit();
   const { data: resolvedBase } = await repos.getCommit({
     owner, repo, ref: base, headers: { accept: 'application/vnd.github.sha' },
@@ -261,7 +263,9 @@ export const compareCommits = async (
   }
   const endpoints = { owner, repo, base: resolvedBase, head: head.sha };
   const { base: baseSha, head: headSha } = endpoints;
-  if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => [] };
+  if (baseSha === headSha) {
+    return { baseSha, headSha, files: [], getCommits: async () => ({ commits: [], lookupErrors: [] }) };
+  }
 
   const per_page = 100;
   const { data } = await repos.compareCommits({ ...endpoints, per_page, page: 1 });
@@ -269,13 +273,17 @@ export const compareCommits = async (
     ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
     : [...new Set(changedPaths(data.files ?? []))];
 
-  const getCommits = async (): Promise<ComparedCommit[]> => {
+  const getCommits: GetComparedCommits = async () => {
     let pageCommits = data.commits;
     const commits: ComparedCommit[] = [];
     for (let page = 2; ; page++) {
       commits.push(...pageCommits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-      if (pageCommits.length < per_page) return commits;
-      pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
+      if (pageCommits.length < per_page) return { commits, lookupErrors: [] };
+      try {
+        pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
+      } catch (error) {
+        return { commits, lookupErrors: [error] };
+      }
     }
   };
 
