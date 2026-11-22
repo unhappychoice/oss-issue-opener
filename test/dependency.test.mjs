@@ -175,7 +175,7 @@ suffix!i
   assert.equal(await check('rack'), true);
 });
 
-['warn', 'puts', 'print', 'p', 'Array', 'Kernel.warn', 'Kernel . warn'].forEach((command) => {
+['warn', 'puts', 'print', 'p', 'Array', 'String', 'Kernel.warn', 'Kernel . warn'].forEach((command) => {
   test(`Gemfile fallback preserves group exclusions around a regexp passed to ${command}`, async () => {
     mockRubyRepository('', `group :test do
       ${command} /prefix

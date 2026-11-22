@@ -67,7 +67,7 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const regexpCommands = new Set(['warn', 'puts', 'print', 'p', 'Array']);
+const regexpCommands = new Set(['warn', 'puts', 'print', 'p', 'Array', 'String']);
 
 const isCommandRegexp = (token: string, spacing?: string, next?: string): boolean =>
   token === '/' && spacing !== undefined && isSpacing(spacing) && next !== undefined && !/[\s=]/.test(next);
