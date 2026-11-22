@@ -427,6 +427,10 @@ test('preserves production gems after compact division of method parameters', ()
     'divide scale = 1,\n  value',
     'self.divide(scale = [1, 2].first, value)',
     'divide(scale = /x,y/, value)',
+    '+(value)',
+    'self./(value)',
+    '<< value',
+    '<=>(value)',
   ].forEach((signature) => {
     const gemfile = `group :test do
   module TestHelpers
