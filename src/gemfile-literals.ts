@@ -1,7 +1,7 @@
 export const opensGemfileLiteral = (token: string, previous = '\n', beforePrevious?: string): boolean => {
   if (token === '`') return !['.', ':', 'def'].includes(previous);
   return (token === '/' || token === '%') && beforePrevious !== '.' &&
-    /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|do|if|elsif|unless|case|when|then|return)$/.test(previous);
+    /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&&|\|\||do|if|elsif|unless|case|when|then|return)$/.test(previous);
 };
 
 export const rubyLiteralEnd = (content: string, start: number, expression: RegExp): number | undefined => {

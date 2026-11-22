@@ -224,6 +224,8 @@ gem 'rack'`;
   'matcher = flag ? /prefix\nclass LiteralText\nmodule LiteralText\nsuffix/ : nil',
   'matcher = flag ? nil : /prefix\nclass LiteralText\nsuffix/',
   'matcher = !/prefix\nclass LiteralText\nsuffix/',
+  'matcher = flag && /prefix\nclass LiteralText\nsuffix/',
+  'matcher = flag || %r{prefix\nmodule LiteralText\nsuffix}',
   'matcher = /#{ %q!}!.ord / 2 }/',
 ].forEach((literal) => {
   test(`ignores namespace keywords in ${literal.split('\n')[0]}`, () => {
@@ -263,6 +265,12 @@ gem 'rack'`;
 
 test('keeps division inside regexp interpolation', () => {
   const literal = '/#{ receiver.if / 2 }/';
+
+  assert.deepEqual(gemfileStatements(`matcher = ${literal}`), [['matcher', '=', literal]]);
+});
+
+test('recognizes a regexp after && inside regexp interpolation', () => {
+  const literal = '/#{ flag && /}\nclass LiteralText\nsuffix/ }/';
 
   assert.deepEqual(gemfileStatements(`matcher = ${literal}`), [['matcher', '=', literal]]);
 });
