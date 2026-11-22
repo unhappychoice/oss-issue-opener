@@ -178,7 +178,7 @@ const methodScope = (content: string, offset: number): LocalScope => {
 
 const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&|\|)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless|when|return|then)$/.test(token));
+  (previous !== '.' && /^(?:!|and|or|do|if|elsif|unless|when|return|then)$/.test(token));
 
 const startsLiteral = (
   content: string,

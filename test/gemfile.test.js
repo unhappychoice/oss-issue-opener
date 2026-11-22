@@ -432,6 +432,8 @@ const literalExpressions = [
   ['slash literal', '/first\nclass RegexText\nlast/i'],
   ['percent literal', '%r{first\nclass RegexText\n{last}}m'],
   ['unary negation', '!/first\nclass RegexText\nlast/'],
+  ['keyword disjunction', 'enabled or / first\nclass RegexText\nlast/'],
+  ['keyword conjunction', 'enabled and / first\nclass RegexText\nlast/'],
   ['ternary branch', 'enabled ? /first\nclass RegexText\nlast/ : nil'],
   ['ternary alternative', 'enabled ? nil : /first\nclass RegexText\nlast/'],
   ['escaped delimiter', '/first\\/\nclass RegexText\nlast/'],
@@ -483,11 +485,13 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('detects production gems after division following a keyword-shaped method name', () => {
-  const gemfile = `ratio = receiver.if / 2
+['if', 'or', 'and'].forEach((method) => {
+  test(`detects production gems after division following a method named ${method}`, () => {
+    const gemfile = `ratio = receiver.${method} / 2
 gem 'rack', path: '/rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('ignores Gemfile declarations inside a multiline regexp', () => {
