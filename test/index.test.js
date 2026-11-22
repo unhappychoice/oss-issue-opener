@@ -56,7 +56,7 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /\[failed\] unhappychoice: repository investigation/);
   assert.match(result.stderr, /Repository lookup denied/);
-  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 maintenance operations/);
 });
 
 const runCLIWithCIFailures = (endpoint, hasFailure) => {
@@ -174,7 +174,7 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
     assert.match(result.stderr, /CI page unavailable/);
     assert.match(result.stderr, /\[failed\] unhappychoice\/example: CI investigation/);
     assert.match(result.stderr, /status: 503/);
-    assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+    assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 maintenance operations/);
   });
 });
 
@@ -188,5 +188,5 @@ test('CLI scans earlier listing pages and subsequent accounts after a listing pa
   assert.match(result.stderr, /\[failed\] unhappychoice: repository investigation/);
   assert.match(result.stderr, /Repository listing unavailable/);
   assert.match(result.stderr, /status: 503/);
-  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 maintenance operations/);
 });

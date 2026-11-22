@@ -87,7 +87,7 @@ test('CLI reports a stalled CI page and submits findings from another repository
   assert.ifError(result.error);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /\[failed\] unhappychoice\/stalled: CI investigation.*TimeoutError/);
-  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 investigation or creation operations/);
+  assert.match(result.stderr, /Fatal error: AggregateError: Failed 1 maintenance operations/);
   assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/completed/);
 });
 

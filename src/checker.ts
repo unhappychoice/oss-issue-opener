@@ -3,6 +3,7 @@ import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, 
 import type { CIResult, ComparedCommit } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
+import { recoveryCheckKey } from './types.js';
 import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
 
 // Share the lookup budget across repository scans, including paginated lookups.
@@ -29,15 +30,31 @@ export const checkCIStatus = async (
 
   const failedChecks = filtered
     .filter((s) => s.state === 'failure' || s.state === 'error')
-    .map((s) => ({ name: s.context, url: s.url }));
-  const hasPending = filtered.some((s) => s.state === 'pending');
+    .map((s) => ({ ...checkIdentity(s), url: s.url }));
+  const hasPending = filtered.some((s) => s.state === 'pending' || typeof s.context !== 'string' || s.context.length === 0);
 
   if (endpointErrors.length > 0) {
     return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
   }
   if (filtered.length === 0) return { status: 'no-ci', failedChecks };
-  return { status: failedChecks.length > 0 ? 'failure' : hasPending ? 'pending' : 'success', failedChecks };
+  if (failedChecks.length > 0 || hasPending) {
+    return { status: failedChecks.length > 0 ? 'failure' : 'pending', failedChecks };
+  }
+  const checks = filtered.map((result) => {
+    const identity = checkIdentity(result);
+    return { identity, key: recoveryCheckKey(identity), passed: result.passed };
+  });
+  const unpassed = new Set(checks.filter(({ passed }) => !passed).map(({ key }) => key));
+  const unidentified = new Set(checks.filter(({ key, passed }) => !key && !passed).map(({ identity }) => identity.name));
+  const passedChecks = checks.filter(({ identity, key }) =>
+    key && !unpassed.has(key) && (identity.source === 'status' || !unidentified.has(identity.name))
+  ).map(({ identity }) => identity);
+  return { status: 'success', failedChecks, recovery: { sha, passedChecks } };
 };
+
+const checkIdentity = ({ context, source, workflowId }: CIResult) => ({
+  name: context, source, ...(workflowId === undefined ? {} : { workflowId }),
+});
 
 const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
   const statuses: CIResult[] = [];
