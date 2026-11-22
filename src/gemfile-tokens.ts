@@ -32,7 +32,7 @@ export const gemfileTokens = (content: string): string[] => {
       arrayPatternTargets.lastIndex = pattern.lastIndex;
       arrayPatternTargets.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => locals.add(name));
     }
-    if (token === '=' || token === '/' || token === '%' || token === '?') {
+    if (token === '=' || token === '/' || token === '%' || token === '?' || token === '`') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       const name = tokens[previous];
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
@@ -40,7 +40,7 @@ export const gemfileTokens = (content: string): string[] => {
         if (!/[=~]/.test(content[pattern.lastIndex] ?? '')) {
           recordAssignmentLocals(tokens, previous, locals);
         }
-      } else if (expectsLiteral(name ?? '\n', qualifier) ||
+      } else if ((token === '`' && name !== '.' && name !== 'def') || expectsLiteral(name ?? '\n', qualifier) ||
           (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, locals, scopes.slice(localScopeIndex + 1)) &&
             startsCommandRegexp(content, match.index))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);

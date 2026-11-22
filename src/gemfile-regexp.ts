@@ -47,7 +47,8 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
         frame.literalExpected = true;
       }
     } else if (!token.startsWith('#') && !isSpacing(token)) {
-      if ((token === '/' || token === '%') && frame.literalExpected) {
+      if (((token === '/' || token === '%') && frame.literalExpected) ||
+          (token === '`' && frame.previous !== '.' && frame.previous !== 'def')) {
         const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);
@@ -70,12 +71,12 @@ export const readLiteral = (content: string, start: number, tokenPattern: RegExp
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([iIqQrswWx]?)([^a-zA-Z0-9\u0080-\uffff])/y;
+  const opening = /[\/`]|%([iIqQrswWx]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
-  const regexp = match[1] === undefined || match[1] === 'r';
-  const delimiter = match[2] ?? '/';
+  const regexp = match[0] === '/' || match[1] === 'r';
+  const delimiter = match[2] ?? match[0];
   return {
     delimiter,
     closing: pairedDelimiters.get(delimiter) ?? delimiter,

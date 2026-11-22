@@ -251,6 +251,8 @@ gem 'rack'`;
   "words = %W{prefix #{%q!}!}\nclass LiteralText\ngem 'ignored'\nsuffix}",
   "symbol = %s!prefix #{literal\nend\ngem 'ignored'\nsuffix!",
   "command = %x!prefix #{%q(x)}\nclass LiteralText\ngem 'ignored'\nsuffix!",
+  "command = `prefix\nclass LiteralText\ngem 'ignored'\nsuffix`",
+  "command = `prefix \\` #{`nested`}\nmodule LiteralText\ngem 'ignored'\nsuffix`",
 ].forEach((literal) => {
   test(`preserves group exclusions with ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
@@ -263,6 +265,17 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
+});
+
+test('preserves statements between backtick method names and command literals', () => {
+  const gemfile = [
+    'def self.`(command); end',
+    'receiver.`("echo hello")',
+    "gem 'rack'",
+    'command = `echo hello`',
+  ].join('\n');
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 const regexpBodies = [
