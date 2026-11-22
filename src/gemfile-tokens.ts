@@ -64,6 +64,7 @@ const trackWarnLocal = (onStatement?: (tokens: string[]) => void) => {
     const method = tokens[0] === 'def';
     if (opensBlock(tokens)) {
       blocks.push(method);
+      if (method && hasWarnParameter(tokens)) scopes.at(-1)!.warn = true;
     } else if (method) {
       scopes.pop();
     }
@@ -76,6 +77,24 @@ const trackWarnLocal = (onStatement?: (tokens: string[]) => void) => {
     isLocal: () => scopes.at(-1)!.warn,
     assign: () => { scopes.at(-1)!.warn = true; },
   };
+};
+
+const hasWarnParameter = (tokens: string[]): boolean => {
+  const start = tokens[2] === '.' ? 4 : 2;
+  const first = tokens[start] === '(' ? start + 1 : start;
+  let depth = 0;
+  let parameter = first;
+  return tokens.slice(first).some((token, offset) => {
+    const index = first + offset;
+    if (depth === 0 && index === parameter) {
+      if (token === 'warn' || token === 'warn=') return true;
+      if (/^[*&]$/.test(token)) parameter++;
+    }
+    if (depth === 0 && token === ',') parameter = index + 1;
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return false;
+  });
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;

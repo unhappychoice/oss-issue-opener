@@ -238,6 +238,29 @@ gem 'rack'`;
   });
 });
 
+[
+  'def test_helper(warn)',
+  'def test_helper warn',
+  'def test_helper(warn=(4))',
+  'def test_helper(*warn)',
+  'def self.test_helper(value = [1, 2], warn:)',
+].forEach((definition) => {
+  test(`preserves Gemfile scopes after compact division of a parameter in ${definition}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+  end
+  ${definition}
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves Gemfile scopes after compact division of a local variable named warn', () => {
   const gemfile = `group :test do
   class TestHelper
@@ -256,6 +279,8 @@ gem 'rack', path: '/rack'`;
   ['a sibling method', 'def other_helper; warn = 4; end', 'def test_helper', 'end'],
   ['an enclosing scope', 'warn = 4', 'def test_helper', 'end'],
   ['an endless method', 'def other_helper = (warn = 4)', '', ''],
+  ['a method called warn', '', 'def warn(value)', 'end'],
+  ['a default value expression', '', 'def test_helper(value = [0, warn])', 'end'],
 ].forEach(([scope, assignment, opening, closing]) => {
   test(`recognizes a warn regexp after a local assignment in ${scope}`, () => {
     const gemfile = `${assignment}
