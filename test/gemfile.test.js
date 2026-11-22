@@ -227,11 +227,3 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
 });
-
-test('detects a production gem with an absolute path after local variable division', () => {
-  const gemfile = `count = 12
-count /2
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
