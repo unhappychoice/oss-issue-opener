@@ -61,15 +61,21 @@ test('CLI reports a failed account lookup and exits with status 1', () => {
 
 const runCLIWithCIFailures = (endpoint, hasFailure) => {
   const failListing = endpoint === 'listing';
+  const failedCheck = endpoint === 'sibling-suite' ? 'tests' : 'build';
   const sha = 'a'.repeat(40);
   const preload = `
     const endpoint = ${JSON.stringify(endpoint)};
     globalThis.fetch = async (url, options) => {
       const { origin, pathname, searchParams } = new URL(url);
+      const respond = (data, init) => {
+        const response = Response.json(data, init);
+        Object.defineProperty(response, 'url', { value: url });
+        return response;
+      };
       if (origin !== 'https://api.github.com') throw new Error('Unexpected origin: ' + origin);
       if (options.method === 'POST' && pathname === '/repos/unhappychoice/oss-issue-opener/issues') {
         const issue = JSON.parse(options.body);
-        if (['[CI Failure] unhappychoice/example', '[CI Failure] irasutoya-tools/example'].includes(issue.title) && issue.body.includes('- build')) {
+        if (['[CI Failure] unhappychoice/example', '[CI Failure] irasutoya-tools/example'].includes(issue.title) && issue.body.includes('- ${failedCheck}')) {
           return Response.json({ number: 532, labels: ['ci-failure'] }, { status: 201 });
         }
       }
@@ -103,17 +109,29 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
             ? [{ state: 'failure', context: 'build' }] : [] });
         }
         if (pathname.endsWith('/example/commits/${sha}/check-suites')) {
+          if (endpoint === 'sibling-suite') {
+            const count = Number(searchParams.get('per_page'));
+            return respond({ total_count: 1001, check_suites: Array.from({ length: count }, (_, index) => ({ id: index + 1 })) });
+          }
           return Response.json({ total_count: 0, check_suites: [] });
+        }
+        if (endpoint === 'sibling-suite' && pathname.includes('/example/check-suites/')) {
+          if (pathname.endsWith('/1/check-runs')) {
+            return Response.json({ message: 'CI page unavailable' }, { status: 503 });
+          }
+          return respond({
+            total_count: 1,
+            check_runs: [{
+              status: 'completed',
+              conclusion: pathname.endsWith('/2/check-runs') ? 'failure' : 'success',
+              name: pathname.endsWith('/2/check-runs') ? 'tests' : 'lint',
+            }],
+          });
         }
         if (pathname.endsWith('/example/commits/${sha}/check-runs')) {
           if (endpoint === 'first-check-page' || searchParams.get('page') === '2') {
             return Response.json({ message: 'CI page unavailable' }, { status: 503 });
           }
-          const respond = (data, init) => {
-            const response = Response.json(data, init);
-            Object.defineProperty(response, 'url', { value: url });
-            return response;
-          };
           if (endpoint === 'statuses' || endpoint === 'listing') return respond({ total_count: 0, check_runs: [] });
           const next = new URL(url);
           next.searchParams.set('page', '2');
@@ -144,6 +162,7 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
   ['statuses', false],
   ['check-runs', true],
   ['check-runs', false],
+  ['sibling-suite', true],
 ].forEach(([endpoint, hasFailure]) => {
   test(`CLI exits with status 1 after a ${endpoint} error with ${hasFailure ? 'a confirmed failure' : 'no confirmed failures'}`, () => {
     const result = runCLIWithCIFailures(endpoint, hasFailure);
@@ -151,7 +170,7 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
     assert.ifError(result.error);
     assert.equal(result.status, 1);
     if (hasFailure) {
-      assert.match(result.stdout, /CI: failure/);
+      assert.match(result.stdout, /CI: failure/, result.stderr);
       assert.match(result.stdout, /\[created\] \[CI Failure\] unhappychoice\/example/, result.stderr);
     } else {
       assert.match(result.stdout, /CI: incomplete/);
