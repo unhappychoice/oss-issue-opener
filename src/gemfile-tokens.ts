@@ -4,7 +4,7 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
-  let warnMayBeLocal = false;
+  const scopes = new LocalScopes();
   let warnCommand = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
@@ -13,6 +13,7 @@ export const gemfileTokens = (content: string): string[] => {
     const literal = literalEnd(content, match.index, token, previous, warnCommand);
     if (literal !== undefined) {
       pattern.lastIndex = literal;
+      scopes.read('literal', previous);
       previous = content.slice(match.index, literal);
       tokens.push(previous);
       classHeader = false;
@@ -23,9 +24,10 @@ export const gemfileTokens = (content: string): string[] => {
     if (!isSpacing(token)) {
       classHeader = token === 'class' && namespaceStart.test(previous);
       warnCommand = false;
+      scopes.read(singletonClass ? '<<' : token, previous);
       if (token === 'warn' && previous !== '.') {
-        warnMayBeLocal ||= warnBindingFollows(content, pattern.lastIndex);
-        warnCommand = !warnMayBeLocal;
+        if (warnBindingFollows(content, pattern.lastIndex)) scopes.warnIsLocal = true;
+        warnCommand = !scopes.warnIsLocal;
       }
       previous = regexpContext(token, previous);
     }
@@ -50,6 +52,66 @@ export const gemfileTokens = (content: string): string[] => {
   }
   return tokens;
 };
+
+export const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
+};
+
+type Scope = { closer: 'end' | '}'; outerWarn?: boolean; endless?: boolean };
+
+class LocalScopes {
+  warnIsLocal = false;
+  private readonly scopes: Scope[] = [];
+  private statement: string[] = [];
+  private parentheses = 0;
+
+  read(token: string, previous: string): void {
+    if (previous !== '.' && this.isBoundary(token)) {
+      if (token !== 'do' && this.scopes.at(-1)?.endless) this.close('end');
+      if (token === 'end') this.close(token);
+      if (token === 'do' && !/^(?:for|while|until)$/.test(this.statement[0] ?? '')) {
+        this.scopes.push({ closer: 'end' });
+      }
+      this.statement = [];
+      return;
+    }
+
+    if (token === '(' || token === '[') this.parentheses++;
+    if (token === ')' || token === ']') this.parentheses--;
+    if (token === '{') this.scopes.push({ closer: '}' });
+    if (token === '}') this.close(token);
+    if (/^(?:class|module|def)$/.test(token) && namespaceStart.test(previous)) {
+      this.scopes.push({ closer: 'end', outerWarn: this.warnIsLocal });
+      this.warnIsLocal = false;
+    }
+    if (/^(?:if|unless|case|begin|while|until|for)$/.test(token) && namespaceStart.test(previous)) {
+      this.scopes.push({ closer: 'end' });
+    }
+    this.statement.push(token);
+    const scope = this.scopes.at(-1);
+    if (token === '=' && scope && this.statement[0] === 'def' && isEndlessMethod(this.statement)) {
+      scope.endless = true;
+    }
+  }
+
+  private isBoundary(token: string): boolean {
+    return token === 'end' || token === 'do' ||
+      (this.parentheses === 0 && (token === '\n' || token === ';'));
+  }
+
+  private close(closer: Scope['closer']): void {
+    const scope = this.scopes.at(-1);
+    if (scope?.closer !== closer) return;
+    this.scopes.pop();
+    this.warnIsLocal = scope.outerWarn ?? this.warnIsLocal;
+  }
+}
 
 const namespaceStart = /^(?:\n|;|=|do|\(|\{|then)$/;
 

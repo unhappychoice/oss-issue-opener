@@ -365,3 +365,62 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  ['class TestHelper', 'warn = 4'],
+  ['module TestHelper', 'warn = 4'],
+  ['class <<self', 'warn = 4'],
+  ['helper = class TestHelper', 'warn = 4'],
+  ['def helper(warn)', 'warn'],
+].forEach(([header, binding]) => {
+  test(`keeps warn locals inside ${header}`, () => {
+    const gemfile = `group :test do
+  ${header}
+    if enabled
+      ${binding}
+    end
+  end
+  warn /start
+class PatternText
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('restores an enclosing warn local after a nested class', () => {
+  const gemfile = `group :test do
+  class Outer
+    warn, divisor = 4, 2
+    class Inner
+      warn /start
+class PatternText
+finish/
+    end
+    warn /divisor
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('keeps warn parameters local to an endless method', () => {
+  const gemfile = `group :test do
+  def ratio(warn, divisor = 2) = warn /divisor
+  warn /start
+class PatternText
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
