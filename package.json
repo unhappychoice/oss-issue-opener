@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "biome lint --error-on-warnings src test",
+    "format:check": "biome format biome.json package.json tsconfig.json",
     "test": "npm run build && node --test",
     "test:coverage": "npm run build && node --test --experimental-test-coverage --test-coverage-include='dist/**/*.js' --test-coverage-lines=97 --test-coverage-branches=95 --test-coverage-functions=99",
     "start": "node dist/index.js",

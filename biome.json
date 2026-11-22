@@ -1,5 +1,12 @@
 {
   "formatter": { "enabled": false },
+  "json": {
+    "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+      "indentWidth": 2
+    }
+  },
   "assist": { "enabled": false },
   "linter": {
     "rules": {
