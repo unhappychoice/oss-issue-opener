@@ -52,6 +52,9 @@ export const gemfileTokens = (content: string): string[] => {
         loopVariables.lastIndex = pattern.lastIndex;
         loopVariables.exec(content)?.[1]?.split(/\s*,\s*/).forEach((name) => names[0]?.add(name));
       }
+      if (token === '(' && isScopeStart(previous)) {
+        parenthesizedAssignmentNames(content, match.index).forEach((name) => names[0]?.add(name));
+      }
       if (previous !== '.' && /^[a-z_]\w*$/.test(token)) {
         assignment.lastIndex = pattern.lastIndex;
         if (assignment.test(content)) names[0]?.add(token);
@@ -90,6 +93,26 @@ type LocalScope = {
 };
 
 const isScopeStart = (previous: string): boolean => /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
+
+const parenthesizedAssignmentNames = (content: string, offset: number): string[] => {
+  const target = /\s*(?:([a-z_]\w*)|([(),*])|(=(?!=|>|~)))/y;
+  target.lastIndex = offset;
+  const names: string[] = [];
+  let depth = 0;
+  let previous = '';
+  let match: RegExpExecArray | null;
+  while ((match = target.exec(content)) !== null) {
+    const [raw, name, punctuation, equals] = match;
+    if (depth === 0 && previous !== ',' && raw.includes('\n')) break;
+    if (equals) return depth === 0 ? names : [];
+    if (depth === 0 && previous === ')' && punctuation !== ',') break;
+    if (punctuation === '(') depth++;
+    if (punctuation === ')' && --depth < 0) break;
+    if (name) names.push(name);
+    previous = punctuation ?? name;
+  }
+  return [];
+};
 
 const trackLocalScope = (
   scopes: LocalScope[],

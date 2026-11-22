@@ -281,6 +281,44 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  '(first, second)',
+  '((first, second))',
+  '(second, (first, *rest))',
+  '(second,\n     first), third',
+].forEach((targets) => {
+  test(`detects production gems after division of a local assigned with ${targets}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${targets} = [4, 8]
+    first /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('recognizes a regexp command after a parenthesized expression and a separate assignment', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    (warn)
+    count = 4
+    warn /first
+class RegexText
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['||=', '&&=', '+=', '/=', '<<='].forEach((operator) => {
   test(`detects production gems after division of a local assigned with ${operator}`, () => {
     const gemfile = `group :test do
