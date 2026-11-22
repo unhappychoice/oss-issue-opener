@@ -4,21 +4,29 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
+  let warnMayBeLocal = false;
+  let warnCommand = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const literal = literalEnd(content, match.index, token, previous);
+    const literal = literalEnd(content, match.index, token, previous, warnCommand);
     if (literal !== undefined) {
       pattern.lastIndex = literal;
       previous = content.slice(match.index, literal);
       tokens.push(previous);
       classHeader = false;
+      warnCommand = false;
       continue;
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
       classHeader = token === 'class' && namespaceStart.test(previous);
+      warnCommand = false;
+      if (token === 'warn' && previous !== '.') {
+        warnMayBeLocal ||= warnBindingFollows(content, pattern.lastIndex);
+        warnCommand = !warnMayBeLocal;
+      }
       previous = regexpContext(token, previous);
     }
     if (singletonClass) {
@@ -55,13 +63,25 @@ const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']
 const regexpContext = (token: string, previous: string): string =>
   previous === '.' && /^(?:do|if|elsif|unless|when)$/.test(token) ? `.${token}` : token;
 
+const warnBindingFollows = (content: string, offset: number): boolean => {
+  // Treat possible bindings conservatively in this lexer, which does not resolve Ruby locals.
+  const binding = /[^\S\n]*(?:=(?!=|>|~)|[,):|]|in\b|[-+*/%&|^]=|\|\|=|&&=)/y;
+  binding.lastIndex = offset;
+  return binding.test(content);
+};
+
+const isCommandRegexp = (content: string, start: number, token: string): boolean =>
+  token === '/' && /[^\S\n]/.test(content[start - 1] ?? '') && /[^\s=]/.test(content[start + 1] ?? '');
+
 const literalEnd = (
   content: string,
   start: number,
   token: string,
   previous: string,
+  warnCommand = false,
 ): number | undefined => {
-  if ((token !== '/' && token !== '%') || !expressionStart.test(previous)) return undefined;
+  if (token !== '/' && token !== '%') return undefined;
+  if (!expressionStart.test(previous) && !(warnCommand && isCommandRegexp(content, start, token))) return undefined;
   const opening = /\/|%([qQwWiIxrs]?)([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);

@@ -252,6 +252,29 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores namespace keywords inside a multiline warn regexp', () => {
+  const gemfile = `group :test do
+  warn /start
+class PatternText
+finish/i
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('keeps spaced slash operators after a bare method call as division', () => {
+  const gemfile = `group :test do
+  def warn; 4; end
+  warn / 2
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('preserves group boundaries after division with method parameters', () => {
   const gemfile = `group :test do
   class TestHelper
