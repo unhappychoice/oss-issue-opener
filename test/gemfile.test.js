@@ -254,3 +254,35 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
 });
+
+const regexpBodies = [
+  'matcher = /prefix\nclass RegexText\nsuffix/',
+  'matcher = /prefix\nclass RegexText\nend\\/suffix/i',
+  'matcher = !/prefix\nmodule RegexText\nsuffix/',
+  'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
+  'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : nil',
+  'matcher = enabled ? nil : /prefix\nclass RegexText\nsuffix/',
+  'matcher = /#{" / "}/',
+  'matcher = /#{ %q!}!.ord / 2 }/',
+  'matcher = /prefix#{%Q!#{%q!}/!}!}\nclass RegexText\nsuffix/',
+  'matcher = %r{prefix{2}\nmodule RegexText\nsuffix}',
+  'matcher = %r!prefix\\!\nclass RegexText\nsuffix!',
+  'matcher = %r#prefix\nclass RegexText\nsuffix#',
+  'matcher = enabled ? 8 / 2 : 6 / 3\nclass TestHelper\nend',
+  'character = ?/\nclass TestHelper\nend\nratio = 8 / 2',
+  'character = ?: / 2\nclass TestHelper\nend\nratio = 8 / 2',
+  'ratio = receiver.if / 2\nclass TestHelper\nend\nratio / 2',
+];
+
+regexpBodies.forEach((body) => {
+  test(`preserves group exclusions across ${body.split('\n')[0]}`, () => {
+    const gemfile = `group :test do
+  ${body}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});

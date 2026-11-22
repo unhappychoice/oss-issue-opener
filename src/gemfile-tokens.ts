@@ -1,10 +1,23 @@
+import { expectsRegexp, readCharacter, readRegexp } from './gemfile-regexp.js';
+
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
+    if (token === '/' || token === '%' || token === '?') {
+      const previous = previousSignificantToken(tokens, tokens.length - 1);
+      if (expectsRegexp(tokens[previous] ?? '\n', tokens[previousSignificantToken(tokens, previous - 1)])) {
+        const literal = token === '?' ? readCharacter(content, match.index) : readRegexp(content, match.index, tokenPattern);
+        if (literal) {
+          pattern.lastIndex = match.index + literal.length;
+          tokens.push(literal);
+          continue;
+        }
+      }
+    }
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token.startsWith('<<')) {
       if (opensSingletonClass(tokens, previousSignificantToken(tokens, tokens.length - 1))) {
@@ -27,6 +40,8 @@ export const gemfileTokens = (content: string): string[] => {
   }
   return tokens;
 };
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
   tokens[index] === 'class' &&
