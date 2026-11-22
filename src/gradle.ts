@@ -1,12 +1,11 @@
 import { scanBlockComments } from './block-comments.js';
 
 // Match expression starts and the bare because argument so division stays visible as code.
-const groovySlashyString = /(?<=[(\[=,:;{~]\s*|\bbecause[ \t]+)\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
+const groovySlashyString = /\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
 const groovyDollarSlashyString = /\$\/(?:\$[/$]|\$(?![/$])|\/(?!\$)|[^/$])*\/\$/;
-const groovySlashyStrings = `${groovyDollarSlashyString.source}|${groovySlashyString.source}`;
 
 export const gradleDependencies = (content: string): string[] => {
-  const code = gradleDeclarations(stripGradleComments(content));
+  const code = gradleDeclarations(lexGradle(content, true));
   const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?(['"])([^'"\r\n]+)\1/g)));
   const named = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?((?:\w+\s*[:=]\s*(['"])[^'"\r\n]*\2\s*,\s*)*\w+\s*[:=]\s*(['"])[^'"\r\n]*\3)/g)));
   return [
@@ -22,21 +21,44 @@ export const gradleDependencies = (content: string): string[] => {
 };
 
 export const gradleCatalogAliases = (content: string): string[] =>
-  gradleDeclarations(stripGradleComments(content)).flatMap((declaration) => {
+  gradleDeclarations(lexGradle(content, true)).flatMap((declaration) => {
     const match = declaration.match(/^(?:implementation|api)(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?libs\.([\w]+(?:\.[\w]+)*)(?:\.get\(\s*\))?(?=[ \t]*(?:\)|[;{}\r\n]|$))/);
     return match ? [match[1]] : [];
   });
 
-export const stripGradleComments = (content: string): string => {
+export const stripGradleComments = (content: string): string => lexGradle(content, false);
+
+const lexGradle = (content: string, maskSlashyStrings: boolean): string => {
   const code = new RegExp(
     /\/\/[^\r\n]*|\/\*|"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
-    + '|' + groovySlashyStrings + '|' + /[\s\S]/.source,
-    'gy'
+    + '|' + groovyDollarSlashyString.source + '|' + /\s+|\w+|[\s\S]/.source,
+    'y'
   );
+  const slashy = new RegExp(groovySlashyString.source, 'y');
+  let previous = '';
+  let separated = false;
   let result = '';
-  scanBlockComments(content, code, (token, depth) => {
+  scanBlockComments(content, (index) => {
+    if (content[index] === '/' && (/^[(\[=,:;{~]$/.test(previous) || (previous === 'because' && separated))) {
+      slashy.lastIndex = index;
+      const token = slashy.exec(content);
+      if (token) return token[0];
+    }
+    code.lastIndex = index;
+    return code.exec(content)![0];
+  }, (token, depth) => {
     const hidden = depth > 0 || token === '/*' || token.startsWith('//');
-    result += hidden ? token.replace(/[^\r\n]/g, ' ') : token;
+    const visible = hidden ? token.replace(/[^\r\n]/g, ' ') : token;
+    if (/^\s/.test(visible)) {
+      separated = true;
+      if (previous === 'because' && /[^ \t]/.test(visible)) previous = '';
+    } else {
+      previous = token;
+      separated = false;
+    }
+    const isSlashy = token.length > 1 && (token.startsWith('/') || token.startsWith('$/'));
+    // Keep statement boundaries and offsets while hiding the contents of slashy strings.
+    result += maskSlashyStrings && !hidden && isSlashy ? token.replace(/[^\r\n]/g, '#') : visible;
   });
   return result;
 };
@@ -44,7 +66,7 @@ export const stripGradleComments = (content: string): string => {
 const gradleDeclarations = (content: string): string[] => {
   const tokens = new RegExp(
     /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
-    + '|' + groovySlashyStrings + '|' + /(?<=^|[;{])\s*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
+    + '|' + /(?<=^|[;{])[^\S\r\n\u2028\u2029]*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
     'gm'
   );
   const declarations: string[] = [];
