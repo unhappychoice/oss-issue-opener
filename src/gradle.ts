@@ -4,27 +4,8 @@ import { scanBlockComments } from './block-comments.js';
 const groovySlashyString = /\/(?![/*])(?:\\\/|\\(?!\/)|[^/\\])*\//;
 const groovyDollarSlashyString = /\$\/(?:\$[/$]|\$(?![/$])|\/(?!\$)|[^/$])*\/\$/;
 
-export const gradleDependencies = (content: string): string[] => {
-  const code = gradleDeclarations(lexGradle(content, true));
-  const strings = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?(['"])([^'"\r\n]+)\1/g)));
-  const named = code.flatMap((declaration) => Array.from(declaration.matchAll(/^\s*(?:implementation|api)\s*(?:\(\s*)?(?:(?:platform|enforcedPlatform)\s*\(\s*)?((?:\w+\s*[:=]\s*(['"])[^'"\r\n]*\2\s*,\s*)*\w+\s*[:=]\s*(['"])[^'"\r\n]*\3)/g)));
-  return [
-    ...Array.from(strings, ([, , coordinate]) => coordinate),
-    ...Array.from(named, ([, declaration]) => {
-      const fields = Object.fromEntries(Array.from(
-        declaration.matchAll(/(\w+)\s*[:=]\s*(['"])([^'"\r\n]*)\2/g),
-        ([, key, , value]) => [key, value]
-      ));
-      return fields.group && fields.name ? [`${fields.group}:${fields.name}`] : [];
-    }).flat(),
-  ];
-};
-
-export const gradleCatalogAliases = (content: string): string[] =>
-  gradleDeclarations(lexGradle(content, true)).flatMap((declaration) => {
-    const match = declaration.match(/^(?:implementation|api)(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?libs\.([\w]+(?:\.[\w]+)*)(?:\.get\(\s*\))?(?=[ \t]*(?:\)|[;{}\r\n]|$))/);
-    return match ? [match[1]] : [];
-  });
+export const parseGradleDependencies = (content: string): { coordinates: string[]; aliases: string[] } =>
+  collectGradleDependencies(lexGradle(content, true));
 
 export const stripGradleComments = (content: string): string => lexGradle(content, false);
 
@@ -63,20 +44,41 @@ const lexGradle = (content: string, maskSlashyStrings: boolean): string => {
   return result;
 };
 
-const gradleDeclarations = (content: string): string[] => {
+const collectGradleDependencies = (content: string): { coordinates: string[]; aliases: string[] } => {
   const tokens = new RegExp(
     /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
     + '|' + /(?<=^|[;{])[^\S\r\n\u2028\u2029]*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
     'gm'
   );
-  const declarations: string[] = [];
+  const argument = new RegExp(
+    /(?:\s*\(\s*|\s+)(?:(?:platform|enforcedPlatform)\s*\(\s*)?/.source
+    + '(?:' + /(?<quote>['"])(?<coordinate>[^'"\r\n]+)\k<quote>/.source
+    + '|' + /(?<fields>(?:\w+\s*[:=]\s*(?<leadingQuote>['"])[^'"\r\n]*\k<leadingQuote>\s*,\s*)*\w+\s*[:=]\s*(?<lastQuote>['"])[^'"\r\n]*\k<lastQuote>)/.source
+    + '|' + /libs\.(?<alias>\w+(?:\.\w+)*)(?:\.get\(\s*\))?(?=[ \t]*(?:\)|[;{}\r\n]|$))/.source
+    + ')',
+    'y'
+  );
+  const coordinates: string[] = [];
+  const aliases: string[] = [];
   let constraintDepth = 0;
   for (const { 0: token, 1: constraint, 2: configuration, index } of content.matchAll(tokens)) {
     if (constraint || (token === '{' && constraintDepth > 0)) constraintDepth++;
     else if (token === '}') constraintDepth = Math.max(0, constraintDepth - 1);
     else if (configuration && constraintDepth === 0) {
-      declarations.push(content.slice(index + token.length - configuration.length));
+      argument.lastIndex = index + token.length;
+      const match = argument.exec(content);
+      if (!match) continue;
+      const { coordinate, fields, alias } = match.groups!;
+      if (coordinate) coordinates.push(coordinate);
+      else if (alias) aliases.push(alias);
+      else {
+        const { group, name } = Object.fromEntries(Array.from(
+          fields.matchAll(/(\w+)\s*[:=]\s*(['"])([^'"\r\n]*)\2/g),
+          ([, key, , value]) => [key, value]
+        ));
+        if (group && name) coordinates.push(`${group}:${name}`);
+      }
     }
   }
-  return declarations;
+  return { coordinates, aliases };
 };

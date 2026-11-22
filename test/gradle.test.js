@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gradleCatalogAliases, gradleDependencies, stripGradleComments } from '../dist/gradle.js';
+import { parseGradleDependencies, stripGradleComments } from '../dist/gradle.js';
 
 test('Gradle comments preserve line endings and separate adjacent tokens', () => {
   const content = 'implementation/* hidden */("runtime")\r\n/* outer\n/* nested */\napi("test")\n*/';
@@ -30,8 +30,8 @@ test('Gradle line comments cannot open block comments', () => {
   test(`Gradle detects declarations after braces and semicolons: ${first}`, () => {
     const expected = first.includes('group') ? ['org.example:first', 'org.example:second'] :
       ['org.example:first:1.0', 'org.example:second:1.0'];
-    assert.deepEqual(gradleDependencies(`dependencies { implementation ${first} }`), expected.slice(0, 1));
-    assert.deepEqual(gradleDependencies(`dependencies { implementation ${first}; api ${second} }`), expected);
+    assert.deepEqual(parseGradleDependencies(`dependencies { implementation ${first} }`).coordinates, expected.slice(0, 1));
+    assert.deepEqual(parseGradleDependencies(`dependencies { implementation ${first}; api ${second} }`).coordinates, expected);
   });
 });
 
@@ -48,7 +48,7 @@ test('Gradle statement boundaries exclude comments, strings, and test configurat
       api 'org.example:groovy:1.0' }'''
     customimplementation("org.example:custom:1.0"); obj.api("org.example:member:1.0")
   }`;
-  assert.deepEqual(gradleDependencies(content), []);
+  assert.deepEqual(parseGradleDependencies(content).coordinates, []);
 });
 
 test('Gradle keeps constraint scope across nested blocks, strings, and comments', () => {
@@ -60,7 +60,22 @@ test('Gradle keeps constraint scope across nested blocks, strings, and comments'
       api(group = "org.example", name = "after-nested")
     }; implementation("org.example:after:1.0")
   }`;
-  assert.deepEqual(gradleDependencies(content), ['org.example:before:1.0', 'org.example:after:1.0']);
+  assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:before:1.0', 'org.example:after:1.0']);
+});
+
+test('Gradle collects wrapped coordinates and aliases from the same script', () => {
+  const content = `dependencies {
+    api enforcedPlatform(group: 'org.example', name: 'bom')
+    implementation(platform(libs.example.bom.get()))
+    api("org.example:core:1.0")
+    testImplementation(platform(libs.example.test))
+    constraints { api(enforcedPlatform(libs.example.constraint)) }
+    implementation(otherPlatform(libs.example.unsupported))
+  }`;
+  assert.deepEqual(parseGradleDependencies(content), {
+    coordinates: ['org.example:bom', 'org.example:core:1.0'],
+    aliases: ['example.bom'],
+  });
 });
 
 test('Gradle keeps constraint scope across Groovy slashy strings', () => {
@@ -75,7 +90,7 @@ test('Gradle keeps constraint scope across Groovy slashy strings', () => {
     api('org.example:runtime:1.0')
   }`;
   assert.equal(stripGradleComments(content), content);
-  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+  assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:runtime:1.0']);
 });
 
 test('Gradle distinguishes slashy strings, division, and comments across long whitespace runs', () => {
@@ -103,8 +118,10 @@ test('Gradle distinguishes slashy strings, division, and comments across long wh
   );
 
   assert.equal(stripGradleComments(content), stripped);
-  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
-  assert.deepEqual(gradleCatalogAliases(content), ['runtime.core']);
+  assert.deepEqual(parseGradleDependencies(content), {
+    coordinates: ['org.example:runtime:1.0'],
+    aliases: ['runtime.core'],
+  });
 });
 
 test('Gradle keeps constraint scope across Groovy dollar slashy strings', () => {
@@ -119,7 +136,7 @@ test('Gradle keeps constraint scope across Groovy dollar slashy strings', () => 
     def text = $/{ api('org.example:string:1.0') }/$
     api('org.example:runtime:1.0')
   }`;
-  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+  assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:runtime:1.0']);
   assert.equal(stripGradleComments(content), content);
 });
 
@@ -131,7 +148,7 @@ test('Gradle keeps constraint scope across slashy strings at the start of Groovy
     }
     api('org.example:runtime:1.0')
   }`;
-  assert.deepEqual(gradleDependencies(content), ['org.example:runtime:1.0']);
+  assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:runtime:1.0']);
 });
 
 ['implementation', 'api'].forEach((configuration) => {
@@ -144,7 +161,7 @@ test('Gradle keeps constraint scope across slashy strings at the start of Groovy
       [`(${wrapper}(group = "org.example", name = "bom", version = "1.0"))`, 'org.example:bom'],
     ].forEach(([call, coordinate]) => {
       test(`Gradle detects wrapped production dependencies: ${configuration}${call}`, () => {
-        assert.deepEqual(gradleDependencies(`dependencies { ${configuration}${call} }`), [coordinate]);
+        assert.deepEqual(parseGradleDependencies(`dependencies { ${configuration}${call} }`).coordinates, [coordinate]);
       });
     });
 
@@ -162,7 +179,7 @@ test('Gradle keeps constraint scope across slashy strings at the start of Groovy
         val groovy = '''{ ${configuration} ${wrapper}('org.example:groovy:1.0') }'''
         ${configuration}(otherPlatform("org.example:other:1.0"))
       }`;
-      assert.deepEqual(gradleDependencies(content), []);
+      assert.deepEqual(parseGradleDependencies(content).coordinates, []);
     });
   });
 });

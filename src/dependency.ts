@@ -5,7 +5,7 @@ import type { ProjectType } from './types.js';
 import { gemfileStatements, isProductionGemIn } from './gemfile.js';
 import { rubyRuntimeDependencies } from './ruby.js';
 import { swiftDependencies } from './swift.js';
-import { gradleCatalogAliases, gradleDependencies } from './gradle.js';
+import { parseGradleDependencies } from './gradle.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
 type ReadManifest = (path: string, optional?: boolean) => Promise<string>;
@@ -106,8 +106,7 @@ const loadKotlin: DependencyLoader = async (file, contents) => {
   const hasKotlin = files.includes('build.gradle.kts');
   const groovy = hasKotlin && !hasGroovy ? '' : await file('build.gradle', !hasGroovy);
   const content = groovy || await file('build.gradle.kts', !hasKotlin);
-  const coordinates = gradleDependencies(content);
-  const aliases = gradleCatalogAliases(content);
+  const { coordinates, aliases } = parseGradleDependencies(content);
   if (aliases.length > 0) {
     const catalog = await file('gradle/libs.versions.toml', true);
     coordinates.push(...gradleCatalogCoordinates(catalog, aliases));
