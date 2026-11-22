@@ -251,3 +251,36 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  ['slash literals', '/first\nclass FakeScope\nend; do\nlast/', '/first\nclass FakeScope\nlast/'],
+  ['percent regexp literals', '%r{first\nmodule FakeScope\nend; do\nlast}', '%r{first\nclass FakeScope\nlast}'],
+  ['ternary branches', 'flag ? /first\nend\nlast/ : /fallback/', 'flag ? /fallback/ : /first\nclass FakeScope\nlast/'],
+  ['interpolated percent strings', '/#{%q!}/!}\nend\nlast/', '/#{%Q!#{/nested/}!}\nclass FakeScope\nlast/'],
+  ['escaped and paired delimiters', '/first\\/still inside\nend\nlast/im', '%r{first{nested}\nclass FakeScope\nlast}x'],
+].forEach(([form, beforeGem, afterGem]) => {
+  test(`keeps multiline regexp bodies out of group scope tracking in ${form}`, () => {
+    const gemfile = `group :test do
+  before = ${beforeGem}
+  gem 'rspec'
+  after = ${afterGem}
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('finds the production gem after deeply nested regexp interpolation', () => {
+  const depth = 5000;
+  const regexp = '/#{'.repeat(depth) + '0' + '}/'.repeat(depth);
+  const gemfile = `group :test do
+  pattern = ${regexp}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
