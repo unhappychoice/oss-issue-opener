@@ -266,6 +266,22 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['||=', '&&=', '+=', '/=', '<<='].forEach((operator) => {
+  test(`detects production gems after division of a local assigned with ${operator}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    count ${operator} 4
+    count /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('detects production gems after division of a block parameter', () => {
   const gemfile = `group :test do
   class TestHelper

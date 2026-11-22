@@ -3,7 +3,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const scopes: LocalScope[] = [{ close: 'root', names: new Set() }];
-  const assignment = /[^\S\n]*(?:,[^\S\n]*[a-z_]\w*[^\S\n]*)*(?:,[^\S\n]*)?=(?!=|>|~)/y;
+  const assignment = /[^\S\n]*(?:(?:,[^\S\n]*[a-z_]\w*[^\S\n]*)*,?[^\S\n]*=(?!=|>|~)|(?:\|\||&&|\*\*|<<|>>|[+\-*/%&|^])=)/y;
   const blockParameters = /\s*\|([a-z_\w\s,;*&]*)\|/y;
   let previous = '\n';
   let previousIsLocal = false;
