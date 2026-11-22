@@ -2,16 +2,18 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const assignedCommands = new Set<string>();
-  const scopes: { closer: string; parameters: string[] }[] = [];
+  const rootLocals = new Set<string>();
+  const scopes: { closer: string; locals: Set<string>; headerStart?: number }[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    const scope = scopes.at(-1);
+    const locals = scope?.locals ?? rootLocals;
     const assignment = assignedRegexpCommand(tokens, token, content[pattern.lastIndex]);
-    if (assignment) assignedCommands.add(assignment);
+    if (assignment) locals.add(assignment);
     if (((token === '/' || token === '%') && expectsExpression(tokens)) ||
-      (token === '/' && expectsCommandRegexp(tokens, content[pattern.lastIndex], assignedCommands, scopes))) {
+      (token === '/' && expectsCommandRegexp(tokens, content[pattern.lastIndex], locals))) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -31,13 +33,24 @@ export const gemfileTokens = (content: string): string[] => {
       tokens.push('""');
       continue;
     }
-    const closer = scopeCloser(tokens, token);
+    const header = scope?.headerStart;
+    const closesLoopHeader = token === 'do' && header !== undefined && tokens[header] !== 'def';
+    const closer = closesLoopHeader ? undefined : scopeCloser(tokens, token);
     if (closer) {
-      const parameters = token === 'do' || token === '{' ? blockParameters(content, pattern.lastIndex) : undefined;
-      scopes.push({ closer, parameters: parameters?.names ?? [] });
+      const block = token === 'do' || token === '{';
+      const parameters = block ? blockParameters(content, pattern.lastIndex) : undefined;
+      const scopedLocals = block ? new Set([...locals, ...(parameters?.names ?? [])]) :
+        /^(?:class|module|def)$/.test(token) ? new Set<string>() : locals;
+      const headerStart = /^(?:def|for|while|until)$/.test(token) ? { headerStart: tokens.length } : {};
+      scopes.push({ closer, locals: scopedLocals, ...headerStart });
       if (parameters) pattern.lastIndex = parameters.end;
-    } else if (token === scopes.at(-1)?.closer) {
+    } else if (token === scope?.closer) {
       scopes.pop();
+    } else if (scope && header !== undefined && (closesLoopHeader || token === '\n' || token === ';')) {
+      if (tokens[header] === 'def' && isEndlessMethod(tokens.slice(header).filter((part) => !isSpacing(part)))) {
+        scopes.pop();
+      }
+      delete scope.headerStart;
     }
     tokens.push(token);
     if (token === '\n') {
@@ -47,6 +60,16 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+export const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
@@ -62,13 +85,11 @@ const expectsExpression = (tokens: string[]): boolean => {
 const expectsCommandRegexp = (
   tokens: string[],
   nextCharacter: string | undefined,
-  assignedCommands: ReadonlySet<string>,
-  scopes: readonly { parameters: string[] }[],
+  locals: ReadonlySet<string>,
 ): boolean => {
   if (!nextCharacter || /\s/.test(nextCharacter) || !isSpacing(tokens.at(-1) ?? '')) return false;
   const command = bareRegexpCommand(tokens);
-  return command !== undefined && !assignedCommands.has(command) &&
-    !scopes.some(({ parameters }) => parameters.includes(command));
+  return command !== undefined && !locals.has(command);
 };
 
 const scopeCloser = (tokens: string[], token: string): string | undefined => {

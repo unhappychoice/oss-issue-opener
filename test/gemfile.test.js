@@ -351,3 +351,48 @@ gem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
 });
+
+[
+  ['class TestHelper', 'end'],
+  ['module TestHelpers', 'end'],
+  ['def test_helper', 'end'],
+  ['class TestHelper; def enabled? = true', 'end'],
+  ['class <<self', 'end'],
+  ['helper do', 'end'],
+  ['helper {', '}'],
+].forEach(([opening, closing]) => {
+  test(`keeps a warn assignment local to ${opening}`, () => {
+    const gemfile = `group :test do
+  ${opening}
+    warn = 4
+    warn /2
+  ${closing}
+  warn /first
+class Pattern
+gem "ignored"
+last/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('keeps a local visible across a loop and inside a nested block', () => {
+  const gemfile = `group :test do
+  while false do
+    warn = 4
+  end
+  helper do
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+});
