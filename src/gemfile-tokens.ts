@@ -6,7 +6,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && regexpAllowedAfter(tokens)) {
+    if ((token === '/' || token === '%') && regexpAllowedAt(tokens, content, match.index)) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -47,10 +47,14 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const regexpAllowedAfter = (tokens: string[]): boolean => {
+const regexpAllowedAt = (tokens: string[], content: string, offset: number): boolean => {
   const last = previousSignificantToken(tokens, tokens.length - 1);
   const preceding = previousSignificantToken(tokens, last - 1);
-  return expectsRegexp(tokens[last], tokens[preceding]);
+  return expectsRegexp(tokens[last], tokens[preceding]) ||
+    (tokens[preceding] === '.' && tokens[preceding - 1] !== '.' &&
+      /^[A-Za-z_]\w*[!?]?$/.test(tokens[last] ?? '') &&
+      content[offset] === '/' && /[ \t]/.test(content[offset - 1] ?? '') &&
+      /\S/.test(content[offset + 1] ?? ''));
 };
 
 const expectsRegexp = (token = '\n', preceding?: string): boolean =>

@@ -274,6 +274,33 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('keeps a multiline regexp passed to a receiver method opaque to scope tracking', () => {
+  const gemfile = `group :test do
+  [].grep /first
+class Phantom
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['object.size / 2', 'object.size/2', '1..amount /2'].forEach((expression) => {
+  test(`preserves production gems after division in ${expression}`, () => {
+    const gemfile = `group :test do
+  amount = 4
+  result = ${expression}
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['/first\nclass Phantom\nlast/', '%r{first\nmodule Phantom\nlast}'].forEach((literal) => {
   test(`keeps Gemfile scopes intact across when ${literal}`, () => {
     const gemfile = `group :test do
