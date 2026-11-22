@@ -301,6 +301,15 @@ test('preserves production gems after compact division of local variables', () =
   });
 });
 
+test('preserves production gems after compact division of block parameters', () => {
+  ['items.each do |index, value|\n  value /2\nend', 'items.each { |value| value /2 }'].forEach((block) => {
+    const gemfile = `group :test do\n  ${block}\n  gem 'rspec'\nend\ngem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  });
+});
+
 test('preserves production gems after compact division of non-command operands', () => {
   ['self', '@value', '$value', '8'].forEach((operand) => {
     const gemfile = `${operand} /2\ngem 'rack', path: '/rack'`;
