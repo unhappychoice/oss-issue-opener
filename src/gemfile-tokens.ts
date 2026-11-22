@@ -6,7 +6,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(tokens[previousSignificantToken(tokens, tokens.length - 1)])) {
+    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -36,7 +36,7 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|\.{2,3}|[^\S\n]+|\n|./;
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
   tokens[index] === 'class' &&
@@ -60,8 +60,13 @@ const heredocEnd = (content: string, start: number, delimiter: string, indented:
   return content.length;
 };
 
-const expectsRegexp = (previous = '\n'): boolean =>
-  /^(?:\n|;|=|=>|~|\(|\[|\{|,|&|\||!|\?|:|do|if|elsif|unless|when|then|else|return)$/.test(previous);
+const expectsRegexp = (tokens: string[]): boolean => {
+  const index = previousSignificantToken(tokens, tokens.length - 1);
+  const previous = tokens[index] ?? '\n';
+  const receiverOperator = tokens[previousSignificantToken(tokens, index - 1)];
+  return receiverOperator !== '.' && receiverOperator !== '::' &&
+    /^(?:\n|;|=|=>|\.{2,3}|~|\(|\[|\{|,|&|\||!|\?|:|do|if|elsif|unless|when|then|else|return)$/.test(previous);
+};
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
@@ -105,19 +110,19 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   const pattern = new RegExp(tokenPattern, 'y');
   pattern.lastIndex = start;
   let depth = 1;
-  let previous = '{';
+  const tokens = ['{'];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (isSpacing(token) || token.startsWith('#')) continue;
     if (token === '{') depth++;
     if (token === '}' && --depth === 0) return pattern.lastIndex;
-    if ((token === '/' || token === '%') && expectsRegexp(previous)) {
+    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
       const end = regexpEnd(content, match.index) ??
         literalEnd(content, match.index, /%[qQ]?([^a-zA-Z0-9\u0080-\uffff\s])/y);
       if (end !== undefined) pattern.lastIndex = end;
     }
-    previous = token;
+    tokens.push(token);
   }
   return undefined;
 };

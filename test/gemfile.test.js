@@ -217,6 +217,8 @@ gem 'rack'`;
   'pattern = /prefix\nclass LiteralText\ngem "ignored"\nsuffix/',
   'pattern = %r{prefix {nested}\nclass LiteralText\ngem "ignored"\nsuffix}im',
   'pattern = enabled ? /prefix\\/suffix\nclass LiteralText\nmodule LiteralText/ : nil',
+  'pattern = /#{receiver.if / 2}\nclass LiteralText\nmodule LiteralText/',
+  'if /prefix\nclass LiteralText\nsuffix/; end',
   'pattern = /#{"/"}\nclass LiteralText\nmodule LiteralText/',
   'pattern = /#{%q(}/)}\nclass LiteralText\nsuffix/x',
   'pattern = /prefix\nend\nsuffix/',
@@ -244,4 +246,17 @@ ratio = 12 / 3`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['receiver.if', 'receiver&.if', 'receiver::if', 'receiver.\\\n  if'].forEach((call) => {
+  test(`preserves a Gemfile declaration after division involving ${JSON.stringify(call)}`, () => {
+    const gemfile = `group :test do
+  ${call} / 2
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
