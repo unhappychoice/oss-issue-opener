@@ -277,6 +277,32 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['%r!start\nclass PatternText\nfinish!i', '%r{start\nmodule PatternText\nfinish}'].forEach((pattern) => {
+  test(`ignores namespace keywords in a bare command argument with ${pattern.slice(0, 3)} delimiters`, () => {
+    const gemfile = `group :test do
+  log_pattern ${pattern}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps percent operators after a local variable as modulo', () => {
+  const gemfile = `group :test do
+  r = 3
+  value = 10
+  value %r+2
+  gem 'rspec'
+end
+gem 'rack' # +`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('preserves group boundaries after division with method parameters', () => {
   const gemfile = `group :test do
   class TestHelper

@@ -140,7 +140,8 @@ const localBindingFollows = (content: string, offset: number): boolean => {
 };
 
 const isCommandRegexp = (content: string, start: number, token: string): boolean =>
-  token === '/' && /[^\S\n]/.test(content[start - 1] ?? '') && /[^\s=]/.test(content[start + 1] ?? '');
+  /[^\S\n]/.test(content[start - 1] ?? '') &&
+  (token === '/' ? /[^\s=]/.test(content[start + 1] ?? '') : content.startsWith('%r', start));
 
 const literalEnd = (
   content: string,
