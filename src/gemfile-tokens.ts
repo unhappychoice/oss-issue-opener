@@ -6,6 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   let regexpExpected = true;
   let classHeader = false;
   let warnCommand = false;
+  let warnAssigned = false;
+  const assignment = /[^\S\n]*=(?!=|~|>)/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
@@ -32,7 +34,12 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      warnCommand = token === 'warn' && /^(?:\n|;|do|then|else)$/.test(previous);
+      warnCommand = false;
+      if (token === 'warn' && /^(?:\n|;|do|then|else)$/.test(previous)) {
+        assignment.lastIndex = pattern.lastIndex;
+        warnAssigned ||= assignment.test(content);
+        warnCommand = !warnAssigned;
+      }
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;

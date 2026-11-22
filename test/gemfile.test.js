@@ -271,7 +271,7 @@ gem 'rack'`;
   test(`preserves production gems after warn ${division}`, () => {
     const gemfile = `warn = 4
 warn ${division}
-gem 'rack', path: '/rack'`;
+gem 'rack', path: '/'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
