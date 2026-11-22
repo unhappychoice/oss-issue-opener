@@ -246,7 +246,7 @@ test('preserves group exclusions after division of a local assigned in parallel'
   end
   gem 'rspec'
 end
-gem 'rack', path: '/.rack'`;
+gem 'rack' # /`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -261,7 +261,7 @@ test('finds a production gem after division of a method parameter', () => {
   end
   gem 'rspec'
 end
-gem 'rack', path: '/.rack'`;
+gem 'rack' # /`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -272,6 +272,7 @@ gem 'rack', path: '/.rack'`;
   'matcher = /prefix\nmodule RegexText\nsuffix/',
   'warn /prefix\nclass RegexText\nsuffix/',
   'warn /prefix\nmodule RegexText\nsuffix/i # diagnostic',
+  'warn /2\nclass RegexText\nsuffix/',
   'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
   '/prefix\nclass RegexText\nsuffix/',
   '! /prefix\nclass RegexText\nsuffix/',

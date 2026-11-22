@@ -57,8 +57,15 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
-const isMultilineCommandRegexp = (content: string, start: number, literal: string): boolean =>
-  literal.includes('\n') && /^[ \t]*(?:[;#\r\n]|$)/.test(content.slice(start + literal.length));
+const isMultilineCommandRegexp = (content: string, start: number, literal: string): boolean => {
+  if (!literal.includes('\n') || !/^[ \t]*(?:[;#\r\n]|$)/.test(content.slice(start + literal.length))) {
+    return false;
+  }
+  // A numeric operand can end the division statement before a later comment.
+  const closingLine = literal.slice(literal.lastIndexOf('\n') + 1);
+  return !/^\/\d+[ \t]*\r?\n/.test(literal) ||
+    !closingLine.match(new RegExp(tokenPattern, 'g'))?.some((token) => token.startsWith('#'));
+};
 
 const isComment = (token: string): boolean => token.startsWith('#') || token.startsWith('=begin');
 
