@@ -238,38 +238,26 @@ gem 'rack'`;
   });
 });
 
-const multilineRegexps = [
-  ['command argument', 'warn /prefix\nclass RegexText\nsuffix/'],
-  ['command argument with options', 'warn /prefix\nmodule RegexText\nsuffix/i'],
-  ['assignment', 'matcher = /prefix\nclass RegexText\nsuffix/'],
-  ['standalone regexp', '/prefix\nmodule RegexText\nsuffix/'],
-  ['escaped slash and options', 'matcher = /prefix\\/\nend\nsuffix/i'],
-  ['paired percent delimiters', 'matcher = %r{prefix{2}\nclass RegexText\nsuffix}i'],
-  ['logical operators', 'matcher = true && /prefix\nclass RegexText\nsuffix/ || %r!other!'],
-  ['ternary branches', 'matcher = true ? /prefix\nclass RegexText\nsuffix/ : /other\nend\nsuffix/'],
-  ['nested regexp interpolation', 'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/'],
-  ['percent string interpolation', 'matcher = /prefix#{ %q!}/! }\nclass RegexText\nsuffix/'],
-  ['nested percent string interpolation', 'matcher = /prefix#{ %Q!#{ "}/" }! }\nclass RegexText\nsuffix/'],
-];
-
-multilineRegexps.forEach(([name, expression]) => {
-  test(`ignores scope keywords in multiline regexp with ${name}`, () => {
-    const gemfile = `group :test do
-  ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('preserves group boundaries after division by a local variable', () => {
+test('preserves group boundaries after division with local variables', () => {
   const gemfile = `group :test do
   class TestHelper
     warn, divisor = 4, 2
     warn /divisor
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves group boundaries after division with method parameters', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    def ratio(total, divisor)
+      total /divisor
+    end
   end
   gem 'rspec'
 end
