@@ -267,6 +267,21 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['receiver.if', 'receiver&.unless'].forEach((call) => {
+  test(`preserves group boundaries after division with ${call}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${call} / 2
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 const multilinePatterns = {
   'slash delimiters and options': '/start\nclass PatternText\nfinish/i',
   'escaped slash': '/start\\/\nmodule PatternText\nfinish/',
@@ -275,6 +290,7 @@ const multilinePatterns = {
   'second ternary branch': 'enabled ? /fallback/ : /start\nclass PatternText\nfinish/',
   'percent string interpolation': '/#{%q!}/!}\nclass PatternText\nfinish/',
   'nested regexp interpolation': '/#{ { pattern: /}/ } }\nclass PatternText\nfinish/',
+  'division in interpolation': '/#{receiver.if / 2}\nclass PatternText\nfinish/',
 };
 
 Object.entries(multilinePatterns).forEach(([description, pattern]) => {

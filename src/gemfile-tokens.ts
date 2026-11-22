@@ -19,7 +19,7 @@ export const gemfileTokens = (content: string): string[] => {
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|=|do)$/.test(previous);
-      previous = token;
+      previous = regexpContext(token, previous);
     }
     if (singletonClass) {
       pattern.lastIndex = match.index + 2;
@@ -49,6 +49,9 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 
 const expressionStart = /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:|!|do|if|elsif|unless|when)$/;
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const regexpContext = (token: string, previous: string): string =>
+  previous === '.' && /^(?:do|if|elsif|unless|when)$/.test(token) ? `.${token}` : token;
 
 const regexpEnd = (content: string, start: number, token: string, previous: string): number | undefined => {
   if ((token !== '/' && token !== '%') || !expressionStart.test(previous)) return undefined;
@@ -106,7 +109,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
     }
     if (token === '{') depth++;
     if (token === '}' && --depth === 0) return pattern.lastIndex;
-    previous = token;
+    previous = regexpContext(token, previous);
   }
   return undefined;
 };
