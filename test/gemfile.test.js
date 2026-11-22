@@ -428,7 +428,7 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-const regexpExpressions = [
+const literalExpressions = [
   ['slash literal', '/first\nclass RegexText\nlast/i'],
   ['percent literal', '%r{first\nclass RegexText\n{last}}m'],
   ['unary negation', '!/first\nclass RegexText\nlast/'],
@@ -441,10 +441,13 @@ const regexpExpressions = [
   ['regexp argument to a predicate', '"value".match? /first\nclass RegexText\nlast/'],
   ['regexp argument to a bare predicate', 'match? /first\nclass RegexText\nlast/'],
   ['regexp argument inside interpolation', '/first#{"value".match? /[}]/}\nclass RegexText\nlast/'],
+  ['non-interpolated percent string', '%q{first\nclass StringText\n{last}}'],
+  ['interpolated percent string', '%Q!first#{%q[!]}\nmodule StringText\nlast!'],
+  ['untyped percent string', '%!first\nclass StringText\nlast!'],
 ];
 
-regexpExpressions.forEach(([description, expression]) => {
-  test(`preserves Gemfile group boundaries around a ${description}`, () => {
+literalExpressions.forEach(([description, expression]) => {
+  test(`preserves Gemfile group boundaries with ${description}`, () => {
     const gemfile = `group :test do
   pattern = ${expression}
   gem 'rspec'
@@ -454,6 +457,19 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('preserves Gemfile group boundaries around modulo with a parenthesized operand', () => {
+  const gemfile = `group :test do
+  total = 5
+  total %(2)
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.deepEqual(gemfileStatements(gemfile)[2], ['total', '%', '(', '2', ')']);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 test('preserves Gemfile group boundaries around division after a predicate call', () => {

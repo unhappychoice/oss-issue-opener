@@ -14,8 +14,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const regexpCandidate = token === '/' || (token === '%' && content[match.index + 1] === 'r');
-    if (regexpCandidate && startsLiteral(content, match.index, token, previous, literalExpected, !previousIsLocal)) {
+    if (startsLiteral(content, match.index, token, previous, literalExpected, !previousIsLocal)) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
