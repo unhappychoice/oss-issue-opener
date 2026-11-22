@@ -47,6 +47,24 @@ test('reports a missing branch when repository metadata has no default branch na
   assert.equal(repos.getBranch.mock.callCount(), 0);
 });
 
+for (const [listedBranch, defaultBranch, expectedBranches] of [
+  ['old', 'main', ['old', 'main']],
+  ['old', null, ['old']],
+  [undefined, 'main', ['main']],
+]) {
+  test(`stops on missing heads with listed branch ${listedBranch} and metadata branch ${defaultBranch}`, async () => {
+    const { repos } = getOctokit();
+    const metadata = mock.method(repos, 'get', async () => ({ data: { default_branch: defaultBranch } }));
+    const branches = mock.method(repos, 'getBranch', async () => {
+      throw Object.assign(new Error('HTTP 404'), { status: 404 });
+    });
+
+    assert.deepEqual(await getDefaultBranchHead('owner', 'repo', listedBranch), { status: 'no-head' });
+    assert.equal(metadata.mock.callCount(), 1);
+    assert.deepEqual(branches.mock.calls.map(({ arguments: [{ branch }] }) => branch), expectedBranches);
+  });
+}
+
 test('preserves the request error when check runs retrieval fails', async () => {
   const failure = new Error('HTTP 503');
   const request = mock.method(getOctokit().paginate, 'iterator', () => {

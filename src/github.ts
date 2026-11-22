@@ -79,6 +79,18 @@ export const getDefaultBranchHead = async (
   const branch = listedBranch || await getDefaultBranch(owner, repo);
   if (!branch) return { status: 'no-branch' };
 
+  const result = await getBranchHead(owner, repo, branch);
+  if (result.status !== 'no-head' || !listedBranch) return result;
+
+  const refreshedBranch = await getDefaultBranch(owner, repo);
+  return refreshedBranch && refreshedBranch !== branch
+    ? getBranchHead(owner, repo, refreshedBranch)
+    : result;
+};
+
+const getBranchHead = async (
+  owner: string, repo: string, branch: string
+): Promise<DefaultBranchHead> => {
   try {
     const { data } = await getOctokit().repos.getBranch({ owner, repo, branch });
     return { status: 'found', head: { sha: data.commit.sha, treeSha: data.commit.commit.tree.sha } };
