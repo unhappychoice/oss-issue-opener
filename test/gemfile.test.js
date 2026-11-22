@@ -255,3 +255,40 @@ gem 'rack' # /`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  '/first\nclass Fake\nlast/',
+  '%r{first\nclass Fake\n{last}}x',
+  '/first\\/\nclass Fake\nlast/',
+  '/#{%q!}/!}\nclass Fake\nlast/',
+  '/#{(/inner\\//i).source}\nclass Fake\ngem "ignored"\nlast/',
+].forEach((literal) => {
+  test(`ignores namespace keywords inside ${JSON.stringify(literal)}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    pattern = ${literal}
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('ignores scope keywords inside regexp literals in both ternary branches', () => {
+  const gemfile = `group :development do
+  pattern = false ? /one
+module Fake
+two/ : /three
+class Fake
+four/
+  gem 'debug'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'debug'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
