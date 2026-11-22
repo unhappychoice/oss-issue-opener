@@ -10,7 +10,7 @@ export const gemfileTokens = (content: string): string[] => {
     if (token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
       if (expectsLiteral(tokens[previous] ?? '\n', tokens[previousSignificantToken(tokens, previous - 1)]) ||
-          (token === '/' && startsPutsRegexp(content, match.index, tokens[previous]))) {
+          (token === '/' && startsCommandRegexp(content, match.index, tokens[previous]))) {
         const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
           pattern.lastIndex = match.index + literal.length;
@@ -44,8 +44,9 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
-const startsPutsRegexp = (content: string, start: number, previous?: string): boolean =>
-  previous === 'puts' && /[^\S\r\n]/.test(content[start - 1] ?? '') && /\S/.test(content[start + 1] ?? '');
+const startsCommandRegexp = (content: string, start: number, previous?: string): boolean =>
+  (previous === 'puts' || previous === 'warn') &&
+  /[^\S\r\n]/.test(content[start - 1] ?? '') && /\S/.test(content[start + 1] ?? '');
 
 const opensSingletonClass = (tokens: string[], index: number): boolean =>
   tokens[index] === 'class' &&

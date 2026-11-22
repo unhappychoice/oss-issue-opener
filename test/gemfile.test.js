@@ -266,6 +266,8 @@ gem 'rack'`;
 });
 
 const regexpBodies = [
+  'warn /prefix\nclass RegexText\nsuffix/',
+  'warn = 8; warn / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'puts /prefix\nclass RegexText\nsuffix/',
   'receiver.puts /prefix\nmodule RegexText\nsuffix/i',
   'puts = 8; puts / 2\nclass TestHelper\nend\nratio = 8 / 2',
