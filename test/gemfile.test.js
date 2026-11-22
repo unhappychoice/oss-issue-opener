@@ -263,6 +263,21 @@ gem 'rack'`;
   });
 });
 
+test('ignores Gemfile statements inside a multiline regexp passed to warn', () => {
+  const gemfile = `group :test do
+  warn /first
+class Pattern
+gem "ignored"
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+});
+
 test('preserves Gemfile scopes after compact division of an instance variable', () => {
   const gemfile = `group :test do
   class TestHelper

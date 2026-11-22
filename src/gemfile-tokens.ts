@@ -6,7 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsExpression(tokens)) {
+    if (((token === '/' || token === '%') && expectsExpression(tokens)) ||
+      (token === '/' && expectsWarnRegexp(tokens, content[pattern.lastIndex]))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -44,6 +45,14 @@ const expectsExpression = (tokens: string[]): boolean => {
   if (/^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|\+|&&|\|\|)$/.test(token)) return true;
   const preceding = tokens[previousSignificantToken(tokens, index - 1)];
   return /^(?:!|and|or|do|if|elsif|unless|when|return)$/.test(token) && !['.', '@', '$'].includes(preceding);
+};
+
+const expectsWarnRegexp = (tokens: string[], nextCharacter: string | undefined): boolean => {
+  if (!nextCharacter || /\s/.test(nextCharacter) || !isSpacing(tokens.at(-1) ?? '')) return false;
+  const commandIndex = previousSignificantToken(tokens, tokens.length - 1);
+  if (tokens[commandIndex] !== 'warn') return false;
+  const preceding = tokens[previousSignificantToken(tokens, commandIndex - 1)];
+  return preceding === undefined || ['\n', ';', 'do'].includes(preceding);
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
