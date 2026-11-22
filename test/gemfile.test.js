@@ -252,6 +252,49 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['a sibling method', 'def other_helper; warn = 4; end', 'def test_helper', 'end'],
+  ['an enclosing scope', 'warn = 4', 'def test_helper', 'end'],
+  ['an endless method', 'def other_helper = (warn = 4)', '', ''],
+].forEach(([scope, assignment, opening, closing]) => {
+  test(`recognizes a warn regexp after a local assignment in ${scope}`, () => {
+    const gemfile = `${assignment}
+group :test do
+  ${opening}
+  warn /prefix
+class RegexText
+suffix/
+  ${closing}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('restores a method local after a nested method definition', () => {
+  const gemfile = `group :test do
+  def test_helper
+    warn = 4
+    def other_helper
+      if true
+        warn /prefix
+class RegexText
+suffix/
+      end
+    end
+    warn /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 const regexpExpressions = [
   ['slash delimiters and escaped slashes', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
   ['unparenthesized warn argument', 'warn /prefix\nclass RegexText\nsuffix/'],

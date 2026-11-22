@@ -1,54 +1,81 @@
-export const gemfileTokens = (content: string): string[] => {
+import { opensBlock, readStatements } from './gemfile-statements.js';
+
+export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
   let operandExpected = true;
-  let warnIsLocal = false;
+  const locals = trackWarnLocal(onStatement);
+  const push = (token: string) => {
+    tokens.push(token);
+    locals.push(token);
+  };
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, operandExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const warnRegexp = token === '/' && previous === 'warn' && !warnIsLocal &&
+    const warnRegexp = token === '/' && previous === 'warn' && !locals.isLocal() &&
       isSpacing(tokens.at(-1) ?? '') && /^[^\s=]/.test(content[pattern.lastIndex] ?? '');
     if (warnRegexp || (operandExpected && (token === '/' || token === '%'))) {
       const literal = readLiteral(content, match.index);
       if (literal) {
         pattern.lastIndex = match.index + literal.length;
-        tokens.push(literal);
+        push(literal);
         previous = literal;
         operandExpected = false;
         continue;
       }
     }
     if (!isSpacing(token)) {
-      if (token === 'warn' && previous !== '.') {
-        warnIsLocal ||= assignsWarn(content, pattern.lastIndex);
-      }
+      if (token === 'warn' && previous !== '.' && assignsWarn(content, pattern.lastIndex)) locals.assign();
       operandExpected = expectsOperand(token, previous);
       previous = token;
     }
     if (token.startsWith('<<')) {
       if (opensSingletonClass(tokens)) {
         previous = '<<';
-        tokens.push(previous);
+        push(previous);
         pattern.lastIndex = match.index + 2;
         continue;
       }
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
       pending.push({ delimiter, indented });
-      tokens.push('""');
+      push('""');
       continue;
     }
-    tokens.push(token);
+    push(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
         pattern.lastIndex = heredocEnd(content, pattern.lastIndex, delimiter, indented);
       });
     }
   }
+  locals.finish();
   return tokens;
+};
+
+const trackWarnLocal = (onStatement?: (tokens: string[]) => void) => {
+  const scopes = [{ warn: false }];
+  const blocks: boolean[] = [];
+  const statements = readStatements((tokens) => {
+    if (tokens[0] === 'end' && blocks.pop()) scopes.pop();
+    const method = tokens[0] === 'def';
+    if (opensBlock(tokens)) {
+      blocks.push(method);
+    } else if (method) {
+      scopes.pop();
+    }
+    onStatement?.(tokens);
+  }, (token) => {
+    if (token === 'def') scopes.push({ warn: false });
+  });
+  return {
+    ...statements,
+    isLocal: () => scopes.at(-1)!.warn,
+    assign: () => { scopes.at(-1)!.warn = true; },
+  };
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
