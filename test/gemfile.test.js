@@ -267,7 +267,7 @@ gem 'rack'`;
   });
 });
 
-['warn', 'puts', 'print'].forEach((command) => {
+['warn', 'puts', 'print', 'p'].forEach((command) => {
   ['/ 2', '/2'].forEach((division) => {
     test(`preserves production gems after ${command} ${division}`, () => {
       const gemfile = `${command} = 4
