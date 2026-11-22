@@ -718,6 +718,10 @@ gem 'rack'`;
   ['a multiline abort regexp', 'abort /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline Kernel.abort regexp', 'Kernel.abort /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
   ['a multiline regexp passed to a custom method', 'register_pattern /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline regexp passed to a custom method on an assignment RHS',
+    'matcher = register_pattern /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
+  ['a multiline percent regexp passed to a custom method on a compound assignment RHS',
+    'matcher ||= register_pattern %r!prefix\nclass LiteralText\ngem "ignored"\nsuffix!'],
   ['a multiline regexp passed to a custom receiver method', 'registry.register_pattern /prefix\nclass LiteralText\ngem "ignored"\nsuffix/'],
 ].forEach(([description, statement]) => {
   test(`preserves group exclusions around ${description}`, () => {
@@ -732,6 +736,19 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
+});
+
+test('keeps division by a local variable on an assignment RHS visible', () => {
+  const gemfile = `value = 12
+group :test do
+  ratio = value /2
+  gem 'rspec'
+end
+gem 'rack'
+matcher = /suffix/`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
 });
 
 [
