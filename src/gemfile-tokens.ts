@@ -56,6 +56,7 @@ export const gemfileTokens = (content: string): string[] => {
       }
       if (statementStart) loopHeader = /^(?:while|until|for)$/.test(token);
       if (token === 'do') loopHeader = false;
+      if (statementStart) warnIsLocal ||= multipleAssignmentBindsWarn(content, match.index);
       if (token === 'warn' && previous !== '.') {
         warnIsLocal ||= previous === 'in' || startsAssignment(content, pattern.lastIndex);
       }
@@ -128,6 +129,13 @@ const startsAssignment = (content: string, offset: number): boolean => {
   const assignment = /[^\S\n]*=(?!=|>|~)/y;
   assignment.lastIndex = offset;
   return assignment.test(content);
+};
+
+const multipleAssignmentBindsWarn = (content: string, offset: number): boolean => {
+  const targets = /([a-z_]\w*(?:[^\S\n]*,\s*[a-z_]\w*)+)[^\S\n]*=(?!=|>|~)/y;
+  targets.lastIndex = offset;
+  const match = targets.exec(content);
+  return match !== null && /\bwarn\b/.test(match[1]);
 };
 
 const startsCommandRegexp = (content: string, offset: number): boolean =>
