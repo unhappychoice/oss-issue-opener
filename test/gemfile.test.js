@@ -251,8 +251,32 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['receiver.if', 'receiver&.unless', 'receiver::elsif'].forEach((call) => {
+  test(`preserves production gems after division following ${call}`, () => {
+    const gemfile = `ratio = ${call} / 2
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps a regexp after the if keyword opaque to scope tracking', () => {
+  const gemfile = `group :test do
+  if /first
+class Phantom
+last/
+    gem 'rspec'
+  end
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   '/first\nclass Phantom\nlast/',
+  '/#{receiver.if / 2} first\nclass Phantom\nlast/',
   '%r{first\nclass Phantom\nlast}',
   'enabled ? /first\nclass Phantom\nlast/ : /fallback/',
   'enabled ? /fallback/ : /first\nclass Phantom\nlast/',
