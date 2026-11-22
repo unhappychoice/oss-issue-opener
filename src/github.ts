@@ -194,9 +194,10 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
   }
 
   for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
-    for (let start = 0; start < suites.length; start += CHECK_SUITE_CONCURRENCY) {
-      const batch = suites.slice(start, start + CHECK_SUITE_CONCURRENCY);
-      const results = await Promise.all(batch.map(({ id }) => loadCheckSuite(client, owner, repo, id)));
+    const lookups = suites.map(({ id }) => loadCheckSuite(client, owner, repo, id));
+    // Deliver the same ordered groups, including partial results before a group error.
+    for (let start = 0; start < lookups.length; start += CHECK_SUITE_CONCURRENCY) {
+      const results = await Promise.all(lookups.slice(start, start + CHECK_SUITE_CONCURRENCY));
       for (const { pages } of results) yield* pages;
       const failure = results.find((result) => result.failure)?.failure;
       if (failure) throw failure.error;
@@ -208,10 +209,10 @@ const CHECK_SUITE_CONCURRENCY = 4;
 const limitCheckSuite = createConcurrencyLimiter(CHECK_SUITE_CONCURRENCY);
 
 async function loadCheckSuite(client: Octokit, owner: string, repo: string, check_suite_id: number) {
-  const iterator = client.paginate.iterator(client.checks.listForSuite, { owner, repo, check_suite_id, per_page: 100 });
   return limitCheckSuite(async () => {
     const pages: Awaited<ReturnType<typeof client.checks.listForSuite>>['data']['check_runs'][] = [];
     try {
+      const iterator = client.paginate.iterator(client.checks.listForSuite, { owner, repo, check_suite_id, per_page: 100 });
       for await (const { data } of iterator) pages.push(data);
       return { pages };
     } catch (error) {
