@@ -298,6 +298,21 @@ gem 'rack', path: '/rack'`;
   });
 });
 
+['@count', '@@count', '$count'].forEach((variable) => {
+  test(`detects production gems after division of ${variable}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${variable} /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves Gemfile group boundaries around a multiline regexp passed to warn', () => {
   const gemfile = `group :test do
   warn /first
