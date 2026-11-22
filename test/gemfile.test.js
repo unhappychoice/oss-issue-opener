@@ -238,6 +238,35 @@ gem 'rack'`;
   });
 });
 
+[
+  '/prefix\\/\nclass TestHelper\nmodule TestHelpers\n/im',
+  '!/prefix\nclass TestHelper\nsuffix/',
+  'enabled ? /prefix\nclass TestHelper\nsuffix/ : nil',
+  'enabled ? nil : /prefix\nclass TestHelper\nsuffix/',
+  '/#{"/"}/',
+  '/#{ %q!}!.ord / 2 }/',
+  '/prefix#{ /[{]/ }\nclass TestHelper\nsuffix/',
+  '%r{prefix{2}\nmodule TestHelpers\nsuffix}',
+].forEach((expression) => {
+  test(`preserves group exclusions around ${expression}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['if', '!'].forEach((method) => {
+  test(`preserves production gems between divisions after receiver.${method}`, () => {
+    const gemfile = `ratio = receiver.${method} / 2\ngem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('detects production gems after division of self inside a class', () => {
   const gemfile = `group :test do
   class TestHelper
