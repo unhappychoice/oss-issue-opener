@@ -50,11 +50,14 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 const regexpAllowedAt = (tokens: string[], content: string, offset: number): boolean => {
   const last = previousSignificantToken(tokens, tokens.length - 1);
   const preceding = previousSignificantToken(tokens, last - 1);
-  return expectsRegexp(tokens[last], tokens[preceding]) ||
-    (tokens[preceding] === '.' && tokens[preceding - 1] !== '.' &&
-      /^[A-Za-z_]\w*[!?]?$/.test(tokens[last] ?? '') &&
-      content[offset] === '/' && /[ \t]/.test(content[offset - 1] ?? '') &&
-      /\S/.test(content[offset + 1] ?? ''));
+  const previous = tokens[preceding];
+  if (expectsRegexp(tokens[last], previous)) return true;
+  const receiverMethod = previous === '.' && tokens[preceding - 1] !== '.';
+  const bareWarn = tokens[last] === 'warn' && (previous === undefined || previous === '\n' || previous === ';');
+  return (receiverMethod || bareWarn) &&
+    /^[A-Za-z_]\w*[!?]?$/.test(tokens[last] ?? '') &&
+    content[offset] === '/' && /[ \t]/.test(content[offset - 1] ?? '') &&
+    /\S/.test(content[offset + 1] ?? '');
 };
 
 const expectsRegexp = (token = '\n', preceding?: string): boolean =>

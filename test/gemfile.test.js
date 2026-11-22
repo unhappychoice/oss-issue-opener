@@ -287,6 +287,19 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('keeps a multiline regexp passed to warn opaque to scope tracking', () => {
+  const gemfile = `group :test do
+  warn /first
+class Phantom
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['object.size / 2', 'object.size/2', '1..amount /2'].forEach((expression) => {
   test(`preserves production gems after division in ${expression}`, () => {
     const gemfile = `group :test do
