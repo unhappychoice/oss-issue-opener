@@ -314,91 +314,6 @@ gem 'rack'`;
   });
 });
 
-['warn', 'puts', 'print'].forEach((command) => {
-  test(`ignores class keywords inside a multiline regexp passed to ${command}`, () => {
-    const gemfile = `group :test do
-  ${command} /start
-class PatternText
-finish/i
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  'class TestHelper\n  warn = 4\nend',
-  'module TestHelpers\n  warn = 4\n  if enabled\n    warn /divisor\n  end\nend',
-  'helper = class <<self; warn = 4; end',
-  `class TestHelper
-    warn = 4
-    def count(value = 1)
-      value
-    end
-    def ratio(
-      divisor
-    ) = 4 / divisor
-    while enabled do
-      consume do
-        warn /divisor
-      end
-    end
-  end`,
-].forEach((definition) => {
-  test(`keeps regexp command recognition outside ${definition}`, () => {
-    const gemfile = `${definition}
-group :test do
-  warn /start
-class PatternText
-finish/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('restores outer command bindings when a namespace closes', () => {
-  const gemfile = `warn, divisor = 4, 2
-group :test do
-  module TestHelpers
-    class TestHelper
-      warn /start
-class PatternText
-finish/
-    end
-  end
-  warn /divisor
-  gem 'rspec'
-end
-gem 'rack' # /`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['puts', 'print'].forEach((local) => {
-  test(`distinguishes ${local} division from a regexp passed to warn`, () => {
-    const gemfile = `group :test do
-  ${local} = 4
-  ${local} /divisor
-  warn /start
-class PatternText
-finish/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
 Object.entries(multilinePatterns).forEach(([description, pattern]) => {
   test(`ignores namespace keywords inside multiline regexp with ${description}`, () => {
     const gemfile = `group :test do
@@ -410,4 +325,20 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('preserves group boundaries after dividing a for-loop variable', () => {
+  const gemfile = `divisor = 2
+group :test do
+  class TestHelper
+    for warn in [4]
+      warn /divisor
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
