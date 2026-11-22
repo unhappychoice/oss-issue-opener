@@ -267,13 +267,15 @@ gem 'rack'`;
   });
 });
 
-['/ 2', '/2'].forEach((division) => {
-  test(`preserves production gems after warn ${division}`, () => {
-    const gemfile = `warn = 4
-warn ${division}
+['warn', 'puts'].forEach((command) => {
+  ['/ 2', '/2'].forEach((division) => {
+    test(`preserves production gems after ${command} ${division}`, () => {
+      const gemfile = `${command} = 4
+${command} ${division}
 gem 'rack', path: '/'`;
 
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
   });
 });
 

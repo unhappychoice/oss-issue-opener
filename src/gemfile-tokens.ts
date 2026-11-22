@@ -5,23 +5,23 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let regexpExpected = true;
   let classHeader = false;
-  let warnCommand = false;
-  let warnAssigned = false;
+  let regexpCommand = false;
+  const assignedCommands = new Set<string>();
   const assignment = /[^\S\n]*=(?!=|~|>)/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (((token === '/' || token === '%') && regexpExpected) ||
-      (warnCommand && isWarnRegexp(token, tokens.at(-1), content[match.index + 1]))) {
+      (regexpCommand && isCommandRegexp(token, tokens.at(-1), content[match.index + 1]))) {
       const end = regexpEnd(content, match.index);
-      if (end !== undefined && (!warnCommand || !/^\w$/.test(content[end] ?? ''))) {
+      if (end !== undefined && (!regexpCommand || !/^\w$/.test(content[end] ?? ''))) {
         pattern.lastIndex = end;
         tokens.push('/.../');
         previous = '/.../';
         regexpExpected = false;
         classHeader = false;
-        warnCommand = false;
+        regexpCommand = false;
         continue;
       }
     }
@@ -34,11 +34,11 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      warnCommand = false;
-      if (token === 'warn' && /^(?:\n|;|do|then|else)$/.test(previous)) {
+      regexpCommand = false;
+      if (regexpCommands.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
         assignment.lastIndex = pattern.lastIndex;
-        warnAssigned ||= assignment.test(content);
-        warnCommand = !warnAssigned;
+        if (assignment.test(content)) assignedCommands.add(token);
+        regexpCommand = !assignedCommands.has(token);
       }
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
@@ -65,7 +65,9 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const isWarnRegexp = (token: string, spacing?: string, next?: string): boolean =>
+const regexpCommands = new Set(['warn', 'puts']);
+
+const isCommandRegexp = (token: string, spacing?: string, next?: string): boolean =>
   token === '/' && spacing !== undefined && isSpacing(spacing) && next !== undefined && !/[\s=]/.test(next);
 
 const readToken = (pattern: RegExp, match: RegExpExecArray, content: string, operandExpected: boolean): string => {
