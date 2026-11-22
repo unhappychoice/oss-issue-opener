@@ -445,8 +445,26 @@ gem 'rack', path: '/rack'`;
   });
 });
 
+test('preserves production gems after compact division of indexing method parameters', () => {
+  ['[](index)', '[]=(index, value)', 'self.[](index)'].forEach((signature) => {
+    const gemfile = `group :test do
+  class TestHelper
+    def ${signature}
+      index /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, signature);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, signature);
+  });
+});
+
 test('recognizes command regexps after method locals go out of scope', () => {
   const methods = [
+    'def [](warn)\n  warn /2\nend',
     'def helper(warn)\n  warn /2\nend',
     'def helper warn\n  warn /2\nend',
     'def self.helper(warn:)\n  warn /2\nend',

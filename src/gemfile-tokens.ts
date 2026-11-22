@@ -71,7 +71,7 @@ export const gemfileTokens = (content: string): string[] => {
 type MethodHeader = { offset: number; depth: number; parenthesized: boolean };
 
 const beginMethodHeader = (scope: CommandScope, content: string, offset: number): void => {
-  const name = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?]?(?:=(?=[ \t]*\())?/y;
+  const name = /[ \t]+(?:[A-Za-z_]\w*\.)?(?:[A-Za-z_]\w*[!?]?|\[\])(?:=(?=[ \t]*\())?/y;
   name.lastIndex = offset;
   if (!name.test(content)) return;
 
