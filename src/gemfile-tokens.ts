@@ -41,6 +41,9 @@ export const gemfileTokens = (content: string): string[] => {
         assignment.lastIndex = pattern.lastIndex;
         if (assignment.test(content)) localNames.add(token);
       }
+      if (token === 'def' && /^(?:\n|;|do|then)$/.test(previous)) {
+        methodParameters(content, pattern.lastIndex).forEach((name) => localNames.add(name));
+      }
       if ((token === 'do' && previous !== '.') || token === '{') {
         blockParameters.lastIndex = pattern.lastIndex;
         const names = blockParameters.exec(content)?.[1];
@@ -69,6 +72,17 @@ export const gemfileTokens = (content: string): string[] => {
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const methodParameters = (content: string, offset: number): string[] => {
+  const signature = /[^\S\n]+(?:\w+(?:::|\.))*\w+[!?=]?(?:[^\S\n]*\(([^)]*)\)|[^\S\n]+([^;\n]*))/y;
+  signature.lastIndex = offset;
+  const match = signature.exec(content);
+  const parameters = match?.[1] ?? match?.[2] ?? '';
+  return Array.from(
+    parameters.matchAll(/(?:^|,)\s*(?:\*{1,2}|&)?([a-z_]\w*)\s*(?=[,:=]|$)/g),
+    ([, name]) => name!,
+  );
+};
 
 const expectsLiteral = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&|\|)$/.test(token) ||
