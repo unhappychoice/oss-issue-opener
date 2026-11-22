@@ -389,7 +389,14 @@ gem 'rack'`;
 });
 
 test('preserves production gems after compact division of method parameters', () => {
-  ['divide(value)', 'divide value', 'self.divide(divisor, value)'].forEach((signature) => {
+  [
+    'divide(value)',
+    'divide value',
+    'self.divide(divisor, value)',
+    'divide(divisor:, value:)',
+    'divide divisor:, value:',
+    'self.divide(divisor, scale:, value:)',
+  ].forEach((signature) => {
     const gemfile = `group :test do
 end
 def ${signature}
@@ -397,6 +404,6 @@ def ${signature}
 end
 gem 'rack', path: '/rack'`;
 
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, signature);
   });
 });

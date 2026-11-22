@@ -3,7 +3,7 @@ import { expectsLiteral, readCharacter, readLiteral } from './gemfile-regexp.js'
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const blockParameters = /\s*\|([\s\w,*&;()]+)\|/y;
-  const methodParameters = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?=]?(?:[ \t]*\(\s*|[ \t]+)((?:[*&]{0,2}[a-z_]\w*\s*,\s*)*[*&]{0,2}[a-z_]\w*)/y;
+  const methodParameters = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?=]?(?:[ \t]*\(\s*|[ \t]+)((?:[*&]{0,2}[a-z_]\w*:?\s*,\s*)*[*&]{0,2}[a-z_]\w*)/y;
   const loopTargets = /[ \t]+((?:[a-z_]\w*[ \t]*,\s*)*[a-z_]\w*)[ \t]+in\b/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
