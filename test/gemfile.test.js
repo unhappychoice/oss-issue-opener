@@ -238,6 +238,29 @@ gem 'rack'`;
   });
 });
 
+[
+  ['/first\nclass Pattern\ngem "ignored"\nlast/', 'assignment'],
+  ['/first\nend\ngem "ignored"\nlast/im', 'closing keyword'],
+  ['%r{first\nmodule Pattern\n{nested} gem "ignored"\nlast}', 'paired percent regexp'],
+  ['%r!first\\!\nclass Pattern\nlast!', 'escaped percent delimiter'],
+  ['true ? /first\nclass Pattern\nlast/ : /other/', 'first ternary branch'],
+  ['true ? /first/ : /other\nclass Pattern\nlast/', 'second ternary branch'],
+  ['true && /first\nclass Pattern\nlast/', 'logical operator'],
+  ['/first#{%q(}/) + /nested/.source}\nclass Pattern\nlast/', 'interpolation'],
+].forEach(([expression, scenario]) => {
+  test(`ignores Gemfile statements inside a regexp with ${scenario}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves Gemfile scopes after compact division of an instance variable', () => {
   const gemfile = `group :test do
   class TestHelper
