@@ -292,3 +292,22 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'debug'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+['or', 'and'].forEach((operator) => {
+  test(`ignores class keywords inside a multiline regexp after ${operator}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    pattern ${operator} /first
+class Fake
+gem "ignored"
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
