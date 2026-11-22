@@ -276,6 +276,41 @@ gem 'rack' # /`;
 });
 
 [
+  ['division of an assigned local', 'warn = 4\n  warn /2'],
+  ['division with whitespace after the slash', 'warn / 2'],
+].forEach(([description, expression]) => {
+  test(`detects production gems after ${description}`, () => {
+    const gemfile = `group :test do
+  ${expression}
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['/first', '%r/first'].forEach((opening) => {
+  test(`ignores scope keywords inside a multiline warn argument starting with ${opening}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    warn ${opening}
+class Fake
+gem "ignored"
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+[
   '/first\nclass Fake\nlast/',
   '%r{first\nclass Fake\n{last}}x',
   '/first\\/\nclass Fake\nlast/',

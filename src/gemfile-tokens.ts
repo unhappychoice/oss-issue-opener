@@ -4,18 +4,22 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let regexpExpected = true;
+  let warnIsLocal = false;
+  let warnArgumentExpected = false;
   let classHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (regexpExpected && (token === '/' || token === '%')) {
+    if ((token === '/' || token === '%') &&
+      (regexpExpected || (warnArgumentExpected && startsCommandRegexp(content, match.index)))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         previous = content.slice(match.index, end);
         tokens.push(previous);
         regexpExpected = false;
+        warnArgumentExpected = false;
         classHeader = false;
         continue;
       }
@@ -29,6 +33,10 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
+      if (token === 'warn' && previous !== '.') {
+        warnIsLocal ||= previous === 'in' || startsAssignment(content, pattern.lastIndex);
+      }
+      warnArgumentExpected = token === 'warn' && !warnIsLocal && regexpExpected;
       classHeader = token === 'class' && /^(?:\n|;|=|do|\{|then)$/.test(previous);
       regexpExpected = expectsRegexpAfter(token, previous);
       previous = token;
@@ -53,6 +61,16 @@ export const gemfileTokens = (content: string): string[] => {
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const startsAssignment = (content: string, offset: number): boolean => {
+  const assignment = /[^\S\n]*=(?!=|>|~)/y;
+  assignment.lastIndex = offset;
+  return assignment.test(content);
+};
+
+const startsCommandRegexp = (content: string, offset: number): boolean =>
+  /[^\S\n]/.test(content[offset - 1] ?? '') &&
+  (content[offset] === '/' ? /[^\s=]/.test(content[offset + 1] ?? '') : content.startsWith('%r', offset));
 
 const expectsRegexpAfter = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
