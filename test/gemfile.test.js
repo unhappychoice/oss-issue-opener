@@ -238,31 +238,33 @@ gem 'rack'`;
   });
 });
 
-test('preserves group boundaries after division with local variables', () => {
-  const gemfile = `group :test do
+['warn', 'puts'].forEach((command) => {
+  test(`preserves group boundaries after division with a local named ${command}`, () => {
+    const gemfile = `group :test do
   class TestHelper
-    warn, divisor = 4, 2
-    warn /divisor
+    ${command}, divisor = 4, 2
+    ${command} /divisor
   end
   gem 'rspec'
 end
 gem 'rack' # /`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 
-test('ignores namespace keywords inside a multiline warn regexp', () => {
-  const gemfile = `group :test do
-  warn /start
+  test(`ignores namespace keywords inside a multiline ${command} regexp`, () => {
+    const gemfile = `group :test do
+  ${command} /start
 class PatternText
 finish/i
   gem 'rspec'
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('keeps spaced slash operators after a bare method call as division', () => {

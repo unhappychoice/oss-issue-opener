@@ -5,29 +5,29 @@ export const gemfileTokens = (content: string): string[] => {
   let previous = '\n';
   let classHeader = false;
   const scopes = new LocalScopes();
-  let warnCommand = false;
+  let regexpCommand = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const literal = literalEnd(content, match.index, token, previous, warnCommand);
+    const literal = literalEnd(content, match.index, token, previous, regexpCommand);
     if (literal !== undefined) {
       pattern.lastIndex = literal;
       scopes.read('literal', previous);
       previous = content.slice(match.index, literal);
       tokens.push(previous);
       classHeader = false;
-      warnCommand = false;
+      regexpCommand = false;
       continue;
     }
     const singletonClass = classHeader && token.startsWith('<<');
     if (!isSpacing(token)) {
       classHeader = token === 'class' && namespaceStart.test(previous);
-      warnCommand = false;
+      regexpCommand = false;
       scopes.read(singletonClass ? '<<' : token, previous);
-      if (token === 'warn' && previous !== '.') {
-        if (warnBindingFollows(content, pattern.lastIndex)) scopes.warnIsLocal = true;
-        warnCommand = !scopes.warnIsLocal;
+      if (regexpCommands.has(token) && previous !== '.') {
+        if (localBindingFollows(content, pattern.lastIndex)) scopes.locals.add(token);
+        regexpCommand = !scopes.locals.has(token);
       }
       previous = regexpContext(token, previous);
     }
@@ -63,10 +63,10 @@ export const isEndlessMethod = (tokens: string[]): boolean => {
   });
 };
 
-type Scope = { closer: 'end' | '}'; outerWarn?: boolean; endless?: boolean };
+type Scope = { closer: 'end' | '}'; outerLocals?: Set<string>; endless?: boolean };
 
 class LocalScopes {
-  warnIsLocal = false;
+  locals = new Set<string>();
   private readonly scopes: Scope[] = [];
   private statement: string[] = [];
   private parentheses = 0;
@@ -87,8 +87,8 @@ class LocalScopes {
     if (token === '{') this.scopes.push({ closer: '}' });
     if (token === '}') this.close(token);
     if (/^(?:class|module|def)$/.test(token) && namespaceStart.test(previous)) {
-      this.scopes.push({ closer: 'end', outerWarn: this.warnIsLocal });
-      this.warnIsLocal = false;
+      this.scopes.push({ closer: 'end', outerLocals: this.locals });
+      this.locals = new Set();
     }
     if (/^(?:if|unless|case|begin|while|until|for)$/.test(token) && namespaceStart.test(previous)) {
       this.scopes.push({ closer: 'end' });
@@ -109,10 +109,11 @@ class LocalScopes {
     const scope = this.scopes.at(-1);
     if (scope?.closer !== closer) return;
     this.scopes.pop();
-    this.warnIsLocal = scope.outerWarn ?? this.warnIsLocal;
+    this.locals = scope.outerLocals ?? this.locals;
   }
 }
 
+const regexpCommands = new Set(['warn', 'puts']);
 const namespaceStart = /^(?:\n|;|=|do|\(|\{|then)$/;
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
@@ -125,7 +126,7 @@ const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']
 const regexpContext = (token: string, previous: string): string =>
   previous === '.' && /^(?:do|if|elsif|unless|when)$/.test(token) ? `.${token}` : token;
 
-const warnBindingFollows = (content: string, offset: number): boolean => {
+const localBindingFollows = (content: string, offset: number): boolean => {
   // Treat possible bindings conservatively in this lexer, which does not resolve Ruby locals.
   const binding = /[^\S\n]*(?:=(?!=|>|~)|[,):|]|in\b|[-+*/%&|^]=|\|\|=|&&=)/y;
   binding.lastIndex = offset;
@@ -140,10 +141,10 @@ const literalEnd = (
   start: number,
   token: string,
   previous: string,
-  warnCommand = false,
+  regexpCommand = false,
 ): number | undefined => {
   if (token !== '/' && token !== '%') return undefined;
-  if (!expressionStart.test(previous) && !(warnCommand && isCommandRegexp(content, start, token))) return undefined;
+  if (!expressionStart.test(previous) && !(regexpCommand && isCommandRegexp(content, start, token))) return undefined;
   const opening = /\/|%([qQwWiIxrs]?)([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
