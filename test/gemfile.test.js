@@ -81,7 +81,7 @@ const cases = [
 cases.forEach(([name, gemfile, expected]) => {
   test(name, async (t) => {
     t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-      data: path === '' ? [{ name: 'Gemfile' }] : { content: Buffer.from(gemfile).toString('base64') },
+      data: path === '' ? [{ name: 'Gemfile' }] : gemfile,
     }));
     assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), expected);
   });
@@ -89,11 +89,8 @@ cases.forEach(([name, gemfile, expected]) => {
 
 test('gemspec runtime dependencies take precedence over Gemfile groups', async (t) => {
   t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-    data: path === '' ? [{ name: 'example.gemspec' }, { name: 'Gemfile' }] : {
-      content: Buffer.from(path.endsWith('.gemspec')
-        ? "spec.add_dependency 'rake'"
-        : "gem 'rake', group: :test").toString('base64'),
-    },
+    data: path === '' ? [{ name: 'example.gemspec' }, { name: 'Gemfile' }]
+      : path.endsWith('.gemspec') ? "spec.add_dependency 'rake'" : "gem 'rake', group: :test",
   }));
   assert.equal(await isProductionDependency('owner', 'repo', 'rake', 'ruby'), true);
 });
@@ -173,7 +170,7 @@ gem 'rack'`;
 
     test(`preserves ${group} scope across ${definition}`, async (t) => {
       t.mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
-        data: path === '' ? [{ name: 'Gemfile' }] : { content: Buffer.from(gemfile).toString('base64') },
+        data: path === '' ? [{ name: 'Gemfile' }] : gemfile,
       }));
       assert.equal(isProductionGem(gemfile, 'rspec'), false);
       assert.equal(isProductionGem(gemfile, 'rack'), true);

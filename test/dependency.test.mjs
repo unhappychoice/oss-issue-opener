@@ -16,7 +16,7 @@ test('skips gemspec directories when loading Ruby dependencies', async () => {
     data: path === '' ? [
       { name: 'examples.gemspec', type: 'dir' },
       { name: 'runtime.gemspec', type: 'file' },
-    ] : { content: Buffer.from("spec.add_runtime_dependency 'rack'").toString('base64') },
+    ] : "spec.add_runtime_dependency 'rack'",
   }));
 
   assert.equal(await check('rack'), true);

@@ -20,7 +20,7 @@ let package = Package(
 
 const stubManifest = (content) => mock.method(getOctokit().repos, 'getContent', async ({ path }) => {
   assert.equal(path, 'Package.swift');
-  return { data: { content: Buffer.from(content).toString('base64') } };
+  return { data: content };
 });
 
 test('Swift matches declared package identities instead of comments, targets or substrings', async () => {

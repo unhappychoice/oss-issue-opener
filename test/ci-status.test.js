@@ -43,7 +43,10 @@ Object.entries(conclusions).forEach(([conclusion, status]) => {
   test(`completed ${conclusion} is classified as ${status}`, async () => {
     assert.deepEqual(await checkStatus('completed', conclusion), {
       status,
-      failedChecks: status === 'failure' ? [{ name: 'build', url: checkUrl }] : [],
+      failedChecks: status === 'failure' ? [{ name: 'build', url: checkUrl, source: 'check' }] : [],
+      ...(status === 'success' ? { recovery: {
+        sha, passedChecks: [],
+      } } : {}),
     });
   });
 });
@@ -86,7 +89,10 @@ test('action_required includes the failed check name and URL in the notification
 
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: state === 'success' ? 'success' : 'failure',
-      failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl }],
+      failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl, source: 'status' }],
+      ...(state === 'success' ? { recovery: { sha, passedChecks: [
+        { name: 'lint', source: 'status' },
+      ] } } : {}),
     });
   });
 });
@@ -125,6 +131,7 @@ test('evaluates the same commit when the default branch advances between CI look
   assert.deepEqual(await checkCIStatus('owner', 'repo'), {
     status: 'success',
     failedChecks: [],
+    recovery: { sha, passedChecks: [{ name: 'lint', source: 'status' }] },
   });
   assert.deepEqual(branch.mock.calls.map(({ arguments: args }) => args), [
     [{ owner: 'owner', repo: 'repo', branch: 'main' }],

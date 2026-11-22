@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import type { Repository } from './types.js';
+import type { CISource, Repository } from './types.js';
 
 let octokit: Octokit;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -52,11 +52,13 @@ export const getFileContent = async (
   owner: string, repo: string, path: string, ref?: string, optional = false
 ): Promise<string> => {
   try {
-    const { data } = await getOctokit().repos.getContent({ owner, repo, path, ...(ref === undefined ? {} : { ref }) });
-    if ('content' in data && data.content) {
-      return Buffer.from(data.content, 'base64').toString('utf-8');
-    }
-    return '';
+    const { data } = await getOctokit().repos.getContent({
+      owner, repo, path, ...(ref === undefined ? {} : { ref }),
+      headers: { accept: 'application/vnd.github.raw+json' },
+      request: { parseSuccessResponseBody: false },
+    });
+    // Read the raw body directly so stream errors propagate to the caller.
+    return await new Response(data as unknown as ReadableStream<Uint8Array> | null).text();
   } catch (error) {
     if (optional && isNotFound(error)) return '';
     throw error;
@@ -105,7 +107,10 @@ export async function* getCommitStatus(
 ): AsyncGenerator<CIResult[]> {
   for (let page = 1; ; page++) {
     const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-    yield data.statuses.map((s) => ({ state: s.state, context: s.context, url: s.target_url ?? '' }));
+    yield data.statuses.map((s) => ({
+      state: ['success', 'failure', 'error'].includes(s.state) ? s.state : 'pending',
+      context: s.context, url: s.target_url ?? '', source: 'status', passed: s.state === 'success',
+    }));
     if (data.statuses.length < 100) return;
   }
 }
@@ -127,16 +132,44 @@ export async function* getCheckRuns(
     startup_failure: 'failure',
   };
 
+  let workflows: Map<number, number> | undefined;
   for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
+    if (!workflows && checkRuns.some((check) => check.app?.slug === 'github-actions')) {
+      workflows = await listWorkflowIds(owner, repo, ref);
+    }
     yield checkRuns.map((c) => ({
-      state: c.status === 'completed' ? conclusionStates[c.conclusion ?? ''] ?? 'pending' : 'pending',
+      state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
+        ? conclusionStates[c.conclusion] : 'pending',
+      source: 'check',
+      passed: c.status === 'completed' && c.conclusion === 'success',
       context: c.name,
       url: c.html_url ?? '',
+      workflowId: c.app?.slug === 'github-actions' && c.check_suite ? workflows?.get(c.check_suite.id) : undefined,
     }));
   }
 }
 
-export type CIResult = { state: string; context: string; url: string };
+export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowId?: number | undefined };
+
+async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
+  const workflows = new Map<number, number>();
+  try {
+    // GitHub caps filtered workflow-run listings at 1,000 results.
+    for (let page = 1; page <= 10; page++) {
+      const { data: { workflow_runs } } = await getOctokit().actions.listWorkflowRunsForRepo({
+        owner, repo, head_sha, per_page: 100, page,
+      });
+      for (const { check_suite_id, workflow_id } of workflow_runs) {
+        if (check_suite_id && workflow_id > 0) workflows.set(check_suite_id, workflow_id);
+      }
+      if (workflow_runs.length < 100) break;
+    }
+    return workflows;
+  } catch {
+    // Workflow identity is required for recovery but optional for failure reporting.
+    return new Map();
+  }
+}
 
 async function* listCheckRunPages(owner: string, repo: string, ref: string) {
   const client = getOctokit();
@@ -151,10 +184,9 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
     for (let start = 0; start < suites.length; start += CHECK_SUITE_CONCURRENCY) {
       const batch = suites.slice(start, start + CHECK_SUITE_CONCURRENCY);
       const results = await Promise.all(batch.map(({ id }) => loadCheckSuite(client, owner, repo, id)));
-      for (const result of results) {
-        yield* result.pages;
-        if (result.failure) throw result.failure.error;
-      }
+      for (const { pages } of results) yield* pages;
+      const failure = results.find((result) => result.failure)?.failure;
+      if (failure) throw failure.error;
     }
   }
 }
@@ -245,13 +277,14 @@ export async function* getCommitFilePages(owner: string, repo: string, ref: stri
 }
 
 export type ComparedCommit = { sha: string; message: string };
+export type ComparedCommits = { commits: ComparedCommit[]; lookupErrors: unknown[] };
 
 export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
   head: BranchHead
-): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommit[]> }> => {
+): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommits> }> => {
   const { repos } = getOctokit();
   const { data: resolvedBase } = await repos.getCommit({
     owner, repo, ref: base, headers: { accept: 'application/vnd.github.sha' },
@@ -261,7 +294,7 @@ export const compareCommits = async (
   }
   const endpoints = { owner, repo, base: resolvedBase, head: head.sha };
   const { base: baseSha, head: headSha } = endpoints;
-  if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => [] };
+  if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => ({ commits: [], lookupErrors: [] }) };
 
   const per_page = 100;
   const { data } = await repos.compareCommits({ ...endpoints, per_page, page: 1 });
@@ -269,13 +302,17 @@ export const compareCommits = async (
     ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
     : [...new Set(changedPaths(data.files ?? []))];
 
-  const getCommits = async (): Promise<ComparedCommit[]> => {
+  const getCommits = async (): Promise<ComparedCommits> => {
     let pageCommits = data.commits;
     const commits: ComparedCommit[] = [];
     for (let page = 2; ; page++) {
       commits.push(...pageCommits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-      if (pageCommits.length < per_page) return commits;
-      pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
+      if (pageCommits.length < per_page) return { commits, lookupErrors: [] };
+      try {
+        pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
+      } catch (error) {
+        return { commits, lookupErrors: [error] };
+      }
     }
   };
 
@@ -287,6 +324,11 @@ export const listOpenIssues = async (
   repo: string,
   label: string
 ): Promise<{ title: string; number: number }[]> => {
+  const data = await listOpenIssueDetails(owner, repo, label);
+  return data.map((i) => ({ title: i.title, number: i.number }));
+};
+
+export const listOpenIssueDetails = async (owner: string, repo: string, label: string) => {
   const data = await getOctokit().paginate(getOctokit().issues.listForRepo, {
     owner,
     repo,
@@ -294,7 +336,29 @@ export const listOpenIssues = async (
     state: 'open',
     per_page: 100,
   });
-  return data.filter((i) => !i.pull_request).map((i) => ({ title: i.title, number: i.number }));
+  return data.filter((i) => !i.pull_request);
+};
+
+export const getAuthenticatedLogin = async (): Promise<string> => {
+  const { data } = await getOctokit().users.getAuthenticated();
+  if (!data.login) throw new Error('Authenticated GitHub account has no login');
+  return data.login;
+};
+
+export const completeIssue = async (
+  owner: string, repo: string, issue_number: number, author: string, body: string,
+  isEligible: (issue: Awaited<ReturnType<Octokit['issues']['get']>>['data']) => boolean
+): Promise<boolean> => {
+  const client = getOctokit();
+  const params = { owner, repo, issue_number };
+  const comments = await client.paginate(client.issues.listComments, { ...params, per_page: 100 });
+  if (!comments.some((comment) => comment.user?.login === author && comment.body === body)) {
+    if (!isEligible((await client.issues.get(params)).data)) return false;
+    await client.issues.createComment({ ...params, body });
+  }
+  if (!isEligible((await client.issues.get(params)).data)) return false;
+  await client.issues.update({ ...params, state: 'closed', state_reason: 'completed' });
+  return true;
 };
 
 export const createIssue = async (
