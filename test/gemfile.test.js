@@ -432,6 +432,33 @@ gem 'rack'`;
   });
 });
 
+['warn', 'Kernel.warn'].forEach((command) => {
+  test(`preserves Gemfile group boundaries around a percent string passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} %q!prefix
+class StringText
+suffix!
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves Gemfile group boundaries around modulo of a local variable', () => {
+  const gemfile = `group :test do
+  warn = 4
+  warn %q!
+  gem 'rspec'
+end
+gem 'rack' # !`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   ['class', 'class Helper; warn = 4; end'],
   ['module', 'module Helper; warn = 4; end'],

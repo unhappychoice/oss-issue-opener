@@ -165,7 +165,7 @@ const startsLiteral = (
   expected: boolean,
   allowsBareCommand = false,
 ): boolean => {
-  if (token !== '/') return token === '%' && expected;
+  if (token !== '/' && token !== '%') return false;
   const command = /^[A-Za-z_]\w*[!?]$/.test(previous) ||
     (allowsBareCommand && /^[a-z_]\w*$/.test(previous));
   return expected || (
