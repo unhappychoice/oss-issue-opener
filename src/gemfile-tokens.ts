@@ -26,7 +26,9 @@ export const gemfileTokens = (content: string): string[] => {
       regexpCommand = false;
       scopes.read(singletonClass ? '<<' : token, previous);
       if (commandName.test(token) && !/^[.@$]$/.test(previous)) {
-        if (localBindingFollows(content, pattern.lastIndex)) scopes.locals.add(token);
+        if (scopes.isRescueBinding(previous) || localBindingFollows(content, pattern.lastIndex)) {
+          scopes.locals.add(token);
+        }
         regexpCommand = !scopes.locals.has(token);
       }
       previous = regexpContext(token, previous);
@@ -70,6 +72,10 @@ class LocalScopes {
   private readonly scopes: Scope[] = [];
   private statement: string[] = [];
   private parentheses = 0;
+
+  isRescueBinding(previous: string): boolean {
+    return previous === '=>' && this.statement[0] === 'rescue';
+  }
 
   read(token: string, previous: string): void {
     if (previous !== '.' && this.isBoundary(token)) {

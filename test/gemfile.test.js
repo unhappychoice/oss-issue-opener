@@ -394,6 +394,25 @@ gem 'rack'`;
   });
 });
 
+['rescue => warn', 'rescue StandardError => warn'].forEach((header) => {
+  test(`preserves group boundaries after division in ${header}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    begin
+      raise 'error'
+    ${header}
+      warn /divisor
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('restores an enclosing warn local after a nested class', () => {
   const gemfile = `group :test do
   class Outer
