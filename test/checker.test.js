@@ -232,6 +232,10 @@ test('detects source changes without dependency updates', async (t) => {
 [
   ["gem 'rack'", true],
   ["gem 'rack', group: :test", false],
+  ["gem 'rack', group: :'test'", false],
+  ['gem "rack", group: :"development"', false],
+  ["gem 'rack', group: :'production'", true],
+  ["gem 'rack', groups: [:'test', :production]", true],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :development do\n  def test_helper\n    def nested_helper\n      true\n    end\n  end\n  gem 'rspec'\nend\ngem 'rack'", false, 'rspec'],
   ["group :test do\n  def test_helper\n    true\n  end\n  gem 'rspec'\nend\ngem 'rack'", true],
