@@ -8,8 +8,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, operandExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (operandExpected && (token === '/' || (token === '%' && content[match.index + 1] === 'r'))) {
-      const literal = readRegexp(content, match.index);
+    if (operandExpected && (token === '/' || token === '%')) {
+      const literal = readLiteral(content, match.index);
       if (literal) {
         pattern.lastIndex = match.index + literal.length;
         tokens.push(literal);
@@ -97,11 +97,11 @@ const literalFrame = (content: string, start: number) => {
   };
 };
 
-const readRegexp = (content: string, start: number): string | undefined => {
+const readLiteral = (content: string, start: number): string | undefined => {
   const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
-  const regexpPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
   const expressionPart = new RegExp(tokenPattern, 'gy');
   const options = /[imxounes]*/y;
   let offset = initial.start;
@@ -119,7 +119,7 @@ const readRegexp = (content: string, start: number): string | undefined => {
       if (frames.length === 0) return content.slice(start, offset);
       continue;
     }
-    const part = frame.braces === 0 ? regexpPart : expressionPart;
+    const part = frame.braces === 0 ? literalPart : expressionPart;
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;

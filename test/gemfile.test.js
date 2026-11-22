@@ -267,6 +267,30 @@ const regexpExpressions = [
   ['incomplete regexp', 'matcher = /prefix'],
 ];
 
+const percentStrings = [
+  ['single-quoted', '%q{prefix {nested}\nclass StringText\nsuffix}'],
+  ['interpolated', '%Q!prefix #{"!"}\nmodule StringText\nsuffix!'],
+  ['implicit double-quoted', '%!prefix\nclass StringText\nsuffix!'],
+];
+
+percentStrings.forEach(([name, literal]) => {
+  test(`ignores scope keywords inside a multiline ${name} percent string`, () => {
+    const gemfile = `group :test do
+  message = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('recognizes modulo followed by a parenthesized operand', () => {
+  assert.deepEqual(gemfileStatements('remainder = 5 %(2)'), [
+    ['remainder', '=', '5', '%', '(', '2', ')'],
+  ]);
+});
+
 regexpExpressions.forEach(([name, expression]) => {
   test(`preserves Gemfile scopes around ${name}`, () => {
     const gemfile = `group :test do
