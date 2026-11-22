@@ -252,6 +252,19 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('keeps multiline regexp arguments to bare commands out of group scope tracking', () => {
+  const gemfile = `group :test do
+  warn /first
+class FakeScope
+last/im
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   ['slash literals', '/first\nclass FakeScope\nend; do\nlast/', '/first\nclass FakeScope\nlast/'],
   ['percent regexp literals', '%r{first\nmodule FakeScope\nend; do\nlast}', '%r{first\nclass FakeScope\nlast}'],

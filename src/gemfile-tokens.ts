@@ -2,13 +2,21 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const locals = new Set<string>();
+  const assignment = /([a-z_]\w*(?:[\t ]*,[\t ]*[a-z_]\w*)*)[\t ]*(?:\|\|=|&&=|[-+*/%&|^]=|=(?![=~>]))/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    const previous = previousSignificantToken(tokens, tokens.length - 1);
+    if (bareIdentifier.test(token) && atStatementStart(tokens[previous])) {
+      assignment.lastIndex = match.index;
+      assignment.exec(content)?.[1].split(/[\t ]*,[\t ]*/).forEach((name) => locals.add(name));
+    }
     if (token === '/' || token === '%') {
-      const previous = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsRegexp(tokens[previous], tokens[previousSignificantToken(tokens, previous - 1)])) {
+      const preceding = tokens[previousSignificantToken(tokens, previous - 1)];
+      if (expectsRegexp(tokens[previous], preceding) ||
+        (token === '/' && isCommandRegexp(content, match.index, tokens, previous, preceding, locals))) {
         const end = regexpEnd(content, match.index);
         if (end !== undefined) {
           tokens.push(content.slice(match.index, end));
@@ -40,6 +48,18 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
+
+const bareIdentifier = /^[a-z_]\w*[!?]?$/;
+const atStatementStart = (previous = '\n'): boolean => ['\n', ';', 'do'].includes(previous);
+
+const isCommandRegexp = (
+  content: string, start: number, tokens: string[], previous: number, preceding: string, locals: Set<string>,
+): boolean => {
+  const name = tokens[previous];
+  return atStatementStart(preceding) && bareIdentifier.test(name) && !locals.has(name) &&
+    !/^(?:end|true|false|nil|self|__FILE__|__LINE__|__ENCODING__)$/.test(name) &&
+    /^[\t ]+$/.test(tokens.at(-1) ?? '') && /^[^\s=]/.test(content[start + 1] ?? '');
+};
 
 const expectsRegexp = (previous = '\n', preceding?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&|\|)$/.test(previous) ||
