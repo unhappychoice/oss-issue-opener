@@ -1,4 +1,4 @@
-import { opensBlock, readStatements } from './gemfile-statements.js';
+import { opensBlock, opensNamespace, readStatements } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string, onStatement?: (tokens: string[]) => void): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
@@ -69,7 +69,9 @@ const trackWarnLocal = (onStatement?: (tokens: string[]) => void) => {
     if (tokens[0] === 'end' && blocks.pop()) scopes.pop();
     const method = tokens[0] === 'def';
     if (opensBlock(tokens)) {
-      blocks.push(method);
+      const namespace = opensNamespace(tokens);
+      if (namespace) scopes.push({ warn: false });
+      blocks.push(method || namespace);
       if (method && hasWarnParameter(methodParameters(tokens))) scopes.at(-1)!.warn = true;
       if (!method && tokens.at(-1) === 'do') parameters.start();
     } else if (method) {

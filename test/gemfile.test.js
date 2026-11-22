@@ -330,6 +330,53 @@ gem 'rack'`;
   });
 });
 
+[
+  'class TestHelper',
+  'module TestHelpers',
+  'helper = class TestHelper',
+  'helper = module TestHelpers',
+  'class <<self',
+].forEach((opening) => {
+  test(`isolates warn locals inside ${opening} and restores the enclosing local`, () => {
+    const gemfile = `warn = 4
+group :test do
+  ${opening}
+    warn /prefix
+class RegexText
+suffix/
+  end
+  warn /2
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps a namespace local out of its enclosing scope', () => {
+  const gemfile = `group :test do
+  module TestHelpers
+    warn = 4
+    class TestHelper
+      warn /prefix
+class RegexText
+suffix/
+    end
+    warn /2
+  end
+  warn /prefix
+module RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('restores a method local after a nested method definition', () => {
   const gemfile = `group :test do
   def test_helper

@@ -43,7 +43,7 @@ export const opensBlock = (tokens: string[]): boolean =>
   opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
   /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '');
 
-const opensNamespace = (tokens: string[]): boolean => {
+export const opensNamespace = (tokens: string[]): boolean => {
   if (isNamespaceKeyword(tokens[0])) return true;
   let depth = 0;
   return tokens.some((token, index) => {
