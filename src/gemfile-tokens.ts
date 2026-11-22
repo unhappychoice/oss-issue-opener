@@ -8,7 +8,7 @@ export const gemfileTokens = (content: string): string[] => {
   let warnArgumentExpected = false;
   let classHeader = false;
   let loopHeader = false;
-  const scopes: (boolean | undefined)[] = [];
+  const scopes: { closing: 'end' | '}'; warnIsLocal?: boolean }[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -39,15 +39,20 @@ export const gemfileTokens = (content: string): string[] => {
       if (token === 'def' && statementStart) {
         const method = methodParameters(content, pattern.lastIndex);
         if (!method.endless) {
-          scopes.push(warnIsLocal);
+          scopes.push({ closing: 'end', warnIsLocal });
           warnIsLocal = method.bindsWarn;
         }
-      } else if (token === 'end' && previous !== '.') {
-        warnIsLocal = scopes.pop() ?? warnIsLocal;
-      } else if (token === 'do' && !loopHeader ||
+      } else if (token === scopes.at(-1)?.closing && previous !== '.') {
+        warnIsLocal = scopes.pop()?.warnIsLocal ?? warnIsLocal;
+      } else if (token === '{' || (token === 'do' && !loopHeader)) {
+        const bindsWarn = blockParametersBindWarn(content, pattern.lastIndex);
+        const closing = token === '{' ? '}' : 'end';
+        scopes.push(bindsWarn ? { closing, warnIsLocal } : { closing });
+        warnIsLocal ||= bindsWarn;
+      } else if (
         statementStart && /^(?:if|unless|case|begin|while|until|for)$/.test(token) ||
         (statementStart || previous === '=') && /^(?:class|module)$/.test(token)) {
-        scopes.push(undefined);
+        scopes.push({ closing: 'end' });
       }
       if (statementStart) loopHeader = /^(?:while|until|for)$/.test(token);
       if (token === 'do') loopHeader = false;
@@ -85,8 +90,18 @@ const methodParameters = (content: string, offset: number) => {
   name.lastIndex = offset;
   if (!name.exec(content)) return { endless: false, bindsWarn: false };
   const parenthesized = content[name.lastIndex] === '(';
+  return readParameters(content, name.lastIndex + Number(parenthesized), parenthesized ? ')' : undefined);
+};
+
+const blockParametersBindWarn = (content: string, offset: number): boolean => {
+  const opening = /\s*\|(?!\|)/y;
+  opening.lastIndex = offset;
+  return opening.test(content) && readParameters(content, opening.lastIndex, '|').bindsWarn;
+};
+
+const readParameters = (content: string, offset: number, closing?: ')' | '|') => {
   const parameters = new RegExp(tokenPattern, 'y');
-  parameters.lastIndex = name.lastIndex + Number(parenthesized);
+  parameters.lastIndex = offset;
   let depth = 0;
   let bindsWarn = false;
   let atParameter = true;
@@ -95,13 +110,13 @@ const methodParameters = (content: string, offset: number) => {
     const token = match[0];
     if (isSpacing(token) || token.startsWith('#')) continue;
     if (depth === 0) {
-      if (parenthesized && token === ')') {
-        return { endless: startsAssignment(content, parameters.lastIndex), bindsWarn };
+      if (token === closing) {
+        return { endless: closing === ')' && startsAssignment(content, parameters.lastIndex), bindsWarn };
       }
-      if (!parenthesized && /^(?:\n|;|end)$/.test(token)) break;
-      if (token === '=' && atParameter) return { endless: true, bindsWarn };
+      if (!closing && /^(?:\n|;|end)$/.test(token)) break;
+      if (closing !== '|' && token === '=' && atParameter) return { endless: true, bindsWarn };
       if (atParameter && token === 'warn') bindsWarn = true;
-      if (!/^[*&]$/.test(token)) atParameter = token === ',';
+      if (!/^[*&]$/.test(token)) atParameter = token === ',' || (closing === '|' && token === ';');
     }
     if (/^[([{]$/.test(token)) depth++;
     if (/^[)\]}]$/.test(token)) depth--;

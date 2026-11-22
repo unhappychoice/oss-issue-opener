@@ -276,6 +276,31 @@ gem 'rack' # /`;
 });
 
 [
+  ['[4].each do |value, warn|', 'end'],
+  ['[4].each { |warn|', '}'],
+].forEach(([opener, closer]) => {
+  test(`detects production gems after division of a block parameter in ${opener}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${opener}
+      warn /2
+    ${closer}
+    warn /first
+class Fake
+gem "ignored"
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+[
   ['division of an assigned local', 'warn = 4\n  warn /2'],
   ['division with whitespace after the slash', 'warn / 2'],
   ['division of a parenthesized method parameter', 'def helper(value, warn)\n    warn /2\n  end'],
