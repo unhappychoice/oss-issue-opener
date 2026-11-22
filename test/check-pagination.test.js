@@ -6,7 +6,7 @@ import { getCheckRuns, getOctokit, initOctokit } from '../dist/github.js';
 
 const sha = 'a'.repeat(40);
 
-test('shares four suite lookups across repositories and yields runs in suite order', async () => {
+test('shares four suite slots across repositories for the full pagination and yields runs in suite order', async () => {
   initOctokit('test-token');
   const octokit = getOctokit();
   const suiteIds = [4, 3, 2, 1];
@@ -14,23 +14,29 @@ test('shares four suite lookups across repositories and yields runs in suite ord
   let peak = 0;
   octokit.hook.wrap('request', async (_request, options) => {
     const { url } = octokit.request.endpoint.parse(options);
-    const respond = (data) => ({ status: 200, url, headers: {}, data });
-    if (new URL(url).pathname.endsWith('/check-suites')) {
+    const respond = (data, headers = {}) => ({ status: 200, url, headers, data });
+    const pageUrl = new URL(url);
+    if (pageUrl.pathname.endsWith('/check-suites')) {
       return respond({ total_count: 1001, check_suites: suiteIds.map((id) => ({ id })) });
     }
 
-    const [, repo, suiteId] = new URL(url).pathname.match(/^\/repos\/owner\/([^/]+)\/check-suites\/(\d+)\/check-runs$/);
-    peak = Math.max(peak, ++active);
+    const [, repo, suiteId] = pageUrl.pathname.match(/^\/repos\/owner\/([^/]+)\/check-suites\/(\d+)\/check-runs$/);
+    const page = pageUrl.searchParams.get('page') ?? '1';
+    if (page === '1') peak = Math.max(peak, ++active);
     await setTimeout(Number(suiteId) * 10);
-    active--;
-    return respond({ total_count: 1, check_runs: [{ name: `${repo}-${suiteId}`, status: 'completed', conclusion: 'success' }] });
+    if (page === '2') active--;
+    pageUrl.searchParams.set('page', '2');
+    return respond({
+      total_count: 2,
+      check_runs: [{ name: `${repo}-${suiteId}-${page}`, status: 'completed', conclusion: 'success' }],
+    }, page === '1' ? { link: `<${pageUrl}>; rel="next"` } : {});
   });
 
   const repos = ['first', 'second'];
   const results = await Promise.all(repos.map((repo) => Array.fromAsync(getCheckRuns('owner', repo, sha))));
   assert.equal(peak, 4);
   assert.deepEqual(results.map((pages) => pages.flat().map(({ context }) => context)),
-    repos.map((repo) => suiteIds.map((id) => `${repo}-${id}`)));
+    repos.map((repo) => suiteIds.flatMap((id) => [`${repo}-${id}-1`, `${repo}-${id}-2`])));
 });
 
 [
