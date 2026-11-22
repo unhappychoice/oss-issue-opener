@@ -248,11 +248,15 @@ gem 'rack'`;
   ['true && /first\nclass Pattern\nlast/', 'logical operator'],
   ['true and /first\nclass Pattern\nlast/', 'and operator'],
   ['false or /first\nend\ngem "ignored"\nlast/', 'or operator'],
-  ['/first#{%q(}/) + /nested/.source}\nclass Pattern\nlast/', 'interpolation'],
+  ['/first#{%q(}/) + /nested/.source}\nclass Pattern\nlast/', 'regexp interpolation'],
+  ['%q!first\nclass Pattern\ngem "ignored"\nlast!', 'multiline percent string'],
+  ['%q{first #{literal}\nclass Pattern\nlast}', 'nested braces in a non-interpolating percent string'],
+  ['%Q!first\\!#{%q!nested!}\nmodule Pattern\nlast!', 'interpolated percent string'],
+  ['%w[first\nclass Pattern\nlast]', 'multiline percent word array'],
 ].forEach(([expression, scenario]) => {
-  test(`ignores Gemfile statements inside a regexp with ${scenario}`, () => {
+  test(`ignores Gemfile statements inside a literal with ${scenario}`, () => {
     const gemfile = `group :test do
-  pattern = ${expression}
+  value = ${expression}
   gem 'rspec'
 end
 gem 'rack'`;

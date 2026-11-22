@@ -11,10 +11,10 @@ export const gemfileTokens = (content: string): string[] => {
     if (assignment) assignedCommands.add(assignment);
     if (((token === '/' || token === '%') && expectsExpression(tokens)) ||
       (token === '/' && expectsCommandRegexp(tokens, content[pattern.lastIndex], assignedCommands))) {
-      const end = regexpEnd(content, match.index);
+      const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
-        tokens.push('<regexp>');
+        tokens.push('<literal>');
         continue;
       }
     }
@@ -82,13 +82,12 @@ const followsStatementBoundary = (tokens: string[], index: number): boolean =>
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, inInterpolation: boolean) => {
+const literalFrame = (content: string, start: number) => {
   const opener = /\/|%([rqQwWiIxs]?)([^\s\p{L}\p{N}])/uy;
   opener.lastIndex = start;
   const match = opener.exec(content);
   if (!match) return undefined;
   const regexp = match[0] === '/' || match[1] === 'r';
-  if (!regexp && !inInterpolation) return undefined;
   const opening = match[2] ?? '/';
   return {
     opening,
@@ -102,11 +101,12 @@ const literalFrame = (content: string, start: number, inInterpolation: boolean) 
   };
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const initial = literalFrame(content, start, false);
+const literalEnd = (content: string, start: number): number | undefined => {
+  const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
-  const body = /\\[\s\S]|#\{|[\s\S]/y;
+  const body = /\\[\s\S]|[\s\S]/y;
+  const interpolatedBody = /\\[\s\S]|#\{|[\s\S]/y;
   const expression = new RegExp(tokenPattern, 'y');
   const options = /[imxounes]*/y;
   let offset = initial.end;
@@ -124,7 +124,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       if (!frames.length) return offset;
       continue;
     }
-    const scanner = frame.braces ? expression : body;
+    const scanner = frame.braces ? expression : frame.interpolates ? interpolatedBody : body;
     scanner.lastIndex = offset;
     const match = scanner.exec(content);
     if (!match) return undefined;
@@ -140,7 +140,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     }
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const nested = (token === '/' || token === '%') && expectsExpression(frame.expression)
-      ? literalFrame(content, match.index, true)
+      ? literalFrame(content, match.index)
       : undefined;
     if (nested) {
       frames.push(nested);
