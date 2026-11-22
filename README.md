@@ -1,5 +1,7 @@
 # oss-issue-opener
 
+[![Test](https://github.com/unhappychoice/oss-issue-opener/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/unhappychoice/oss-issue-opener/actions/workflows/test.yml?query=branch%3Amain)
+
 Weekly automated issue opener for OSS maintenance tasks.
 
 ## Features
