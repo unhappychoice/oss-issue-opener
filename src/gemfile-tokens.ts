@@ -102,12 +102,29 @@ const startsEndlessBody = (content: string, offset: number): boolean => {
 };
 
 const readMethodParameter = (content: string, offset: number, locals: Set<string>): number => {
-  const parameter = /\s*[*&]{0,2}([a-z_]\w*)/y;
+  const parameter = /\s*(?:(\()|[*&]{0,2}([a-z_]\w*))/y;
   parameter.lastIndex = offset;
   const match = parameter.exec(content);
   if (!match) return offset;
-  locals.add(match[1]);
+  if (match[1]) return readDestructuredParameter(content, parameter.lastIndex, locals) ?? offset;
+  locals.add(match[2]);
   return parameter.lastIndex;
+};
+
+const readDestructuredParameter = (content: string, offset: number, locals: Set<string>): number | undefined => {
+  const binding = /\s*(?:#[^\n]*\s*)*(?:([a-z_]\w*)|([()])|[,*])/y;
+  binding.lastIndex = offset;
+  const names: string[] = [];
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while (depth > 0 && (match = binding.exec(content)) !== null) {
+    if (match[1]) names.push(match[1]);
+    if (match[2] === '(') depth++;
+    if (match[2] === ')') depth--;
+  }
+  if (depth !== 0) return undefined;
+  names.forEach((name) => locals.add(name));
+  return binding.lastIndex;
 };
 
 const advanceMethodHeader = (
