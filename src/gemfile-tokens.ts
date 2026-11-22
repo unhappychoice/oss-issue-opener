@@ -6,6 +6,7 @@ export const gemfileTokens = (content: string): string[] => {
   let regexpExpected = true;
   let classHeader = false;
   let regexpCommand = false;
+  let afterKernelDot = false;
   const assignedCommands = new Set<string>();
   const assignment = /[^\S\n]*=(?!=|~|>)/y;
   let match: RegExpExecArray | null;
@@ -34,12 +35,13 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      regexpCommand = false;
+      regexpCommand = afterKernelDot && token === 'warn';
       if (regexpCommands.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
         assignment.lastIndex = pattern.lastIndex;
         if (assignment.test(content)) assignedCommands.add(token);
         regexpCommand = !assignedCommands.has(token);
       }
+      afterKernelDot = token === '.' && previous === 'Kernel';
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;
