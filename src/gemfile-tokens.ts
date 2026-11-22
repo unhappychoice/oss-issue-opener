@@ -128,7 +128,7 @@ const readParameters = (content: string, offset: number, closing?: ')' | '|') =>
 };
 
 const startsAssignment = (content: string, offset: number): boolean => {
-  const assignment = /[^\S\n]*=(?!=|>|~)/y;
+  const assignment = /[^\S\n]*(?:\|\||&&|\*\*|<<|>>|[+*/%&|^\-])?=(?!=|>|~)/y;
   assignment.lastIndex = offset;
   return assignment.test(content);
 };

@@ -302,6 +302,7 @@ gem 'rack' # /`;
 
 [
   ['division of an assigned local', 'warn = 4\n  warn /2'],
+  ['division of a local bound by conditional assignment', 'warn ||= 4\n  warn /2'],
   ['division of a local at the start of a multiple assignment', 'warn, value = 4, 6\n  warn /2'],
   ['division of a local in the middle of a multiple assignment', 'first, warn, last = 2, 4, 6\n  warn /2'],
   ['division with whitespace after the slash', 'warn / 2'],
