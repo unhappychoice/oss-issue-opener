@@ -11,7 +11,7 @@ afterEach(() => mock.restoreAll());
 const stubGoMod = (content) => {
   mock.method(getOctokit().repos, 'getContent', async ({ path }) => {
     assert.equal(path, 'go.mod');
-    return { data: { content: Buffer.from(content).toString('base64') } };
+    return { data: content };
   });
 };
 

@@ -15,7 +15,7 @@ beforeEach(() => {
   mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
     data: path === ''
       ? [{ name: 'Gemfile' }]
-      : { content: Buffer.from("gem 'rack'\n").toString('base64') },
+      : "gem 'rack'\n",
   }));
 });
 
@@ -78,7 +78,7 @@ const mockManifests = (manifests) => {
   mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
     data: path === ''
       ? Object.keys(manifests).map((name) => ({ name }))
-      : { content: Buffer.from(manifests[path] ?? '').toString('base64') },
+      : manifests[path] ?? '',
   }));
 };
 
@@ -144,7 +144,7 @@ test('shares the root listing between project detection and the Ruby dependency 
     return {
       data: path === ''
         ? [{ name: 'Gemfile' }]
-        : { content: Buffer.from("gem 'rack'\n").toString('base64') },
+        : "gem 'rack'\n",
     };
   });
   mockReleaseComparison(['Gemfile.lock'], ['Bump rack from 3.0.0 to 3.1.0']);

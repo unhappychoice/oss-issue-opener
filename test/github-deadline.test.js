@@ -2,10 +2,22 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { getDefaultBranchHead, initOctokit } from '../dist/github.js';
+import { getDefaultBranchHead, getFileContent, initOctokit } from '../dist/github.js';
 
 const entryPoint = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const sha = 'a'.repeat(40);
+
+test('propagates a raw manifest body read failure', async (t) => {
+  const failure = new Error('Manifest stream interrupted');
+  initOctokit('test-token');
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    pull(stream) {
+      stream.error(failure);
+    },
+  })));
+
+  await assert.rejects(getFileContent('owner', 'repo', 'package.json', sha), (error) => error === failure);
+});
 
 test('CLI reports a stalled CI page and submits findings from another repository before exiting', () => {
   const preload = `
