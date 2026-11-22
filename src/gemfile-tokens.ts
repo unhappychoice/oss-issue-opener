@@ -12,10 +12,10 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const regexp = regexpEnd(content, match.index, token, previous, match.index === commandSlash);
-    if (regexp !== undefined) {
-      pattern.lastIndex = regexp;
-      previous = content.slice(match.index, regexp);
+    const literal = literalEnd(content, match.index, token, previous, match.index === commandSlash);
+    if (literal !== undefined) {
+      pattern.lastIndex = literal;
+      previous = content.slice(match.index, literal);
       tokens.push(previous);
       classHeader = false;
       continue;
@@ -66,7 +66,7 @@ const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']
 const regexpContext = (token: string, previous: string): string =>
   previous === '.' && /^(?:do|if|elsif|unless|when)$/.test(token) ? `.${token}` : token;
 
-const regexpEnd = (
+const literalEnd = (
   content: string,
   start: number,
   token: string,
@@ -74,11 +74,12 @@ const regexpEnd = (
   commandArgument = false,
 ): number | undefined => {
   if ((token !== '/' && token !== '%') || (!commandArgument && !expressionStart.test(previous))) return undefined;
-  const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
+  const opening = /\/|%([qQwWiIxrs]?)([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
-  const end = delimitedEnd(content, opening.lastIndex, match[1] ?? '/', true);
+  const end = delimitedEnd(content, opening.lastIndex, match[2] ?? '/', !/[qwis]/.test(match[1] ?? ''));
+  if (token === '%' && match[1] !== 'r') return end;
   if (end === undefined) return undefined;
   const options = /[imxounes]*/y;
   options.lastIndex = end;
@@ -106,7 +107,6 @@ const delimitedEnd = (content: string, start: number, opening: string, interpola
 
 const interpolationEnd = (content: string, start: number): number | undefined => {
   const pattern = new RegExp(tokenPattern, 'y');
-  const percentString = /%([qQwWiIx]?)([^\w\s\u0080-\uffff])/y;
   pattern.lastIndex = start;
   let depth = 1;
   let previous = '{';
@@ -114,15 +114,9 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (isSpacing(token) || token.startsWith('#')) continue;
-    const regexp = regexpEnd(content, match.index, token, previous);
-    percentString.lastIndex = match.index;
-    const percent = token === '%' && expressionStart.test(previous) ? percentString.exec(content) : null;
-    if (regexp !== undefined || percent !== null) {
-      const end = percent
-        ? delimitedEnd(content, percentString.lastIndex, percent[2], !/[qwi]/.test(percent[1]))
-        : regexp;
-      if (end === undefined) return undefined;
-      pattern.lastIndex = end;
+    const literal = literalEnd(content, match.index, token, previous);
+    if (literal !== undefined) {
+      pattern.lastIndex = literal;
       previous = 'literal';
       continue;
     }

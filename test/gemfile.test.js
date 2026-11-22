@@ -293,6 +293,25 @@ const multilinePatterns = {
   'division in interpolation': '/#{receiver.if / 2}\nclass PatternText\nfinish/',
 };
 
+const multilinePercentStrings = {
+  'single-quoted content and nested delimiters': '%q{start{nested}\nclass StringText\nfinish}',
+  'escaped delimiter': '%q!start\\!\nmodule StringText\nfinish!',
+  'interpolation containing the closing delimiter': '%Q!start#{%q{!}}\nclass StringText\nfinish!',
+};
+
+Object.entries(multilinePercentStrings).forEach(([description, literal]) => {
+  test(`ignores namespace keywords inside multiline percent strings with ${description}`, () => {
+    const gemfile = `group :test do
+  text = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('ignores class keywords inside a multiline regexp passed to warn', () => {
   const gemfile = `group :test do
   warn /start
