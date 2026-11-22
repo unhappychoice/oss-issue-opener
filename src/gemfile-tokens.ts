@@ -3,6 +3,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const assignedCommands = new Set<string>();
+  const scopes: { closer: string; parameters: string[] }[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -10,7 +11,7 @@ export const gemfileTokens = (content: string): string[] => {
     const assignment = assignedRegexpCommand(tokens, token, content[pattern.lastIndex]);
     if (assignment) assignedCommands.add(assignment);
     if (((token === '/' || token === '%') && expectsExpression(tokens)) ||
-      (token === '/' && expectsCommandRegexp(tokens, content[pattern.lastIndex], assignedCommands))) {
+      (token === '/' && expectsCommandRegexp(tokens, content[pattern.lastIndex], assignedCommands, scopes))) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -29,6 +30,14 @@ export const gemfileTokens = (content: string): string[] => {
       pending.push({ delimiter, indented });
       tokens.push('""');
       continue;
+    }
+    const closer = scopeCloser(tokens, token);
+    if (closer) {
+      const parameters = token === 'do' || token === '{' ? blockParameters(content, pattern.lastIndex) : undefined;
+      scopes.push({ closer, parameters: parameters?.names ?? [] });
+      if (parameters) pattern.lastIndex = parameters.end;
+    } else if (token === scopes.at(-1)?.closer) {
+      scopes.pop();
     }
     tokens.push(token);
     if (token === '\n') {
@@ -54,10 +63,29 @@ const expectsCommandRegexp = (
   tokens: string[],
   nextCharacter: string | undefined,
   assignedCommands: ReadonlySet<string>,
+  scopes: readonly { parameters: string[] }[],
 ): boolean => {
   if (!nextCharacter || /\s/.test(nextCharacter) || !isSpacing(tokens.at(-1) ?? '')) return false;
   const command = bareRegexpCommand(tokens);
-  return command !== undefined && !assignedCommands.has(command);
+  return command !== undefined && !assignedCommands.has(command) &&
+    !scopes.some(({ parameters }) => parameters.includes(command));
+};
+
+const scopeCloser = (tokens: string[], token: string): string | undefined => {
+  if (token === '{') return '}';
+  const previous = tokens[previousSignificantToken(tokens, tokens.length - 1)];
+  if (token === 'do' && !['.', ':', '@', '$'].includes(previous)) return 'end';
+  const startsExpression = followsStatementBoundary(tokens, tokens.length - 1) || previous === '=';
+  if (startsExpression && /^(?:class|module|def|if|unless|case|begin|while|until|for)$/.test(token)) return 'end';
+  return undefined;
+};
+
+const blockParameters = (content: string, start: number) => {
+  const header = /[^\S\n]*\|\s*((?:[*&]*\w+\s*(?:[,;]\s*[*&]*\w+\s*)*)?)\|/y;
+  header.lastIndex = start;
+  const match = header.exec(content);
+  if (!match) return undefined;
+  return { names: match[1].match(/\w+/g) ?? [], end: header.lastIndex };
 };
 
 const assignedRegexpCommand = (tokens: string[], token: string, next: string | undefined): string | undefined => {
@@ -78,7 +106,7 @@ const bareRegexpCommand = (tokens: string[]): string | undefined => {
 };
 
 const followsStatementBoundary = (tokens: string[], index: number): boolean =>
-  ['\n', ';', 'do'].includes(tokens[previousSignificantToken(tokens, index)] ?? '\n');
+  ['\n', ';', 'do', '{'].includes(tokens[previousSignificantToken(tokens, index)] ?? '\n');
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 

@@ -312,3 +312,42 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('finds a production gem after compact division of a group block argument', () => {
+  const gemfile = `group :test do |warn|
+  warn /2
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
+  ['do |warn|', 'end'],
+  ['{ |prefix, warn|', '}'],
+  ['do |puts; warn|', 'end'],
+].forEach(([opening, closing]) => {
+  test(`treats a block-local warn as a dividend in ${opening}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    helper ${opening}
+      if true
+        warn /2
+      end
+    ${closing}
+    warn /first
+end
+gem "ignored"
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
