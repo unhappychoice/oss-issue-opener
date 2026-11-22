@@ -241,6 +241,9 @@ gem 'rack'`;
 [
   'message = "prefix\nclass LiteralText\nmodule LiteralText\nsuffix"',
   'message = <<~TEXT\nclass LiteralText\nmodule LiteralText\nsuffix\nTEXT',
+  "message = %q{prefix {nested}\nclass LiteralText\ngem 'ignored'\nsuffix}",
+  "message = %Q!prefix #{%q!nested!}\nmodule LiteralText\ngem 'ignored'\nsuffix!",
+  "message = %!prefix\nend\ngem 'ignored'\nsuffix!",
 ].forEach((literal) => {
   test(`preserves group exclusions with ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do

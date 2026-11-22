@@ -1,4 +1,4 @@
-import { expectsRegexp, readCharacter, readRegexp } from './gemfile-regexp.js';
+import { expectsLiteral, readCharacter, readLiteral } from './gemfile-regexp.js';
 
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
@@ -9,8 +9,8 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
-      if (expectsRegexp(tokens[previous] ?? '\n', tokens[previousSignificantToken(tokens, previous - 1)])) {
-        const literal = token === '?' ? readCharacter(content, match.index) : readRegexp(content, match.index, tokenPattern);
+      if (expectsLiteral(tokens[previous] ?? '\n', tokens[previousSignificantToken(tokens, previous - 1)])) {
+        const literal = token === '?' ? readCharacter(content, match.index) : readLiteral(content, match.index, tokenPattern);
         if (literal) {
           pattern.lastIndex = match.index + literal.length;
           tokens.push(literal);

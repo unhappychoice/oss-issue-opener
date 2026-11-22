@@ -4,11 +4,11 @@ export const readCharacter = (content: string, start: number): string | undefine
   return character.exec(content)?.[0];
 };
 
-export const expectsRegexp = (token: string, previous?: string): boolean =>
+export const expectsLiteral = (token: string, previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
 
-export const readRegexp = (content: string, start: number, tokenPattern: RegExp): string | undefined => {
+export const readLiteral = (content: string, start: number, tokenPattern: RegExp): string | undefined => {
   const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
@@ -34,7 +34,7 @@ export const readRegexp = (content: string, start: number, tokenPattern: RegExp)
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;
-    const character = match[0] === '?' && frame.braces > 0 && frame.regexpExpected
+    const character = match[0] === '?' && frame.braces > 0 && frame.literalExpected
       ? readCharacter(content, offset) : undefined;
     const token = character ?? match[0];
     part.lastIndex = offset + token.length;
@@ -43,22 +43,22 @@ export const readRegexp = (content: string, start: number, tokenPattern: RegExp)
       if (frame.interpolated && token === '#{') {
         frame.braces++;
         frame.previous = '{';
-        frame.regexpExpected = true;
+        frame.literalExpected = true;
       }
     } else if (!token.startsWith('#') && !isSpacing(token)) {
-      if ((token === '/' || token === '%') && frame.regexpExpected) {
-        const nested = literalFrame(content, offset, true);
+      if ((token === '/' || token === '%') && frame.literalExpected) {
+        const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);
           frame.previous = token;
-          frame.regexpExpected = false;
+          frame.literalExpected = false;
           offset = nested.start;
           continue;
         }
       }
       if (token === '{') frame.braces++;
       if (token === '}') frame.braces--;
-      frame.regexpExpected = expectsRegexp(token, frame.previous);
+      frame.literalExpected = expectsLiteral(token, frame.previous);
       frame.previous = token;
     }
     offset = part.lastIndex;
@@ -68,13 +68,12 @@ export const readRegexp = (content: string, start: number, tokenPattern: RegExp)
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, inInterpolation = false) => {
+const literalFrame = (content: string, start: number) => {
   const opening = /\/|%([rqQ]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
   const regexp = match[1] === undefined || match[1] === 'r';
-  if (!regexp && !inInterpolation) return undefined;
   const delimiter = match[2] ?? '/';
   return {
     delimiter,
@@ -85,7 +84,7 @@ const literalFrame = (content: string, start: number, inInterpolation = false) =
     delimiters: 1,
     braces: 0,
     previous: '{',
-    regexpExpected: true,
+    literalExpected: true,
   };
 };
 
