@@ -415,14 +415,24 @@ test('preserves production gems after compact division of method parameters', ()
     'divide(divisor:, value:)',
     'divide divisor:, value:',
     'self.divide(divisor, scale:, value:)',
+    'divide(scale = 1, value)',
+    'divide scale = 1,\n  value',
+    'self.divide(scale = [1, 2].first, value)',
+    'divide(scale = /x,y/, value)',
   ].forEach((signature) => {
     const gemfile = `group :test do
-end
-def ${signature}
-  value /2
+  module TestHelpers
+    class TestHelper
+      def ${signature}
+        value /2
+      end
+    end
+  end
+  gem 'rspec'
 end
 gem 'rack', path: '/rack'`;
 
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, signature);
     assert.equal(isProductionGem(gemfile, 'rack'), true, signature);
   });
 });

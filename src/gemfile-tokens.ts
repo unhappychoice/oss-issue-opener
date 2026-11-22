@@ -3,17 +3,22 @@ import { expectsLiteral, readCharacter, readLiteral } from './gemfile-regexp.js'
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const blockParameters = /\s*\|([\s\w,*&;()]+)\|/y;
-  const methodParameters = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?=]?(?:[ \t]*\(\s*|[ \t]+)((?:[*&]{0,2}[a-z_]\w*:?\s*,\s*)*[*&]{0,2}[a-z_]\w*)/y;
   const loopTargets = /[ \t]+((?:[a-z_]\w*[ \t]*,\s*)*[a-z_]\w*)[ \t]+in\b/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const commandLocals = new Set<string>();
   const scopes: CommandScope[] = [];
+  let methodHeader: MethodHeader | undefined;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     const scope = trackCommandScope(scopes, token, tokens);
-    const parameters = token === 'def' ? methodParameters : token === 'for' ? loopTargets :
+    if (token === 'def') {
+      methodHeader = readMethodHeader(content, pattern.lastIndex, commandLocals);
+    } else if (methodHeader && match.index >= methodHeader.offset) {
+      methodHeader = advanceMethodHeader(methodHeader, token, content, pattern.lastIndex, commandLocals);
+    }
+    const parameters = token === 'for' ? loopTargets :
       scope ? blockParameters : undefined;
     if (parameters) {
       parameters.lastIndex = pattern.lastIndex;
@@ -59,6 +64,41 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+type MethodHeader = { offset: number; depth: number; parenthesized: boolean };
+
+const readMethodHeader = (content: string, offset: number, locals: Set<string>): MethodHeader | undefined => {
+  const header = /[ \t]+(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*[!?=]?(?:[ \t]*(\()|[ \t]+(?=[*&]{0,2}[a-z_]))/y;
+  header.lastIndex = offset;
+  const match = header.exec(content);
+  if (!match) return undefined;
+  return {
+    offset: readMethodParameter(content, header.lastIndex, locals),
+    depth: 0,
+    parenthesized: match[1] === '(',
+  };
+};
+
+const readMethodParameter = (content: string, offset: number, locals: Set<string>): number => {
+  const parameter = /\s*[*&]{0,2}([a-z_]\w*)/y;
+  parameter.lastIndex = offset;
+  const match = parameter.exec(content);
+  if (!match) return offset;
+  locals.add(match[1]);
+  return parameter.lastIndex;
+};
+
+const advanceMethodHeader = (
+  header: MethodHeader, token: string, content: string, offset: number, locals: Set<string>,
+): MethodHeader | undefined => {
+  if (header.depth === 0) {
+    if (token === ')' || (!header.parenthesized && (token === '\n' || token === ';'))) return undefined;
+    if (token === ',') header.offset = readMethodParameter(content, offset, locals);
+  }
+  if (['(', '[', '{'].includes(token)) header.depth++;
+  if ([')', ']', '}'].includes(token)) header.depth--;
+  return header;
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||(?:\*\*|<<|>>)(?==)|[^\S\n]+|\n|./;
