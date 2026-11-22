@@ -326,6 +326,9 @@ gem 'rack', path: '/rack'`;
 
 [
   ['do |warn|', 'end'],
+  ['do |warn = 4|', 'end'],
+  ['{ |prefix = [1, 2], warn = (4 | 0)|', '}'],
+  ['do |prefix = /[,|]/, warn = 4|', 'end'],
   ['{ |prefix, warn|', '}'],
   ['do |puts; warn|', 'end'],
 ].forEach(([opening, closing]) => {

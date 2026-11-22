@@ -102,11 +102,45 @@ const scopeCloser = (tokens: string[], token: string): string | undefined => {
 };
 
 const blockParameters = (content: string, start: number) => {
-  const header = /[^\S\n]*\|\s*((?:[*&]*\w+\s*(?:[,;]\s*[*&]*\w+\s*)*)?)\|/y;
-  header.lastIndex = start;
-  const match = header.exec(content);
-  if (!match) return undefined;
-  return { names: match[1].match(/\w+/g) ?? [], end: header.lastIndex };
+  const opening = /[^\S\n]*\|\s*/y;
+  opening.lastIndex = start;
+  if (!opening.test(content)) return undefined;
+
+  const names: string[] = [];
+  const parameter = /\s*[*&]*(\w+)\s*/y;
+  let offset = opening.lastIndex;
+  while (content[offset] !== '|') {
+    parameter.lastIndex = offset;
+    const match = parameter.exec(content);
+    if (!match) return undefined;
+    names.push(match[1]);
+    offset = parameter.lastIndex;
+    if (content[offset] === '=') offset = blockDefaultEnd(content, offset + 1);
+    if (content[offset] === '|') break;
+    if (content[offset] !== ',' && content[offset] !== ';') return undefined;
+    offset++;
+  }
+  return { names, end: offset + 1 };
+};
+
+const blockDefaultEnd = (content: string, start: number): number => {
+  const scanner = new RegExp(tokenPattern, 'y');
+  const tokens = ['='];
+  let depth = 0;
+  scanner.lastIndex = start;
+  let match: RegExpExecArray | null;
+  while ((match = scanner.exec(content)) !== null) {
+    const token = match[0];
+    if (depth === 0 && ['|', ',', ';', '\n'].includes(token)) return match.index;
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    const end = (token === '/' || token === '%') && expectsExpression(tokens)
+      ? literalEnd(content, match.index)
+      : undefined;
+    if (end !== undefined) scanner.lastIndex = end;
+    tokens.push(end === undefined ? token : '<literal>');
+  }
+  return content.length;
 };
 
 const assignedRegexpCommand = (tokens: string[], token: string, next: string | undefined): string | undefined => {
