@@ -267,14 +267,18 @@ const regexpExpressions = [
   ['incomplete regexp', 'matcher = /prefix'],
 ];
 
-const percentStrings = [
+const percentLiterals = [
+  ['word array', '%w!prefix\nclass StringText\nsuffix!'],
+  ['interpolated word array', '%W!prefix #{"!"}\nmodule StringText\nsuffix!'],
+  ['symbol array', '%i!prefix\nclass SymbolText\nsuffix!'],
+  ['interpolated symbol array', '%I!prefix #{"!"}\nmodule SymbolText\nsuffix!'],
   ['single-quoted', '%q{prefix {nested}\nclass StringText\nsuffix}'],
   ['interpolated', '%Q!prefix #{"!"}\nmodule StringText\nsuffix!'],
   ['implicit double-quoted', '%!prefix\nclass StringText\nsuffix!'],
 ];
 
-percentStrings.forEach(([name, literal]) => {
-  test(`ignores scope keywords inside a multiline ${name} percent string`, () => {
+percentLiterals.forEach(([name, literal]) => {
+  test(`ignores scope keywords inside a multiline ${name} percent literal`, () => {
     const gemfile = `group :test do
   message = ${literal}
   gem 'rspec'
