@@ -4,7 +4,7 @@ import type { CIResult, ComparedCommits } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import { recoveryCheckKey } from './types.js';
-import type { CIStatus, DependencyUpdate, ProjectType, ReleaseStatus } from './types.js';
+import type { CheckIdentity, CIStatus, DependencyUpdate, FailedCheck, ProjectType, ReleaseStatus } from './types.js';
 
 // Share the lookup budget across repository scans, including paginated lookups.
 const limitCommitFileLookup = createConcurrencyLimiter(16);
@@ -24,46 +24,72 @@ export const checkCIStatus = async (
     collectCIResults(getCheckRuns(owner, repo, sha)),
   ]);
 
-  const allStatuses = results.flatMap(({ statuses }) => statuses);
+  const failedChecks = results.flatMap(({ failedChecks }) => failedChecks);
   const endpointErrors = results.flatMap(({ errors }) => errors);
-  const filtered = allStatuses.filter((s) => !/codecov/i.test(s.context));
-
-  const failedChecks = filtered
-    .filter((s) => s.state === 'failure' || s.state === 'error')
-    .map((s) => ({ ...checkIdentity(s), url: s.url }));
-  const hasPending = filtered.some((s) => s.state === 'pending' || typeof s.context !== 'string' || s.context.length === 0);
-
   if (endpointErrors.length > 0) {
     return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
   }
-  if (filtered.length === 0) return { status: 'no-ci', failedChecks };
-  if (failedChecks.length > 0 || hasPending) {
-    return { status: failedChecks.length > 0 ? 'failure' : 'pending', failedChecks };
-  }
-  const checks = filtered.map((result) => {
-    const identity = checkIdentity(result);
-    return { identity, key: recoveryCheckKey(identity), passed: result.passed };
-  });
-  const unpassed = new Set(checks.filter(({ passed }) => !passed).map(({ key }) => key));
-  const unidentified = new Set(checks.filter(({ key, passed }) => !key && !passed).map(({ identity }) => identity.name));
-  const passedChecks = checks.filter(({ identity, key }) =>
-    key && !unpassed.has(key) && (identity.source === 'status' || !unidentified.has(identity.name))
-  ).map(({ identity }) => identity);
+  if (failedChecks.length > 0) return { status: 'failure', failedChecks };
+  if (results.some(({ hasPending }) => hasPending)) return { status: 'pending', failedChecks };
+  if (!results.some(({ hasRelevant }) => hasRelevant)) return { status: 'no-ci', failedChecks };
+
+  const passedChecks = results.flatMap(({ recovery }) => recovery.passedChecks());
   return { status: 'success', failedChecks, recovery: { sha, passedChecks } };
 };
 
-const checkIdentity = ({ context, source, workflowId }: CIResult) => ({
+const checkIdentity = ({ context, source, workflowId }: CIResult): CheckIdentity => ({
   name: context, source, ...(workflowId === undefined ? {} : { workflowId }),
 });
 
 const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
-  const statuses: CIResult[] = [];
+  const summary = {
+    hasRelevant: false,
+    hasPending: false,
+    failedChecks: [] as FailedCheck[],
+    errors: [] as unknown[],
+    recovery: collectRecoveryChecks(),
+  };
+
   try {
-    for await (const page of pages) statuses.push(...page);
-    return { statuses, errors: [] };
+    for await (const page of pages) {
+      for (const result of page) {
+        if (/codecov/i.test(result.context)) continue;
+        summary.hasRelevant = true;
+        summary.hasPending ||= result.state === 'pending' || typeof result.context !== 'string' || result.context.length === 0;
+        if (result.state === 'failure' || result.state === 'error') {
+          summary.failedChecks.push({ ...checkIdentity(result), url: result.url });
+        }
+        if (!summary.hasPending && summary.failedChecks.length === 0) summary.recovery.add(result);
+      }
+    }
   } catch (error) {
-    return { statuses, errors: [error] };
+    summary.errors.push(error);
   }
+  return summary;
+};
+
+const collectRecoveryChecks = () => {
+  const candidates: { identity: CheckIdentity; key: string }[] = [];
+  const unpassed = new Set<string>();
+  const unidentified = new Set<string>();
+
+  return {
+    add(result: CIResult) {
+      const identity = checkIdentity(result);
+      const key = recoveryCheckKey(identity);
+      if (result.passed) {
+        if (key) candidates.push({ identity, key });
+      } else if (key) {
+        unpassed.add(key);
+      } else {
+        unidentified.add(identity.name);
+      }
+    },
+    passedChecks: () => candidates
+      .filter(({ identity, key }) => !unpassed.has(key) &&
+        (identity.source === 'status' || !unidentified.has(identity.name)))
+      .map(({ identity }) => identity),
+  };
 };
 
 type GetContents = () => Promise<string[]>;
