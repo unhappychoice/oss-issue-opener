@@ -571,6 +571,22 @@ gem 'rack'`;
   });
 });
 
+test('preserves group exclusions around a multiline regexp after then', () => {
+  const gemfile = `group :test do
+  if true then /prefix
+class RegexText
+gem "ignored"
+suffix/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+});
+
 test('preserves group exclusions around a multiline regexp after not', () => {
   const gemfile = `group :test do
   not /prefix
