@@ -397,3 +397,48 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+[
+  ['class', 'class Helper; warn = 4; end'],
+  ['module', 'module Helper; warn = 4; end'],
+  ['singleton class', 'helper = class <<self; warn = 4; end'],
+  ['method', 'def helper(warn); warn /2; end'],
+  ['endless method', 'def helper(warn) = warn /2'],
+  ['do block', '[4].each do |warn|; warn /2; end'],
+  ['brace block', '[4].each { |warn| warn /2 }'],
+  ['nested control flow', 'class Helper; if true; warn = 4; end; end'],
+].forEach(([scope, definition]) => {
+  test(`recognizes a regexp passed to warn after leaving the ${scope} scope`, () => {
+    const gemfile = `group :test do
+  ${definition}
+  warn /first
+class RegexText
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('retains outer locals across class scopes and inside nested blocks', () => {
+  const gemfile = `group :test do
+  warn = 4
+  class Helper < (warn /2; Object)
+    warn /first
+class RegexText
+last/
+  end
+  [1].each do
+    warn /2
+  end
+  warn /2
+  gem 'rspec'
+end
+gem 'rack' # /`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});

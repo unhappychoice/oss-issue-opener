@@ -2,7 +2,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const localNames = new Set<string>();
+  const scopes: LocalScope[] = [{ close: 'root', names: new Set() }];
   const assignment = /[^\S\n]*(?:,[^\S\n]*[a-z_]\w*[^\S\n]*)*(?:,[^\S\n]*)?=(?!=|>|~)/y;
   const blockParameters = /\s*\|([a-z_\w\s,;*&]*)\|/y;
   let previous = '\n';
@@ -35,21 +35,23 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      classHeader = token === 'class' && /^(?:\n|;|do|\{|then|end|=)$/.test(previous);
-      literalExpected = expectsLiteral(token, previous);
+      const namespace = isScopeStart(previous) && /^(?:class|module)$/.test(token);
+      classHeader = namespace && token === 'class';
+      const method = token === 'def' && isScopeStart(previous)
+        ? methodScope(content, pattern.lastIndex)
+        : undefined;
+      blockParameters.lastIndex = pattern.lastIndex;
+      const parameters = /^(?:do|\{)$/.test(token) && previous !== '.'
+        ? blockParameters.exec(content)?.[1]?.match(/[a-z_]\w*/g) ?? undefined
+        : undefined;
+      trackLocalScope(scopes, token, previous, literalExpected, namespace, method, parameters);
+      const names = visibleLocalScopes(scopes);
       if (previous !== '.' && /^[a-z_]\w*$/.test(token)) {
         assignment.lastIndex = pattern.lastIndex;
-        if (assignment.test(content)) localNames.add(token);
+        if (assignment.test(content)) names[0]?.add(token);
       }
-      if (token === 'def' && /^(?:\n|;|do|then)$/.test(previous)) {
-        methodParameters(content, pattern.lastIndex).forEach((name) => localNames.add(name));
-      }
-      if ((token === 'do' && previous !== '.') || token === '{') {
-        blockParameters.lastIndex = pattern.lastIndex;
-        const names = blockParameters.exec(content)?.[1];
-        names?.match(/[a-z_]\w*/g)?.forEach((name) => localNames.add(name));
-      }
-      previousIsLocal = previous !== '.' && localNames.has(token);
+      previousIsLocal = previous !== '.' && names.some((locals) => locals.has(token));
+      literalExpected = expectsLiteral(token, previous);
       previous = token;
     }
     if (token.startsWith('<<')) {
@@ -73,15 +75,77 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const methodParameters = (content: string, offset: number): string[] => {
-  const signature = /[^\S\n]+(?:\w+(?:::|\.))*\w+[!?=]?(?:[^\S\n]*\(([^)]*)\)|[^\S\n]+([^;\n]*))/y;
+type LocalScope = {
+  close: 'root' | 'end' | '}' | ')' | ']' | 'statement';
+  names?: Set<string>;
+  isolated?: boolean;
+  namespaceHeader?: boolean;
+  loopHeader?: boolean;
+};
+
+const isScopeStart = (previous: string): boolean => /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
+
+const trackLocalScope = (
+  scopes: LocalScope[],
+  token: string,
+  previous: string,
+  literalExpected: boolean,
+  namespace: boolean,
+  method: LocalScope | undefined,
+  parameters: string[] | undefined,
+): void => {
+  const scope = scopes.at(-1)!;
+  const statementEnd = token === '\n' || token === ';';
+  const closesScope = scope.close === 'statement' ? statementEnd :
+    scope.close !== 'root' && token === scope.close && previous !== '.';
+  if (closesScope) {
+    scopes.pop();
+  } else if (method) {
+    scopes.push(method);
+  } else if (namespace) {
+    scopes.push({ close: 'end', namespaceHeader: true });
+  } else if (isScopeStart(previous) && /^(?:if|unless|case|begin|while|until|for)$/.test(token)) {
+    scopes.push({ close: 'end', loopHeader: /^(?:while|until|for)$/.test(token) });
+  } else if (token === 'do' && previous !== '.') {
+    if (!scope.loopHeader) scopes.push({ close: 'end', names: new Set(parameters) });
+    scope.loopHeader = false;
+  } else if (token === '{') {
+    scopes.push(literalExpected && !parameters ? { close: '}' } : { close: '}', names: new Set(parameters) });
+  } else if (token === '(' || token === '[') {
+    scopes.push({ close: token === '(' ? ')' : ']' });
+  } else if (statementEnd) {
+    scope.loopHeader = false;
+    if (scope.namespaceHeader) {
+      scope.namespaceHeader = false;
+      scope.names = new Set();
+      scope.isolated = true;
+    }
+  }
+};
+
+const visibleLocalScopes = (scopes: LocalScope[]): Set<string>[] => {
+  const visible: Set<string>[] = [];
+  for (let index = scopes.length - 1; index >= 0; index--) {
+    const scope = scopes[index]!;
+    if (scope.names) visible.push(scope.names);
+    if (scope.isolated) break;
+  }
+  return visible;
+};
+
+const methodScope = (content: string, offset: number): LocalScope => {
+  const signature = /[^\S\n]+(?:\w+(?:::|\.))*\w+[!?]?(?:=(?=[^\S\n]*\())?(?:[^\S\n]*\(([^)]*)\)|[^\S\n]+([^\s=][^;\n]*))?/y;
   signature.lastIndex = offset;
   const match = signature.exec(content);
   const parameters = match?.[1] ?? match?.[2] ?? '';
-  return Array.from(
+  const names = Array.from(
     parameters.matchAll(/(?:^|,)\s*(?:\*{1,2}|&)?([a-z_]\w*)\s*(?=[,:=]|$)/g),
     ([, name]) => name!,
   );
+  const body = /[^\S\n]*=(?!=|>|~)/y;
+  body.lastIndex = signature.lastIndex;
+  const endless = match !== null && body.test(content);
+  return { close: endless ? 'statement' : 'end', names: new Set(names), isolated: true };
 };
 
 const expectsLiteral = (token: string, previous: string): boolean =>
