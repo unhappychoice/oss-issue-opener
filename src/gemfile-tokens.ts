@@ -4,6 +4,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const blockParameters = /\s*\|([\s\w,*&;()]+)\|/y;
   const loopTargets = /[ \t]+((?:[a-z_]\w*[ \t]*,\s*)*[a-z_]\w*)[ \t]+in\b/y;
+  const arrayPatternTargets = /[ \t]*\[\s*((?:[a-z_]\w*\s*,\s*)*[a-z_]\w*)\s*,?\s*\]/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const commandLocals = new Set<string>();
@@ -25,6 +26,11 @@ export const gemfileTokens = (content: string): string[] => {
     if (parameters) {
       parameters.lastIndex = pattern.lastIndex;
       parameters.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => (scope?.parameters ?? locals).add(name));
+    }
+    if (token === 'in' && scopes.at(-1)?.caseExpression &&
+        ['\n', ';'].includes(tokens[previousSignificantToken(tokens, tokens.length - 1)])) {
+      arrayPatternTargets.lastIndex = pattern.lastIndex;
+      arrayPatternTargets.exec(content)?.[1].match(/\b[a-z_]\w*/g)?.forEach((name) => locals.add(name));
     }
     if (token === '=' || token === '/' || token === '%' || token === '?') {
       const previous = previousSignificantToken(tokens, tokens.length - 1);
@@ -137,6 +143,7 @@ type CommandScope = {
   closer: 'end' | '}';
   parameters: Set<string>;
   loopHeader?: boolean;
+  caseExpression?: boolean;
   method?: boolean;
   header?: MethodHeader;
   endlessDepth?: number;
@@ -175,6 +182,7 @@ const trackCommandScope = (scopes: CommandScope[], token: string, tokens: string
       closer: 'end',
       parameters: new Set(),
       loopHeader: /^(?:while|until|for)$/.test(token),
+      caseExpression: token === 'case',
       method: token === 'def',
     };
     if (token === 'class' || token === 'module') block.namespaceHeaderDepth = 0;

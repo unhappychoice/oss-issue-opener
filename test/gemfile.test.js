@@ -394,6 +394,28 @@ gem 'rack', path: '/rack'`;
   });
 });
 
+test('preserves production gems after compact division of case pattern bindings', () => {
+  [`case [8]
+in [amount]
+  amount /2
+end`, `case [8, 4]
+in [amount, quantity] then quantity /2
+end`].forEach((body) => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper
+    end
+  end
+  gem 'rspec'
+end
+${body}
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('preserves production gems after compact division of non-command operands', () => {
   ['self', '@value', '$value', '8'].forEach((operand) => {
     const gemfile = `${operand} /2\ngem 'rack', path: '/rack'`;
