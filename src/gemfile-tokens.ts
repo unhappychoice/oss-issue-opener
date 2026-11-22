@@ -191,7 +191,7 @@ const startsLiteral = (
 ): boolean => {
   if (token !== '/' && token !== '%') return false;
   const command = /^[A-Za-z_]\w*[!?]$/.test(previous) ||
-    (allowsBareCommand && /^[a-z_]\w*$/.test(previous));
+    (allowsBareCommand && /^[a-z_]\w*$/.test(previous) && !/^_[1-9]$/.test(previous));
   return expected || (
     command &&
     /\s/.test(content[offset - 1] ?? '') &&

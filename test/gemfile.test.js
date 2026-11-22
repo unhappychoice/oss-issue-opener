@@ -253,6 +253,21 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('detects production gems after division of a numbered block parameter', () => {
+  const gemfile = `group :test do
+  class TestHelper
+    [4].each do
+      _1 /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('detects production gems after division of a local with a trailing comma in its assignment', () => {
   const gemfile = `group :test do
   class TestHelper
