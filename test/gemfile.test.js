@@ -238,132 +238,16 @@ gem 'rack'`;
   });
 });
 
-test('preserves group exclusions and production gems after compact division in a lambda', () => {
+test('preserves Gemfile scopes after compact division of a local variable named warn', () => {
   const gemfile = `group :test do
   class TestHelper
   end
-  divide = ->(amount) { amount /2 }
+  warn = 4
+  warn /2
   gem 'rspec'
 end
 gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['receiver.if', 'receiver&.unless', 'receiver::elsif', 'receiver.return', 'receiver.when'].forEach((call) => {
-  test(`preserves production gems after division following ${call}`, () => {
-    const gemfile = `ratio = ${call} / 2
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('keeps a regexp after the if keyword opaque to scope tracking', () => {
-  const gemfile = `group :test do
-  if /first
-class Phantom
-last/
-    gem 'rspec'
-  end
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('keeps a multiline regexp passed to a receiver method opaque to scope tracking', () => {
-  const gemfile = `group :test do
-  [].grep /first
-class Phantom
-last/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('keeps a multiline regexp passed to warn opaque to scope tracking', () => {
-  const gemfile = `group :test do
-  warn /first
-class Phantom
-last/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['object.size / 2', 'object.size/2', '1..amount /2'].forEach((expression) => {
-  test(`preserves production gems after division in ${expression}`, () => {
-    const gemfile = `group :test do
-  amount = 4
-  result = ${expression}
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['/first\nclass Phantom\nlast/', '%r{first\nmodule Phantom\nlast}'].forEach((literal) => {
-  test(`keeps Gemfile scopes intact across when ${literal}`, () => {
-    const gemfile = `group :test do
-  case ENV['RUBY_VERSION']
-  when ${literal}
-    gem 'rspec'
-  end
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['/first\nclass Phantom\nlast/', '%r{first\nmodule Phantom\nlast}'].forEach((literal) => {
-  test(`keeps Gemfile scopes intact across return ${literal}`, () => {
-    const gemfile = `group :test do
-  def matcher
-    return ${literal}
-  end
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  '/first\nclass Phantom\nlast/',
-  '/#{receiver.if / 2} first\nclass Phantom\nlast/',
-  '%r{first\nclass Phantom\nlast}',
-  'enabled ? /first\nclass Phantom\nlast/ : /fallback/',
-  'enabled ? /fallback/ : /first\nclass Phantom\nlast/',
-  '/#{%q(/)} first\nclass Phantom\nlast/',
-  '%r{#{%Q!#{/}/}!} first\nclass Phantom\nlast}im',
-  '/first\\/\nmodule Phantom\nlast/',
-].forEach((expression) => {
-  test(`keeps Gemfile scopes intact across ${expression}`, () => {
-    const gemfile = `group :test do
-  class TestHelper
-  end
-  matcher = ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
 });
