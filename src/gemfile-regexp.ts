@@ -3,13 +3,13 @@ export const isCompoundAssignment = (token: string): boolean =>
 
 export const expectsRegexp = (token = '\n', previous?: string): boolean =>
   isCompoundAssignment(token) || /^(?:\n|;|=|=>|<|>|~|\+|-|\*|\/|%|\(|\[|\{|,|&&?|\|\|?|\^|\?|:)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless|case|when|then|return|and|or|not)$/.test(token));
+  (previous !== '.' && previous !== '::' && /^(?:!|do|if|elsif|unless|case|when|then|return|and|or|not)$/.test(token));
 
 export const canOpenLiteral = (token: string): boolean =>
   ['?', '/', '%', '/=', '%=', '`'].includes(token);
 
 export const opensBacktickLiteral = (token: string, previous = ''): boolean =>
-  token === '`' && previous !== '.' && previous !== 'def';
+  token === '`' && previous !== '.' && previous !== '::' && previous !== 'def';
 
 export const startsPercentLiteral = (content: string, start: number): boolean =>
   percentLiteralOpening(content, start) !== null;

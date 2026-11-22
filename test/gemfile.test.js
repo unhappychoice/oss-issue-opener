@@ -156,6 +156,7 @@ test('ignores heredoc openers in strings and comments', () => {
   ['def test_helper\n  true\nend',
     'def test_helper = true',
     'def self.test_helper = true',
+    'def self::test_helper = true',
     'def test_helper(value = true) = value',
     'def test_helper = (true)',
     'def test_helper(value = true)\n  value\nend',
@@ -423,7 +424,13 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['def helper(warn)', 'def helper warn', 'def helper(warn = 4)', 'def self.helper(value, warn: 4)'].forEach((definition) => {
+[
+  'def helper(warn)',
+  'def helper warn',
+  'def helper(warn = 4)',
+  'def self.helper(value, warn: 4)',
+  'def self::helper(warn)',
+].forEach((definition) => {
   test(`distinguishes division by a method parameter from a later warn regexp after ${definition}`, () => {
     const gemfile = `group :test do
   ${definition}

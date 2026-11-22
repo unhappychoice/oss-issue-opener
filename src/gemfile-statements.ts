@@ -148,7 +148,10 @@ const includesLocalTarget = (targets: string[], name: string): boolean =>
     (index === targets.length - 1 || [')', ','].includes(targets[index + 1])));
 
 const methodDeclaresParameter = (tokens: string[], name: string): boolean =>
-  declaresParameter(tokens.slice(tokens[2] === '.' ? 4 : 2), name);
+  declaresParameter(tokens.slice(methodNameEnd(tokens)), name);
+
+const methodNameEnd = (tokens: string[]): number =>
+  tokens[2] === '.' || tokens[2] === '::' ? 4 : 2;
 
 const declaresParameter = (args: string[], name: string): boolean => {
   const parameterDepth = args[0] === '(' ? 1 : 0;
@@ -170,7 +173,7 @@ const isEndlessMethod = (tokens: string[]): boolean => {
   return tokens.some((token, index) => {
     if (token === '(') depth++;
     if (token === ')') depth--;
-    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    const nameEnd = methodNameEnd(tokens);
     return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };

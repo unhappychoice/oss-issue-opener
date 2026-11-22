@@ -52,7 +52,7 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|->|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|->|(?:&&|\|\||\*\*|<<|>>|[+\-*\/%&|^])=|&&|\|\||[^\S\n]+|\n|./;
 
 const opensCommandLiteral = (
   content: string, start: number, tokens: string[], index: number, previousIndex: number,
@@ -62,7 +62,7 @@ const opensCommandLiteral = (
   const startsLiteral = startsPercentLiteral(content, start) ||
     (content[start] === '/' && /\S/.test(content[start + 1] ?? ''));
   if (!startsLiteral || !/^[A-Za-z_]\w*[!?]?$/.test(command) || index === tokens.length - 1) return false;
-  if (previous === '.') return true;
+  if (previous === '.' || previous === '::') return true;
   return ['\n', ';', 'do'].includes(previous) &&
     !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(command) &&
     !hasGemfileBinding(tokens.slice(0, index), command);
