@@ -254,6 +254,7 @@ gem 'rack', path: '/rack'`;
 
 const regexpExpressions = [
   ['slash delimiters and escaped slashes', 'matcher = /prefix\\/\nclass RegexText\nsuffix/i'],
+  ['unparenthesized warn argument', 'warn /prefix\nclass RegexText\nsuffix/'],
   ['quoted slash in interpolation', 'matcher = /#{" / "}/'],
   ['nested regexp in interpolation', 'matcher = /#{ /[}]/ }\nclass RegexText\nsuffix/'],
   ['percent string and division in interpolation', 'matcher = /#{ %q!}!.ord / 2 }/'],
@@ -310,7 +311,7 @@ gem 'rack'`;
   });
 });
 
-['receiver.if', 'receiver.!', '?:', '?/'].forEach((expression) => {
+['receiver.if', 'receiver.!', '?:', '?/', 'warn'].forEach((expression) => {
   test(`preserves division after ${expression}`, () => {
     const gemfile = `ratio = ${expression} / 2
 gem 'rack', path: '/rack'`;

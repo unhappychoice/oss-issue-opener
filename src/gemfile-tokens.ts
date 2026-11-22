@@ -4,11 +4,14 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let operandExpected = true;
+  let warnIsLocal = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, operandExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (operandExpected && (token === '/' || token === '%')) {
+    const warnRegexp = token === '/' && previous === 'warn' && !warnIsLocal &&
+      isSpacing(tokens.at(-1) ?? '') && /^[^\s=]/.test(content[pattern.lastIndex] ?? '');
+    if (warnRegexp || (operandExpected && (token === '/' || token === '%'))) {
       const literal = readLiteral(content, match.index);
       if (literal) {
         pattern.lastIndex = match.index + literal.length;
@@ -19,6 +22,9 @@ export const gemfileTokens = (content: string): string[] => {
       }
     }
     if (!isSpacing(token)) {
+      if (token === 'warn' && previous !== '.') {
+        warnIsLocal ||= assignsWarn(content, pattern.lastIndex);
+      }
       operandExpected = expectsOperand(token, previous);
       previous = token;
     }
@@ -55,6 +61,12 @@ const opensSingletonClass = (tokens: string[]): boolean => {
 };
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const assignsWarn = (content: string, offset: number): boolean => {
+  const assignment = /[^\S\n]*(?:\|\||&&|\*\*|<<|>>|[+\-*/%&|^])?=(?![=>~])/y;
+  assignment.lastIndex = offset;
+  return assignment.test(content);
+};
 
 const previousSignificantToken = (tokens: string[], index: number): number => {
   while (index >= 0 && isSpacing(tokens[index])) index--;

@@ -162,17 +162,22 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
   assert.equal(await check('rack'), true);
 });
 
-test('Gemfile fallback ignores class declarations inside a multiline regexp', async () => {
-  mockRubyRepository('', `group :test do
-    matcher = %r!prefix
-class RegexText
-suffix!
+const multilineRegexps = [
+  ['percent-delimited regexp', 'matcher = %r!prefix\nclass RegexText\nsuffix!'],
+  ['regexp passed to warn', 'warn /prefix\nclass RegexText\nsuffix/'],
+];
+
+multilineRegexps.forEach(([name, expression]) => {
+  test(`Gemfile fallback ignores class declarations inside a multiline ${name}`, async () => {
+    mockRubyRepository('', `group :test do
+    ${expression}
     gem 'rspec'
   end
   gem 'rack'`);
 
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('rack'), true);
+    assert.equal(await check('rspec'), false);
+    assert.equal(await check('rack'), true);
+  });
 });
 
 test('malicious bump completes and the next repository is checked', () => {
