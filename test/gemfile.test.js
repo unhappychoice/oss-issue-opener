@@ -542,10 +542,33 @@ ratio = receiver.if / 2
 ratio = receiver.or / 2
 ratio = receiver.and / 2
 ratio = receiver.not / 2
+ratio = receiver.case / 2
 gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['/prefix', '%r{prefix'].forEach((opening) => {
+  test(`preserves group exclusions around a multiline case regexp starting with ${opening}`, () => {
+    const closing = opening.startsWith('/') ? '/' : '}';
+    const gemfile = `group :test do
+  case ${opening}
+class RegexText
+gem "ignored"
+suffix${closing}
+  when /prefix/
+    gem 'minitest'
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'minitest'), false);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
 });
 
 test('preserves group exclusions around a multiline regexp after not', () => {
