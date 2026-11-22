@@ -228,6 +228,8 @@ gem 'rack'`;
   'matcher = flag && /prefix\nclass LiteralText\nsuffix/',
   'matcher = flag || %r{prefix\nmodule LiteralText\nsuffix}',
   'matcher = /#{ %q!}!.ord / 2 }/',
+  'puts /prefix\nclass LiteralText\nmodule LiteralText\nsuffix/',
+  'logger.info /prefix\nclass LiteralText\nsuffix/',
 ].forEach((literal) => {
   test(`ignores namespace keywords in ${literal.split('\n')[0]}`, () => {
     const gemfile = `group :test do
@@ -295,4 +297,22 @@ test('keeps a class scope visible after ordinary division', () => {
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('keeps division separate from a later command regexp', () => {
+  const regexp = '/prefix\nclass LiteralText\nsuffix/';
+
+  assert.deepEqual(gemfileStatements(`count = 12
+ratio = count /2
+ratio = 12 /3
+ratio = total / 2
+ratio = total/2
+puts ${regexp}`), [
+    ['count', '=', '12'],
+    ['ratio', '=', 'count', '/', '2'],
+    ['ratio', '=', '12', '/', '3'],
+    ['ratio', '=', 'total', '/', '2'],
+    ['ratio', '=', 'total', '/', '2'],
+    ['puts', regexp],
+  ]);
 });
