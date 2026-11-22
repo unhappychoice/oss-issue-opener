@@ -22,7 +22,7 @@ export const gemfileTokens = (content: string): string[] => {
       const qualifier = tokens[previousSignificantToken(tokens, previous - 1)];
       if (token === '=') {
         if (isCommandName(name) && !['.', '@', '$'].includes(qualifier) && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
-          commandLocals.add(name);
+          recordAssignmentLocals(tokens, previous, commandLocals);
         }
       } else if (expectsLiteral(name ?? '\n', qualifier) ||
           (token === '/' && isCommandName(name) && canTakeCommandRegexp(name, qualifier, commandLocals) &&
@@ -75,6 +75,28 @@ const opensSingletonClass = (tokens: string[], index: number): boolean =>
   ['\n', ';', '=', 'do'].includes(tokens[previousSignificantToken(tokens, index - 1)] ?? '\n');
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const recordAssignmentLocals = (tokens: string[], last: number, locals: Set<string>): void => {
+  locals.add(tokens[last]);
+  const targets: string[] = [];
+  let separator = assignmentSeparator(tokens, last);
+  while (tokens[separator] === ',') {
+    const target = previousSignificantToken(tokens, separator - 1);
+    if (!isCommandName(tokens[target])) return;
+    targets.push(tokens[target]);
+    separator = assignmentSeparator(tokens, target);
+  }
+  if (separator < 0 || ['\n', ';', 'do'].includes(tokens[separator])) {
+    targets.forEach((target) => locals.add(target));
+  }
+};
+
+const assignmentSeparator = (tokens: string[], target: number): number => {
+  const previous = previousSignificantToken(tokens, target - 1);
+  let separator = previous;
+  while (tokens[separator] === '\n') separator = previousSignificantToken(tokens, separator - 1);
+  return tokens[separator] === ',' ? separator : previous;
+};
 
 const previousSignificantToken = (tokens: string[], start: number): number => {
   while (start >= 0 && isSpacing(tokens[start])) start--;

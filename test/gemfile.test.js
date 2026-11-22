@@ -274,6 +274,7 @@ const regexpBodies = [
   'receiver.puts /prefix\nmodule RegexText\nsuffix/i',
   'puts = 8; receiver.puts /prefix\nmodule RegexText\nsuffix/i',
   'warn == 8; warn /prefix\nclass RegexText\nsuffix/',
+  'values = [check, amount = 8]; check /prefix\nclass RegexText\nsuffix/',
   'puts = 8; puts / 2\nclass TestHelper\nend\nratio = 8 / 2',
   'matcher = /prefix\nclass RegexText\nsuffix/',
   'matcher = /prefix\nclass RegexText\nend\\/suffix/i',
@@ -298,6 +299,24 @@ test('preserves production gems after compact division of local variables', () =
     const gemfile = `${name} = 8\n${name} /2\ngem 'rack', path: '/rack'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('preserves group exclusions after compact division of multiple assignment targets', () => {
+  const gemfile = `amount,
+  quantity, total = 8, 4, 2
+group :test do
+  class TestHelper
+  end
+  module TestHelpers
+  end
+  gem 'rspec'
+end`;
+
+  ['amount', 'quantity', 'total'].forEach((name) => {
+    const withDivision = `${gemfile}\n${name} /2\ngem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(withDivision, 'rspec'), false);
+    assert.equal(isProductionGem(withDivision, 'rack'), true, name);
   });
 });
 
