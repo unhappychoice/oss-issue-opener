@@ -5,6 +5,7 @@ export const gemfileTokens = (content: string): string[] => {
   const scopes: LocalScope[] = [{ close: 'root', names: new Set() }];
   const assignment = /[^\S\n]*(?:(?:,[^\S\n]*[a-z_]\w*[^\S\n]*)*,?[^\S\n]*=(?!=|>|~)|(?:\|\||&&|\*\*|<<|>>|[+\-*/%&|^])=)/y;
   const blockParameters = /\s*\|([a-z_\w\s,;*&]*)\|/y;
+  const loopVariables = /\s+([a-z_]\w*(?:\s*,\s*[a-z_]\w*)*)\s+in\b/y;
   let previous = '\n';
   let previousIsLocal = false;
   let literalExpected = true;
@@ -46,6 +47,10 @@ export const gemfileTokens = (content: string): string[] => {
         : undefined;
       trackLocalScope(scopes, token, previous, literalExpected, namespace, method, parameters);
       const names = visibleLocalScopes(scopes);
+      if (token === 'for' && isScopeStart(previous)) {
+        loopVariables.lastIndex = pattern.lastIndex;
+        loopVariables.exec(content)?.[1]?.split(/\s*,\s*/).forEach((name) => names[0]?.add(name));
+      }
       if (previous !== '.' && /^[a-z_]\w*$/.test(token)) {
         assignment.lastIndex = pattern.lastIndex;
         if (assignment.test(content)) names[0]?.add(token);

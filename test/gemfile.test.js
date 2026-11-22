@@ -282,6 +282,24 @@ gem 'rack', path: '/rack'`;
   });
 });
 
+['for count in [4] do', 'for count, other in [[4, 8]]'].forEach((header) => {
+  test(`detects production gems after division of a loop variable declared by ${header}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${header}
+      count /2
+    end
+    count /2
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('detects production gems after division of a block parameter', () => {
   const gemfile = `group :test do
   class TestHelper
