@@ -278,6 +278,14 @@ gem 'rack' # /`;
 [
   ['division of an assigned local', 'warn = 4\n  warn /2'],
   ['division with whitespace after the slash', 'warn / 2'],
+  ['division of a parenthesized method parameter', 'def helper(value, warn)\n    warn /2\n  end'],
+  ['division of an unparenthesized method parameter', 'def helper warn\n    warn /2\n  end'],
+  ['division of a keyword parameter after a nested block', `def self.helper(warn: 4)
+    while false do
+      nil
+    end
+    warn /2
+  end`],
 ].forEach(([description, expression]) => {
   test(`detects production gems after ${description}`, () => {
     const gemfile = `group :test do
@@ -289,6 +297,26 @@ gem 'rack' # /`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('recognizes a regexp argument to warn after leaving a method with a warn parameter', () => {
+  const gemfile = `group :test do
+  def helper(warn)
+    if warn
+      nil
+    end
+  end
+  warn /first
+class Fake
+gem "ignored"
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 ['/first', '%r/first'].forEach((opening) => {

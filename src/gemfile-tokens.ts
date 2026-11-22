@@ -7,6 +7,8 @@ export const gemfileTokens = (content: string): string[] => {
   let warnIsLocal = false;
   let warnArgumentExpected = false;
   let classHeader = false;
+  let loopHeader = false;
+  const scopes: (boolean | undefined)[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -33,6 +35,22 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
+      const statementStart = /^(?:\n|;|do|\{|then|end)$/.test(previous);
+      if (token === 'def' && statementStart) {
+        const method = methodParameters(content, pattern.lastIndex);
+        if (!method.endless) {
+          scopes.push(warnIsLocal);
+          warnIsLocal = method.bindsWarn;
+        }
+      } else if (token === 'end' && previous !== '.') {
+        warnIsLocal = scopes.pop() ?? warnIsLocal;
+      } else if (token === 'do' && !loopHeader ||
+        statementStart && /^(?:if|unless|case|begin|while|until|for)$/.test(token) ||
+        (statementStart || previous === '=') && /^(?:class|module)$/.test(token)) {
+        scopes.push(undefined);
+      }
+      if (statementStart) loopHeader = /^(?:while|until|for)$/.test(token);
+      if (token === 'do') loopHeader = false;
       if (token === 'warn' && previous !== '.') {
         warnIsLocal ||= previous === 'in' || startsAssignment(content, pattern.lastIndex);
       }
@@ -61,6 +79,35 @@ export const gemfileTokens = (content: string): string[] => {
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const methodParameters = (content: string, offset: number) => {
+  const name = /[ \t]+(?:[\w!?]+(?:\.|::))*[^\s(;]+[ \t]*/y;
+  name.lastIndex = offset;
+  if (!name.exec(content)) return { endless: false, bindsWarn: false };
+  const parenthesized = content[name.lastIndex] === '(';
+  const parameters = new RegExp(tokenPattern, 'y');
+  parameters.lastIndex = name.lastIndex + Number(parenthesized);
+  let depth = 0;
+  let bindsWarn = false;
+  let atParameter = true;
+  let match: RegExpExecArray | null;
+  while ((match = parameters.exec(content)) !== null) {
+    const token = match[0];
+    if (isSpacing(token) || token.startsWith('#')) continue;
+    if (depth === 0) {
+      if (parenthesized && token === ')') {
+        return { endless: startsAssignment(content, parameters.lastIndex), bindsWarn };
+      }
+      if (!parenthesized && /^(?:\n|;|end)$/.test(token)) break;
+      if (token === '=' && atParameter) return { endless: true, bindsWarn };
+      if (atParameter && token === 'warn') bindsWarn = true;
+      if (!/^[*&]$/.test(token)) atParameter = token === ',';
+    }
+    if (/^[([{]$/.test(token)) depth++;
+    if (/^[)\]}]$/.test(token)) depth--;
+  }
+  return { endless: false, bindsWarn };
+};
 
 const startsAssignment = (content: string, offset: number): boolean => {
   const assignment = /[^\S\n]*=(?!=|>|~)/y;
