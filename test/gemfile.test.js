@@ -244,7 +244,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('keeps scope keywords inside multiline regexps out of the group stack', () => {
+test('keeps scope keywords inside regexps out of the group stack', () => {
   const bodies = [
     String.raw`pattern = /prefix\/
 class TestHelper
@@ -254,6 +254,12 @@ suffix/x`,
 module TestHelpers
 gem 'ignored'
 suffix}x`,
+    'pattern = /#{ 8 / 2 }; end; gem "ignored"/x',
+    'pattern = /#{ "a/b" }; end; gem "ignored"/x',
+    'pattern = /#{ %q(}/) }; end; gem "ignored"/x',
+    'pattern = %r{#{ { path: "}" }[:path] }; end; gem "ignored"}x',
+    'pattern = /#{ "#{ /nested/.source }" }; end; gem "ignored"/x',
+    'pattern = flag ? /#{ "a/b" }; end; gem "ignored"/x : /fallback/',
   ];
 
   bodies.forEach((body) => {
@@ -263,8 +269,8 @@ suffix}x`,
 end
 gem 'rack'`;
 
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, body);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, body);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false, body);
   });
 });
