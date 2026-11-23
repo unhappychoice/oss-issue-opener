@@ -9,7 +9,7 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const previousIndex = previousTokenIndex(tokens);
-    const literalEnd = regexpEnd(
+    const literalEnd = expressionLiteralEnd(
       content, match.index, token, tokens[previousIndex], tokens[previousTokenIndex(tokens, previousIndex)],
       () => hasLocalWarn(tokens),
     );
@@ -84,9 +84,10 @@ const hasWarnParameter = (statement: string[]): boolean => {
 const isQualifiedName = (previous?: string): boolean =>
   previous === '.' || previous === ':';
 
-const regexpEnd = (
+const expressionLiteralEnd = (
   content: string, start: number, token: string, previous?: string, beforePrevious?: string, localWarn?: () => boolean,
 ): number | undefined => {
+  if (token === '?' && content[start + 1] === '/' && expectsRegexp(previous, beforePrevious)) return start + 2;
   if (token !== '/' && token !== '%') return undefined;
   const warnArgument = previous === 'warn' && token === '/' &&
     /[^\S\n]/.test(content[start - 1] ?? '') && /^[^\s=]$/.test(content[start + 1] ?? '') &&
@@ -138,7 +139,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin') || isTokenSpacing(token)) continue;
-    const end = regexpEnd(content, match.index, token, previous, beforePrevious) ??
+    const end = expressionLiteralEnd(content, match.index, token, previous, beforePrevious) ??
       (token === '%' && expectsRegexp(previous, beforePrevious) ? percentStringEnd(content, match.index) : undefined);
     beforePrevious = previous;
     if (end !== undefined) {

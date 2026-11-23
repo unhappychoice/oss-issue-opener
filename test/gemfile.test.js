@@ -260,6 +260,13 @@ value /
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('detects a production gem with a slash in its path after a slash character literal', () => {
+  const gemfile = `separator = ?/
+gem 'rack', path: '/rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 test('detects a production gem between divisions of a local variable named warn', () => {
   const gemfile = `warn = 8
 divisor = 2
@@ -327,6 +334,8 @@ gem 'rack', path: '/rack'`;
   '/first\nend\ngem "ignored"\nlast/',
   '%r{first{nested}\nclass TestHelper\ngem "ignored"\nlast}x',
   'enabled ? /first\nclass TestHelper\nlast/ : /other\nmodule TestHelpers\nlast/',
+  'true ?/first\nclass TestHelper\nlast/ : /other\nmodule TestHelpers\nlast/',
+  '/first#{?/}\nclass TestHelper\ngem "ignored"\nlast/',
   '/first#{%q(/}) + /nested/.source}\nclass TestHelper\nlast/',
   '/first#{receiver.if / 2}\nclass TestHelper\ngem "ignored"\nlast/',
 ].map((literal) => `pattern = ${literal}`).concat([
