@@ -225,6 +225,7 @@ const namespaceDefinitions = [
 const regexpCases = [
   'matcher = /#{"/"}/',
   'warn /prefix\nclass RegexText\nsuffix/i # diagnostic',
+  'print /prefix\nclass RegexText\nsuffix/',
   'matcher = /prefix\nclass RegexText\nend\\/suffix/',
   'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
   '/prefix\nclass RegexText\nsuffix/',
@@ -283,16 +284,6 @@ test('recognizes a heredoc argument after a method named class', () => {
   });
 });
 
-test('finds a production gem after division using a local named warn', () => {
-  const gemfile = `warn = 12
-warn /2
-gem 'rack'
-ratio = 12 /
-  3`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
 [['case', 'case', 'when true\n'], ['when', 'case value\nwhen', '']].forEach(([keyword, condition, branch]) => {
   test(`finds a production gem after a multiline regexp following ${keyword}`, () => {
     const gemfile = `${condition} /prefix
@@ -307,8 +298,8 @@ ratio = 12 / 3`;
   });
 });
 
-['warn', 'puts'].forEach((command) => {
-  [`first, ${command}, last = 6, 12, 18`, `${command}, = 12, 18`].forEach((assignment) => {
+['warn', 'puts', 'print'].forEach((command) => {
+  [`${command} = 12`, `first, ${command}, last = 6, 12, 18`, `${command}, = 12, 18`].forEach((assignment) => {
     test(`finds a production gem between divisions after ${assignment}`, () => {
       const gemfile = `${assignment}
 ${command} /2

@@ -175,17 +175,19 @@ suffix!
   assert.equal(await check('rack'), true);
 });
 
-test('Gemfile fallback ignores class keywords in a bare warn regexp', async () => {
-  mockRubyRepository('', `group :test do
-    warn /prefix
+['warn', 'print'].forEach((command) => {
+  test(`Gemfile fallback ignores class keywords in a bare ${command} regexp`, async () => {
+    mockRubyRepository('', `group :test do
+    ${command} /prefix
 class RegexText
 suffix/
     gem 'rspec'
   end
   gem 'rack'`);
 
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('rack'), true);
+    assert.equal(await check('rspec'), false);
+    assert.equal(await check('rack'), true);
+  });
 });
 
 test('malicious bump completes and the next repository is checked', () => {

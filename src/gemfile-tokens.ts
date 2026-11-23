@@ -49,7 +49,7 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const isBareRegexpCommand = (token: string): boolean => token === 'warn' || token === 'puts';
+const isBareRegexpCommand = (token: string): boolean => ['warn', 'puts', 'print'].includes(token);
 
 const commandLocalScopes = (content: string) => {
   const locals = new Set<string>();
