@@ -44,9 +44,6 @@ Object.entries(conclusions).forEach(([conclusion, status]) => {
     assert.deepEqual(await checkStatus('completed', conclusion), {
       status,
       failedChecks: status === 'failure' ? [{ name: 'build', url: checkUrl, source: 'check' }] : [],
-      ...(status === 'success' ? { recovery: {
-        sha, passedChecks: [],
-      } } : {}),
     });
   });
 });
@@ -90,9 +87,6 @@ test('action_required includes the failed check name and URL in the notification
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: state === 'success' ? 'success' : 'failure',
       failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl, source: 'status', publisherId: 42 }],
-      ...(state === 'success' ? { recovery: { sha, passedChecks: [
-        { name: 'lint', source: 'status', publisherId: 42 },
-      ] } } : {}),
     });
   });
 });
@@ -109,6 +103,28 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
     failedChecks: [],
     endpointErrors: [statusesError, checksError],
   });
+});
+
+test('resolves the failed check workflow when commit statuses are unavailable', async () => {
+  const client = getOctokit();
+  const statusesError = new Error('Commit statuses HTTP 503');
+  mock.method(client.repos, 'listCommitStatusesForRef', async () => { throw statusesError; });
+  mock.method(client.paginate, 'iterator', async function* () {
+    yield { data: [{
+      name: 'build', status: 'completed', conclusion: 'failure', html_url: checkUrl,
+      app: { slug: 'github-actions' }, check_suite: { id: 200 },
+    }] };
+  });
+  const workflows = mock.method(client.actions, 'listWorkflowRunsForRepo', async () => ({
+    data: { workflow_runs: [{ check_suite_id: 200, workflow_id: 10 }] },
+  }));
+
+  assert.deepEqual(await checkCIStatus('owner', 'repo', undefined, true), {
+    status: 'failure',
+    failedChecks: [{ name: 'build', source: 'check', url: checkUrl, workflowId: 10 }],
+    endpointErrors: [statusesError],
+  });
+  assert.equal(workflows.mock.callCount(), 1);
 });
 
 [
@@ -138,7 +154,6 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
         { name: 'lint', source: 'status', url: '' },
         { name: 'build', source: 'check', url: checkUrl },
       ] : [],
-      ...(expected === 'success' ? { recovery: { sha, passedChecks: [] } } : {}),
       ...(failLater ? { endpointErrors: [pageError] } : {}),
     });
   });
@@ -161,7 +176,7 @@ test('evaluates the same commit when the default branch advances between CI look
     { status: 'completed', conclusion: resolve(ref) === sha ? 'success' : 'failure', name: 'build' },
   ] }; });
 
-  assert.deepEqual(await checkCIStatus('owner', 'repo'), {
+  assert.deepEqual(await checkCIStatus('owner', 'repo', undefined, true), {
     status: 'success',
     failedChecks: [],
     recovery: { sha, passedChecks: [] },

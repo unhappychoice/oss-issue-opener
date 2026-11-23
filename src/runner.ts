@@ -2,7 +2,7 @@ import { getDefaultBranchHead, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
-import { buildCIFailureIssue, buildPendingReleaseIssue, closeRecoveredCIAlerts, createIssuesInBatch, listCIAlerts } from './issue.js';
+import { buildCIFailureIssue, buildPendingReleaseIssue, closeRecoveredCIAlerts, createIssuesInBatch, getCIAlertRepositories, listCIAlerts } from './issue.js';
 import { ORGS, type CIStatus, type Repository, type PendingIssue } from './types.js';
 
 const defaultDependencies = { listOrgRepos, detectProjectTypes, checkCIStatus, checkPendingRelease, createIssuesInBatch };
@@ -20,6 +20,7 @@ export const runChecks = async (
   const alerts = autoCloseCIAlerts
     ? await attempt('open CI alert lookup', failures, listCIAlerts, [])
     : [];
+  const alertRepositories = getCIAlertRepositories(alerts);
   let totalRepos = 0;
 
   for (const org of ORGS) {
@@ -30,7 +31,7 @@ export const runChecks = async (
     await attempt(`${org}: repository investigation`, failures, async () => {
       for await (const repo of deps.listOrgRepos(org)) {
         scans.push(scan(() => attempt(
-          `${repo.fullName}: repository investigation`, failures, () => checkRepo(repo, deps, failures, recoveries), []
+          `${repo.fullName}: repository investigation`, failures, () => checkRepo(repo, deps, failures, recoveries, alertRepositories.has(repo.fullName)), []
         )));
       }
     });
@@ -82,7 +83,7 @@ const log = (icon: string, msg: string) => console.log(`  ${icon} ${msg}`);
 
 const checkRepo = async (
   { fullName, defaultBranch: listedBranch }: Repository, deps: Dependencies, failures: Error[],
-  recoveries: Map<string, NonNullable<CIStatus['recovery']>>
+  recoveries: Map<string, NonNullable<CIStatus['recovery']>>, verifyRecovery: boolean
 ): Promise<PendingIssue[]> => {
   const [owner, repo] = fullName.split('/') as [string, string];
   let head: ReturnType<typeof getDefaultBranchHead> | undefined;
@@ -92,7 +93,7 @@ const checkRepo = async (
 
   const [ciIssues, releaseIssues] = await Promise.all([
     attempt<PendingIssue[]>(`${fullName}: CI investigation`, failures, async () => {
-      const ciResult = await deps.checkCIStatus(owner, repo, getHead);
+      const ciResult = await deps.checkCIStatus(owner, repo, getHead, verifyRecovery);
       ciResult.endpointErrors?.forEach((cause) => recordFailure(`${fullName}: CI investigation`, failures, cause));
       const ciIcons = { success: '✅', failure: '❌', pending: '⏳', 'no-ci': '⚪', 'no-branch': '⚪', incomplete: '⚠️' };
       log(ciIcons[ciResult.status], `CI: ${ciResult.status}`);
