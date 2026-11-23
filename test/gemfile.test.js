@@ -255,3 +255,29 @@ gem 'rack', path: '/rack'`;
 
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
+
+[
+  'matcher = /prefix\nclass RegexText\nsuffix/',
+  'matcher = /prefix\nend\ngem "ignored"\nsuffix/',
+  'matcher = /prefix\\/\nmodule RegexText\nsuffix/i',
+  'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
+  'matcher = cached || %r{prefix{2}\nmodule RegexText\nsuffix}',
+  'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /prefix\nend\nsuffix/',
+  'matcher = /prefix#{ %q!} /! }\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{ %q{#{x} /} }\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/',
+  'matcher = /prefix#{ %Q!#{ %q(}) } /! }\nclass RegexText\nsuffix/',
+  'matcher = %r#prefix\nclass RegexText\nsuffix#',
+  '/prefix\nclass RegexText\nsuffix/',
+].forEach((expression) => {
+  test(`ignores scope keywords inside ${JSON.stringify(expression)}`, () => {
+    const gemfile = `group :test do
+${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
