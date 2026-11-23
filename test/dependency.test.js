@@ -109,6 +109,8 @@ test('Ruby reuses the root listing, gemspec and fallback Gemfile', async () => {
     Gemfile: 'gem "second"',
   });
   const check = createDependencyChecker('owner', 'repo', 'ruby');
+  assert.deepEqual(await Promise.all([check('first'), check('first')]), [true, true]);
+  assert.deepEqual(calls.map(({ path }) => path), ['', 'example.gemspec']);
   for (const { pkg } of bumps) assert.equal(await check(pkg), pkg !== 'dev');
   assert.deepEqual(calls.map(({ path }) => path), ['', 'example.gemspec', 'Gemfile']);
 });
@@ -348,20 +350,27 @@ test('cached Ruby checks preserve Gemfile group exclusions across packages', asy
   assert.deepEqual(calls.map(({ path }) => path), ['', 'Gemfile']);
 });
 
-test('Ruby tokenizes the Gemfile only once for repeated and distinct packages', async (t) => {
-  stubRepository({
-    '': ['Gemfile'],
-    Gemfile: 'group :development, :test do\n  gem "dev"\nend\ngem "first"\ngem "second"',
-  });
+test('Ruby indexes Gemfile statements once for concurrent repeated and distinct lookups', async (t) => {
+  const declarations = [
+    'gem "first", group: :test',
+    'gem "first"',
+    'gem "second"',
+    'gem "second", group: :development',
+    'gem "dev", group: :test',
+  ];
+  const calls = stubRepository({ Gemfile: declarations.join('\n') });
   const originalExec = RegExp.prototype.exec;
-  const tokenizerPatterns = new Set();
+  let scopeChecks = 0;
   t.mock.method(RegExp.prototype, 'exec', function (...args) {
-    if (this.source.includes('<<[-~]?')) tokenizerPatterns.add(this);
+    if (this.source === '^(if|unless|case|begin|while|until|for)$') scopeChecks++;
     return originalExec.apply(this, args);
   });
   const check = createDependencyChecker('owner', 'repo', 'ruby');
-  for (const { pkg } of bumps) assert.equal(await check(pkg), pkg !== 'dev');
-  assert.equal(tokenizerPatterns.size, 1);
+  const packages = ['first', 'second', ...bumps.map(({ pkg }, index) => pkg === 'dev' ? pkg : `missing-${index}`)];
+  const results = await Promise.all(packages.map((pkg) => check(pkg)));
+  assert.deepEqual(results, packages.map((pkg) => pkg === 'first' || pkg === 'second'));
+  assert.equal(scopeChecks, declarations.length);
+  assert.deepEqual(calls.map(({ path }) => path), ['', 'Gemfile']);
 });
 
 test('cached Go checks preserve exact requirements and ignore other directives', async () => {

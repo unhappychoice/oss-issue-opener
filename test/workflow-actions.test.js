@@ -10,6 +10,7 @@ for (const name of ['test', 'weekly']) {
     assert.equal(actionSteps.length, 2);
     assert.match(actionSteps[0], /^ *- uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
     assert.match(actionSteps[1], /^ *- uses: actions\/setup-node@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+    assert.match(workflow, /^      - uses: actions\/checkout@.*\n        with:\n          persist-credentials: false$/m);
     assert.match(workflow, /^      - uses: actions\/setup-node@.*\n        with:\n          node-version-file: \.node-version\n          cache: 'npm'$/m);
   });
 }

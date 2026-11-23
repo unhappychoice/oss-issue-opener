@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkCIStatus } from '../dist/checker.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
-import { buildCIFailureIssue } from '../dist/issue.js';
+import { buildCIFailureIssue, createIssuesInBatch } from '../dist/issue.js';
 import { runChecks } from '../dist/runner.js';
 
 const repo = 'owner/project';
@@ -38,7 +38,7 @@ const passedLint = { context: 'lint', state: 'success', creator: { login: 'ci-bo
 
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
-  workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
+  persistIssues = false, workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -75,6 +75,12 @@ const setup = (t, {
     if (listError) throw listError;
     return staleListing ? alerts : alerts.filter(({ number }) => open.has(number));
   });
+  t.mock.method(client.issues, 'create', async ({ title, body, labels }) => {
+    const issue = { ...alert, number: alerts.length + 1, title, body, labels };
+    alerts.push(issue);
+    open.add(issue.number);
+    return { data: issue };
+  });
   t.mock.method(client.issues, 'createComment', async (params) => {
     if (commentError) throw commentError;
     comments.push({ user: { login: author }, body: params.body });
@@ -87,6 +93,11 @@ const setup = (t, {
     return { data: currentAlert(current, comments.length) };
   });
   t.mock.method(client.issues, 'update', async (params) => {
+    if (params.body !== undefined) {
+      alerts.find(({ number }) => number === params.issue_number).body = params.body;
+      events.push(['update', params]);
+      return;
+    }
     events.push(['close', params]);
     if (nextCloseError) {
       const error = nextCloseError;
@@ -102,7 +113,7 @@ const setup = (t, {
     },
     checkCIStatus,
     checkPendingRelease: async () => ({ status: 'no-tag' }),
-    createIssuesInBatch: async (issues) => { created.push(...issues); },
+    createIssuesInBatch: persistIssues ? createIssuesInBatch : async (issues) => { created.push(...issues); },
   };
   return { run: (enabled) => runChecks(deps, enabled), events, created, getAuthenticated };
 };
@@ -163,6 +174,7 @@ test('closes only a matching open alert and records the checked commit once', as
   ], [passedLint]],
   ['pending check', [{ ...passedBuild, status: 'in_progress' }], [passedLint]],
   ['skipped check', [{ ...passedBuild, conclusion: 'skipped' }], [passedLint]],
+  ['neutral check', [{ ...passedBuild, conclusion: 'neutral' }], [passedLint]],
   ['skipped check sharing a passing name', [passedBuild, { ...passedBuild, conclusion: 'skipped' }], [passedLint]],
   ['same name from a different API', [], [passedLint, { ...passedLint, context: 'build' }]],
   ['unreadable check name', [passedBuild, { ...passedBuild, name: null }], [passedLint]],
@@ -319,3 +331,72 @@ test('leaves the issue open if the recovery comment fails', async (t) => {
   await assert.rejects(run(true), /Failed 1 maintenance operations/);
   assert.deepEqual(events, ['list']);
 });
+
+test('merges subsequent failures and closes only after every recorded check passes', async (t) => {
+  const alerts = [];
+  const runs = [{ ...passedBuild, conclusion: 'failure' }];
+  const lint = { ...passedBuild, name: 'lint' };
+  const { run, events } = setup(t, { alerts, runs, statuses: [], persistIssues: true });
+
+  runs.push(lint);
+  await run(true);
+  assert.equal(alerts.length, 1);
+  const originalBody = alerts[0].body;
+  runs.splice(0, 2, passedBuild, { ...lint, conclusion: 'failure' });
+  await run(false);
+  alerts[0].title = 'Renamed CI alert';
+  await run(true);
+  assert.equal(alerts.length, 1);
+  assert.notEqual(alerts[0].body, originalBody);
+  assert.equal(events.filter((event) => event[0] === 'update').length, 1);
+
+  runs[1] = { ...lint, conclusion: 'skipped' };
+  await run(true);
+  assert.equal(events.some((event) => event[0] === 'close'), false);
+
+  runs[1] = lint;
+  await run(true);
+  assert.equal(events.filter((event) => event[0] === 'close').length, 1);
+});
+
+test('requires the recorded publisher to recover from a subsequent status failure', async (t) => {
+  const alerts = [{ ...alert, body: buildCIFailureIssue(repo, [checks[0]]).body }];
+  const statuses = [{ ...passedLint, state: 'failure' }];
+  const { run, events } = setup(t, { alerts, statuses, persistIssues: true });
+
+  await run(true);
+  assert.equal(alerts.length, 1);
+  assert.equal(events.filter((event) => event[0] === 'update').length, 1);
+
+  statuses[0] = { ...passedLint, creator: { login: 'other-bot', id: 43 } };
+  await run(true);
+  assert.equal(events.some((event) => event[0] === 'close'), false);
+
+  statuses[0] = passedLint;
+  await run(true);
+  assert.equal(events.filter((event) => event[0] === 'close').length, 1);
+});
+
+for (const partial of [true, false]) {
+  test(`requires manual closure after a subsequent ${partial ? 'incomplete scan' : 'unidentified failure'}`, async (t) => {
+    const alerts = [{ ...alert, title: `[CI Failure] ${repo}` }];
+    const runs = [{ ...passedBuild, conclusion: 'failure', check_suite: partial ? { id: 200 } : null }];
+    const { run, events } = setup(t, {
+      alerts, runs, persistIssues: true,
+      checksError: partial ? new Error('Later check page unavailable') : undefined,
+    });
+
+    if (partial) await assert.rejects(run(true), /maintenance operations/);
+    else await run(true);
+    assert.match(alerts[0].body, /<!-- oss-issue-opener:ci:v1 owner\/project -->$/);
+
+    alerts[0].title = 'Renamed CI alert';
+    runs[0] = { ...passedBuild, conclusion: 'failure' };
+    const recovered = setup(t, { alerts, persistIssues: true, runs });
+    await recovered.run(true);
+    runs[0] = passedBuild;
+    await recovered.run(true);
+    assert.equal(alerts.length, 1);
+    assert.equal([...events, ...recovered.events].some((event) => event[0] === 'close'), false);
+  });
+}

@@ -74,7 +74,7 @@ When both reads succeed and no results remain after filtering, the checker
 reports `no-ci`.
 
 Errors reading releases, tags, or comparisons propagate to the runner as
-investigation failures. This includes incomplete recursive trees during a
+investigation failures. This includes incomplete tree responses during a
 comparison. Successful release and tag reads without a baseline yield `no-tag`.
 
 Root listing request errors propagate, including HTTP 404. Required file reads
@@ -85,18 +85,29 @@ release investigation. Manifest read failures during dependency checks are
 recorded as lookup errors, and the runner still queues any notification based
 on confirmed release changes.
 
-The shared head lookup uses the branch name from the repository listing when
-available and fetches repository metadata otherwise. If that metadata has no
-default branch name or the metadata request returns HTTP 404, the helper
-returns `no-branch`. If a branch name is available and the branch request returns
-HTTP 404, the helper returns `no-head`, and CI reports `no-ci` without fetching
-commit statuses or check runs. CI reports `no-branch` when the helper returns
-`no-branch`. With a release or tag baseline, the release checker reports the
-helper's `no-branch` or `no-head` result and skips the comparison.
+The shared head lookup starts with the branch name from the repository listing.
+If the listing has no branch name, the helper fetches repository metadata and
+returns `no-branch` if the metadata has no default branch name or the request
+returns HTTP 404. A branch from this metadata lookup yields `no-head` if its
+branch request returns HTTP 404.
 
-Other errors from repository metadata or branch requests, such as HTTP 503,
-reject the shared lookup. The runner records the rejection for CI and for the
-release investigation if it found a baseline and reached the head lookup.
+If the listed branch returns HTTP 404, the helper refreshes repository metadata
+once because the default branch may have changed since the listing was fetched.
+If the refresh names a different default branch and its head lookup succeeds,
+CI and the release comparison (when a baseline exists) share the replacement
+head SHA. The helper returns `no-head` if the refresh returns HTTP 404, provides
+no branch name, still names the listed branch, or the replacement branch
+request returns HTTP 404.
+
+CI reports `no-ci` for `no-head` and `no-branch` for `no-branch`, skipping
+commit statuses and check runs in both cases. With a release or tag baseline,
+the release checker reports the helper's result and skips the comparison in
+both cases.
+
+Non-404 errors from repository metadata requests (including the refresh) or
+branch requests, such as HTTP 503, reject the shared lookup. The runner records
+the rejection for CI and for the release investigation if it found a baseline
+and reached the head lookup.
 
 ## Where to start a change
 

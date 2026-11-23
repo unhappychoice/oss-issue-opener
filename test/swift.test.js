@@ -87,6 +87,40 @@ let unfinished = "\(#"unfinished
   assert.deepEqual(swiftDependencies(content), new Set(['swift-log']));
 });
 
+test('Swift scans each unmatched hash run once in code and interpolation', () => {
+  for (const length of [16, 32, 64]) {
+    const hashes = '#'.repeat(length);
+    const content = `let value = ${hashes}0\nlet label = "\\(${hashes}0)"\n.package(id: "actual")\n${hashes}`;
+    const exec = RegExp.prototype.exec;
+    const scans = [];
+    RegExp.prototype.exec = function (input) {
+      const start = this.lastIndex;
+      const match = exec.call(this, input);
+      if (input === content && this.sticky && content[start] === '#') scans.push(match?.[0]);
+      return match;
+    };
+    let dependencies;
+    try {
+      dependencies = swiftDependencies(content);
+    } finally {
+      RegExp.prototype.exec = exec;
+    }
+    assert.deepEqual(scans, [hashes, hashes, hashes]);
+    assert.deepEqual(dependencies, new Set(['actual']));
+  }
+});
+
+test('Swift recognizes extended strings and skips dependency lookalikes in regexes', () => {
+  const content = `
+let pattern = ##/.package(id: "ghost")/##
+let label = ##"""
+.package(id: "also-ghost")
+"""##
+.package(url: ##"https://example.com/actual.git"##)
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
 test('Swift requires matching hash counts to close an extended regex', () => {
   const content = String.raw`
 let pattern = ##/
