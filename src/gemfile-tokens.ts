@@ -3,16 +3,12 @@ export const gemfileTokens = (content: string): string[] => {
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   const localNames = new Set<string>();
+  const scopes: ParameterScope[] = [];
   const assignment = /[ \t]*(?:&&|\|\||\*\*|<<|>>|[+*/%&|^\-])?=(?!=|>|~)/y;
-  const blockParameters = /\s*\|((?:[*&]?[a-z_]\w*\b|[\s(),;])+)\|/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === 'do' || token === '{') {
-      blockParameters.lastIndex = pattern.lastIndex;
-      blockParameters.exec(content)?.[1].match(/\w+/g)?.forEach((name) => localNames.add(name));
-    }
     if (token === '?' && content[pattern.lastIndex] === '/' && startsRegexp(tokens)) {
       tokens.push('?/');
       pattern.lastIndex++;
@@ -22,9 +18,9 @@ export const gemfileTokens = (content: string): string[] => {
       const name = token.replace(/=$/, '');
       assignment.lastIndex = match.index + name.length;
       const previous = tokens[previousTokenIndex(tokens)];
-      if (!isQualifiedName(previous) && assignment.test(content)) localNames.add(name);
+      if (!isQualifiedName(previous) && assignment.test(content) && !hasParameter(scopes, name)) localNames.add(name);
     }
-    const slashArgument = token === '/' && startsCommandRegexp(content, match.index, tokens, localNames);
+    const slashArgument = token === '/' && startsCommandRegexp(content, match.index, tokens, localNames, scopes);
     if ((token === '/' || token === '%') && (slashArgument || startsRegexp(tokens))) {
       const literal = readRegexp(content, match.index);
       if (literal) {
@@ -45,6 +41,7 @@ export const gemfileTokens = (content: string): string[] => {
       tokens.push('""');
       continue;
     }
+    trackParameterScope(content, pattern.lastIndex, token, tokens, scopes);
     tokens.push(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
@@ -66,14 +63,47 @@ const nameToken = /^[A-Za-z_]\w*[!?=]?$/;
 
 const isQualifiedName = (previous?: string): boolean => ['.', ':', '@', '$'].includes(previous ?? '');
 
-const startsCommandRegexp = (content: string, slash: number, tokens: string[], localNames: ReadonlySet<string>): boolean => {
+type ParameterScope = { closing: 'end' | '}'; names?: string[]; loopHeader?: boolean };
+
+const hasParameter = (scopes: ParameterScope[], name: string): boolean =>
+  scopes.some(({ names }) => names?.includes(name));
+
+const trackParameterScope = (
+  content: string, offset: number, token: string, tokens: string[], scopes: ParameterScope[],
+): void => {
+  if (!/^(?:end|\}|do|\{|class|module|def|if|unless|case|begin|while|until|for|\n|;)$/.test(token)) return;
+  const previous = tokens[previousTokenIndex(tokens)];
+  if (isQualifiedName(previous) || content[offset] === ':') return;
+  const scope = scopes.at(-1);
+  if (scope?.closing === token) {
+    scopes.pop();
+    return;
+  }
+  if (scope?.loopHeader && /^(?:do|\n|;)$/.test(token)) {
+    scope.loopHeader = false;
+    return;
+  }
+  if (token === 'do' || token === '{') {
+    const parameters = /\s*\|((?:[*&]?[a-z_]\w*\b|[\s(),;])+)\|/y;
+    parameters.lastIndex = offset;
+    const names = parameters.exec(content)?.[1].match(/\w+/g) ?? [];
+    scopes.push({ closing: token === 'do' ? 'end' : '}', names });
+  } else if (/^(?:class|module|def|if|unless|case|begin|while|until|for)$/.test(token) &&
+    (previous === undefined || /^(?:\n|;|=|do|\{|\(|\|)$/.test(previous))) {
+    scopes.push({ closing: 'end', loopHeader: /^(?:while|until|for)$/.test(token) });
+  }
+};
+
+const startsCommandRegexp = (
+  content: string, slash: number, tokens: string[], localNames: ReadonlySet<string>, scopes: ParameterScope[],
+): boolean => {
   if (!/[ \t]/.test(content[slash - 1] ?? '') || /[\s=]/.test(content[slash + 1] ?? '')) return false;
   const index = previousTokenIndex(tokens);
   const name = tokens[index] ?? '';
   if (!nameToken.test(name) || name.endsWith('=')) return false;
   const previous = tokens[previousTokenIndex(tokens, index)];
   if (previous === '.') return true;
-  return !isQualifiedName(previous) && !localNames.has(name) &&
+  return !isQualifiedName(previous) && !localNames.has(name) && !hasParameter(scopes, name) &&
     !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(name);
 };
 

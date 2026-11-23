@@ -357,3 +357,22 @@ gem 'rack'`;
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });
 });
+
+[
+  '[8].each do |warn|\n    warn /2\n  end',
+  '[8].each { |warn| warn = 4; warn /2 }',
+  '[8].each do |warn|\n    if warn\n      warn /2\n    end\n    warn /2\n  end',
+].forEach((block) => {
+  test(`keeps block parameters local to ${JSON.stringify(block)}`, () => {
+    const gemfile = `group :test do
+  ${block}
+  warn /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
