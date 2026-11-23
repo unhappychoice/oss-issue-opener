@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { compareCommits, getCommitFiles, getOctokit } from '../dist/github.js';
 import { buildPendingReleaseIssue } from '../dist/issue.js';
@@ -115,17 +116,19 @@ test('finishes on an empty page after an exactly full page', async (t) => {
   }));
 
   const head = { sha: commitSha('main'), treeSha: 'head-tree' };
-  const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', head);
+  const { getCommitPages, ...comparison } = await compareCommits('owner', 'repo', 'v1', head);
   assert.equal(compare.mock.callCount(), 1);
   assert.deepEqual(comparison, {
     baseSha: commitSha('v1'),
     headSha: commitSha('main'),
     files: [],
   });
-  assert.deepEqual(await getCommits(), {
-    commits: commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })),
-    lookupErrors: [],
-  });
+  const pages = getCommitPages();
+  assert.deepEqual((await pages.next()).value,
+    commits(100).map(({ sha, commit }) => ({ sha, message: commit.message })));
+  assert.equal(compare.mock.callCount(), 1);
+  assert.deepEqual((await pages.next()).value, []);
+  assert.equal((await pages.next()).done, true);
   assert.equal(compare.mock.callCount(), 2);
 });
 
@@ -134,10 +137,10 @@ test('returns no changed files or commits for matching SHAs without comparing', 
     throw new Error('Unexpected comparison');
   });
   const sha = commitSha('v1');
-  const { getCommits, ...comparison } = await compareCommits('owner', 'repo', 'v1', { sha, treeSha: 'head-tree' });
+  const { getCommitPages, ...comparison } = await compareCommits('owner', 'repo', 'v1', { sha, treeSha: 'head-tree' });
 
   assert.deepEqual(comparison, { baseSha: sha, headSha: sha, files: [] });
-  assert.deepEqual(await getCommits(), { commits: [], lookupErrors: [] });
+  assert.equal((await getCommitPages().next()).done, true);
   assert.equal(compare.mock.callCount(), 0);
 });
 
@@ -153,6 +156,78 @@ test('reports an incomplete release investigation when subsequent comparison pag
     status: 'incomplete',
     lookupErrors: [failure],
   });
+});
+
+const bump = (version) => ({
+  sha: `bump-${version}`,
+  commit: { message: `Bump example from 1 to ${version}` },
+});
+
+const stubProductionDependency = (t, repos, lookup) => {
+  const resolveCommit = repos.getCommit.bind(repos);
+  t.mock.method(repos, 'getCommit', async (params) => {
+    if (params.page === undefined) return resolveCommit(params);
+    await lookup(params.ref);
+    return { data: { files: [{ filename: 'package-lock.json' }] } };
+  });
+  t.mock.method(repos, 'getContent', async () => ({
+    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
+  }));
+};
+
+test('starts a first-page lookup while the next comparison page is pending and retains the update when it fails', async (t) => {
+  const repos = stubRelease(t);
+  const nextPage = Promise.withResolvers();
+  const failure = new Error('Comparison page failed');
+  const lookup = t.mock.fn();
+  stubProductionDependency(t, repos, lookup);
+  const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => {
+    if (page === 1) return { data: {
+      files: [{ filename: 'package-lock.json' }],
+      commits: [bump(2), ...commits(99)],
+    } };
+    await nextPage.promise;
+    throw failure;
+  });
+
+  const release = checkPendingRelease('owner', 'repo', 'node');
+  await setImmediate();
+  const pagesRequested = compare.mock.callCount();
+  const lookedUpWhilePagePending = lookup.mock.callCount();
+  nextPage.resolve();
+  const result = await release;
+  assert.equal(pagesRequested, 2);
+  assert.equal(lookedUpWhilePagePending, 1);
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example', from: '1', to: '2' }]);
+  assert.deepEqual(result.lookupErrors, [failure]);
+});
+
+test('bounds the candidate backlog and keeps comparison order across batches', async (t) => {
+  const repos = stubRelease(t);
+  const firstLookup = Promise.withResolvers();
+  const lookup = t.mock.fn(async (ref) => {
+    if (ref === 'bump-2') await firstLookup.promise;
+  });
+  stubProductionDependency(t, repos, lookup);
+  const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => ({
+    data: page === 1
+      ? { files: [{ filename: 'package-lock.json' }], commits: Array.from({ length: 100 }, (_, index) => bump(index + 2)) }
+      : { commits: [bump(102)] },
+  }));
+
+  const release = checkPendingRelease('owner', 'repo', 'node');
+  await setImmediate();
+  const pagesWhileBlocked = compare.mock.callCount();
+  const lookupsWhileBlocked = lookup.mock.callCount();
+  firstLookup.resolve();
+  const result = await release;
+  assert.equal(pagesWhileBlocked, 1);
+  assert.equal(lookupsWhileBlocked, 16);
+  assert.equal(compare.mock.callCount(), 2);
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(result.dependencyUpdates.map(({ to }) => to),
+    Array.from({ length: 101 }, (_, index) => String(index + 2)));
 });
 
 const stubCappedComparison = (t, extraFiles = []) => {
