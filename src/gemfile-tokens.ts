@@ -6,8 +6,10 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '%' || (token === '/' && expectsRegexp(tokens))) {
-      const end = regexpEnd(content, match.index);
+    if (token === '%' || token === '/') {
+      const end = token === '%' || expectsRegexp(tokens)
+        ? regexpEnd(content, match.index)
+        : commandRegexpEnd(content, match.index, tokens);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
         pattern.lastIndex = end;
@@ -45,6 +47,17 @@ const expectsRegexp = (tokens: string[]): boolean => {
 };
 
 const literalDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const commandRegexpEnd = (content: string, start: number, tokens: string[]): number | undefined => {
+  if (!/^[ \t]+$/.test(tokens.at(-1) ?? '') ||
+    !/^[a-zA-Z_]\w*[!?]?$/.test(tokens[previousTokenIndex(tokens)] ?? '') ||
+    !/^\S/.test(content[start + 1] ?? '')) return undefined;
+  const end = regexpEnd(content, start);
+  if (end === undefined) return undefined;
+  const literal = content.slice(start, end);
+  // A spaced trailing slash can start a continued division expression.
+  return /\n(?:[\s\S]*\S|[ \t]*)\/[imxounes]*$/.test(literal) ? end : undefined;
+};
 
 const regexpEnd = (content: string, start: number): number | undefined => {
   const opening = /\/|%r([^\p{L}\p{N}\s])/uy;
