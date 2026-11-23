@@ -292,3 +292,27 @@ test('recognizes a heredoc argument after a method named class', () => {
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+test('finds a production gem after division using a local named warn', () => {
+  const gemfile = `warn = 12
+warn /2
+gem 'rack'
+ratio = 12 /
+  3`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[['case', 'case', 'when true\n'], ['when', 'case value\nwhen', '']].forEach(([keyword, condition, branch]) => {
+  test(`finds a production gem after a multiline regexp following ${keyword}`, () => {
+    const gemfile = `${condition} /prefix
+suffix
+/
+${branch}  true
+end
+gem 'rack'
+ratio = 12 / 3`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});

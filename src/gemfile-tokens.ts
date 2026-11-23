@@ -2,13 +2,19 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = tokenPattern();
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const localAssignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;
+  let warnAssigned = false;
   let previous = '\n';
   let regexpExpected = true;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const warnRegexp = token === '/' && previous === 'warn' && startsWarnRegexp(content, match.index);
+    if (!warnAssigned && token === 'warn' && !['.', ':', '@', '$'].includes(previous)) {
+      localAssignment.lastIndex = pattern.lastIndex;
+      warnAssigned = localAssignment.test(content);
+    }
+    const warnRegexp = token === '/' && previous === 'warn' && !warnAssigned && startsWarnRegexp(content, match.index);
     if (((token === '/' || token === '%') && regexpExpected) || warnRegexp) {
       const literal = readRegexp(content, match.index);
       if (literal && (!warnRegexp || endsWarnRegexp(content, match.index + literal.length))) {
@@ -85,7 +91,7 @@ const readToken = (pattern: RegExp, match: RegExpExecArray, content: string, ope
 
 const expectsRegexp = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|,|&&|\|\||\?|:)$/.test(token) ||
-  (previous !== '.' && /^(?:!|not|do|if|elsif|unless)$/.test(token));
+  (previous !== '.' && /^(?:!|not|do|if|elsif|unless|case|when)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
