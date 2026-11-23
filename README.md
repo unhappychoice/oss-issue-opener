@@ -101,8 +101,10 @@ the [architecture guide](docs/architecture.md).
 Combines commit statuses and check runs for the default branch, excluding results whose names
 contain `codecov` (case-insensitive). If any remaining result has a failure or error state,
 creates an issue, even when other results succeeded or are pending. Otherwise, the CI status
-is pending if any result is pending, successful if all results succeeded, or `no-ci` if no
-results remain. The decision does not depend on workflow execution order.
+is pending if any result is pending or `no-ci` if no results remain. Otherwise, the scan logs
+`CI: success`. Completed check runs with a `skipped` or `neutral` conclusion count as successful
+for this aggregation, so a scan with only those checks and no commit statuses can log `CI: success`.
+The decision does not depend on workflow execution order.
 
 If either GitHub API lookup fails, the scanner still queues a notification for
 failures found on any successfully retrieved page. When the available results contain no
@@ -158,9 +160,10 @@ with `GH_TOKEN` that carry scanner-generated recovery metadata for the scanned r
 The existing alert must be present when the scan starts. Its recorded check runs and
 commit statuses must each explicitly pass on the checked default-branch commit,
 and the overall CI scan must succeed. GitHub Actions jobs must match both the
-recorded job name and workflow ID. A missing, pending, skipped, neutral, or
-unreadable recorded check leaves the issue open. The scanner comments with a link
-to the verified commit and closes the issue as completed.
+recorded job name and workflow ID. A recorded check run must complete with the `success`
+conclusion to satisfy recovery. A missing, pending, skipped, neutral, or unreadable recorded
+check leaves the issue open even if the scan logs `CI: success`. The scanner comments with a
+link to the verified commit and closes the issue as completed.
 
 Alerts require manual closure when any failing CI scan could not retrieve all
 results, when the recovery metadata is missing, when a check run has no verified
