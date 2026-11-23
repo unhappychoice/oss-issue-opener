@@ -175,7 +175,7 @@ suffix!
   assert.equal(await check('rack'), true);
 });
 
-['warn', 'print'].forEach((command) => {
+['warn', 'print', 'p'].forEach((command) => {
   test(`Gemfile fallback ignores class keywords in a bare ${command} regexp`, async () => {
     mockRubyRepository('', `group :test do
     ${command} /prefix

@@ -298,7 +298,7 @@ ratio = 12 / 3`;
   });
 });
 
-['warn', 'puts', 'print'].forEach((command) => {
+['warn', 'puts', 'print', 'p'].forEach((command) => {
   [`${command} = 12`, `first, ${command}, last = 6, 12, 18`, `${command}, = 12, 18`].forEach((assignment) => {
     test(`finds a production gem between divisions after ${assignment}`, () => {
       const gemfile = `${assignment}
