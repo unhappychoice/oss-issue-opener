@@ -311,6 +311,31 @@ gem 'rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('ignores scope keywords in a multiline regexp passed to puts', () => {
+  const gemfile = `group :test do
+  puts /prefix
+class Fake
+module Fake
+gem 'ignored'
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
+test('preserves division with whitespace after the slash following puts', () => {
+  const gemfile = `group :test do
+  puts = 12
+  puts / 2
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 const multilineRegexps = [
   "!/prefix\nclass Fake\nsuffix/",
   "/#{receiver.if / 2}#{'foo/bar'}\nclass Fake\n/",

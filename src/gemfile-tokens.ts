@@ -8,7 +8,8 @@ export const gemfileTokens = (content: string): string[] => {
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '/' || token === '%') {
       const previous = previousTokenIndex(tokens);
-      if (expectsLiteral(tokens[previous], tokens[previousTokenIndex(tokens, previous)])) {
+      if (expectsLiteral(tokens[previous], tokens[previousTokenIndex(tokens, previous)]) ||
+        startsPutsRegexp(content, match.index, tokens[previous])) {
         const end = expressionLiteralEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
@@ -55,6 +56,10 @@ const previousTokenIndex = (tokens: string[], before = tokens.length): number =>
 };
 
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const startsPutsRegexp = (content: string, start: number, previous?: string): boolean =>
+  previous === 'puts' && /[^\S\r\n]/.test(content[start - 1] ?? '') &&
+  /^\/[^\s=]/.test(content.slice(start, start + 2));
 
 const expectsLiteral = (token = '\n', before?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
