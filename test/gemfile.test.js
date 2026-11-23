@@ -257,20 +257,36 @@ result = ${division}`;
   });
 }
 
-test('ignores scope keywords inside a multiline regexp passed as a parenthesized argument', () => {
-  const gemfile = `group :test do
-  warn(/start
+test('preserves declarations after division of a local variable before a regexp', () => {
+  const gemfile = `input = 12
+result = input /2
+gem 'rack'
+pattern = /end/`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+for (const [opening, closing] of [
+  ['warn(/', '/)'],
+  ['warn /', '/'],
+  ['Kernel.warn /', '/'],
+  ['message = warn /', '/'],
+]) {
+  test(`ignores scope keywords inside a multiline regexp after ${opening}`, () => {
+    const gemfile = `group :test do
+  ${opening}start
 class RegexText
 gem 'fake'
-finish/)
+finish${closing}
   gem 'rspec'
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'fake'), false);
-});
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'fake'), false);
+  });
+}
 
 for (const [opening, closing] of [['/', '/x'], ['%r{', 'nested{pattern}}x']]) {
   test(`ignores scope keywords inside a multiline ${opening} regexp`, () => {

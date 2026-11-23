@@ -2,11 +2,15 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const localNames = new Set<string>();
+  const assignment = /[ \t]*=(?!=|[>~])/y;
+  let methodHeader = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '%' || (token === '/' && expectsRegexp(tokens))) {
+    if (token === '%' || (token === '/' &&
+      (expectsRegexp(tokens) || followsCommand(tokens, content[pattern.lastIndex], localNames)))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -27,6 +31,12 @@ export const gemfileTokens = (content: string): string[] => {
       tokens.push('""');
       continue;
     }
+    if (token === 'def') methodHeader = true;
+    if (token === '\n' || token === ';' || token === '=') methodHeader = false;
+    assignment.lastIndex = pattern.lastIndex;
+    if (isLocalName(token) && (methodHeader || assignment.test(content))) {
+      localNames.add(token);
+    }
     tokens.push(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
@@ -35,6 +45,19 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const isLocalName = (token: string): boolean => /^[a-z_]\w*$/.test(token);
+
+const followsCommand = (tokens: string[], next: string | undefined, localNames: Set<string>): boolean => {
+  if (!next || /[\s=]/.test(next) || !/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
+  const index = previousTokenIndex(tokens);
+  const name = tokens[index] ?? '';
+  if (!/^[a-z_]\w*[!?]?$/.test(name)) return false;
+  const before = tokens[previousTokenIndex(tokens, index - 1)];
+  if (before === '.') return true;
+  return !localNames.has(name) && !/^(?:true|false|nil|self|end|super)$/.test(name) &&
+    (before === undefined || /^(?:\n|;|=|do|then|else|return|yield)$/.test(before));
 };
 
 const expectsRegexp = (tokens: string[]): boolean => {
