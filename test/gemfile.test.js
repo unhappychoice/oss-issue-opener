@@ -302,3 +302,17 @@ gem 'rack'`;
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });
 });
+
+['&&', '||'].forEach((operator) => {
+  test(`ignores scope keywords in a multiline regexp after ${operator}`, () => {
+    const gemfile = `group :test do
+  pattern = enabled ${operator} /prefix
+class Fake
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
