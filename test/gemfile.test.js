@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gemfileStatements, isProductionGem, isProductionGemIn } from '../dist/gemfile.js';
+import { isProductionGem, productionGemNames } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
@@ -103,7 +103,7 @@ test('ignores bare dependency names in Gemfile declarations', () => {
 
 test('tracks excluded and shared groups through deeply nested scopes', () => {
   const depth = 4_096;
-  const statements = gemfileStatements([
+  const names = productionGemNames([
     'group :test, :production do\n'.repeat(depth),
     "gem 'shared'",
     'group :development do',
@@ -121,10 +121,10 @@ test('tracks excluded and shared groups through deeply nested scopes', () => {
   ].join('\n'));
 
   for (const pkg of ['shared', 'after_development', 'ungrouped']) {
-    assert.equal(isProductionGemIn(statements, pkg), true, pkg);
+    assert.equal(names.has(pkg), true, pkg);
   }
   for (const pkg of ['inner_test', 'after_test', 'after_production', 'missing']) {
-    assert.equal(isProductionGemIn(statements, pkg), false, pkg);
+    assert.equal(names.has(pkg), false, pkg);
   }
 });
 

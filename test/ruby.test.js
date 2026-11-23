@@ -61,3 +61,10 @@ test('ignores heredoc openers in strings and comments', () => {
   const gemspec = "message = '<<TEXT' # <<OTHER\nspec.add_dependency 'real-gem'";
   assert.deepEqual(rubyRuntimeDependencies(gemspec), ['real-gem']);
 });
+
+test('ignores dependency declarations through EOF in an unterminated heredoc', () => {
+  const gemspec = `spec.add_dependency 'rack'
+spec.description = <<TEXT
+spec.add_runtime_dependency 'puma'`;
+  assert.deepEqual(rubyRuntimeDependencies(gemspec), ['rack']);
+});

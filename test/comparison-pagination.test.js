@@ -230,45 +230,73 @@ test('bounds the candidate backlog and keeps comparison order across batches', a
     Array.from({ length: 101 }, (_, index) => String(index + 2)));
 });
 
-const stubCappedComparison = (t, extraFiles = []) => {
+const blob = (path, sha, mode = '100644') => ({ path, sha, type: 'blob', mode });
+const tree = (path, sha) => ({ path, sha, type: 'tree', mode: '040000' });
+const numberedFiles = (count, prefix, suffix) => Array.from({ length: count }, (_, index) => ({
+  filename: `${prefix}/${index}.${suffix}`,
+}));
+
+const stubCappedComparison = (t, trees = {}, files = numberedFiles(300, 'docs', 'md')) => {
   const repos = stubRelease(t);
   t.mock.method(repos, 'compareCommits', async () => ({ data: {
-    files: Array.from({ length: 300 }, (_, index) => ({ filename: `docs/${index}.md` })),
+    files,
     merge_base_commit: { commit: { tree: { sha: 'merge-base-tree' } } },
     commits: [{ commit: { message: 'fix: handle empty input' } }],
   } }));
-  const entry = (path, sha) => ({ path, sha, type: 'blob', mode: '100644' });
-  const getTree = t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => ({ data: {
-    truncated: false,
-    tree: [entry('src/unchanged.ts', 'same'),
-      ...Array.from({ length: 301 }, (_, index) => entry(`docs/${index}.md`, tree_sha)),
-      ...extraFiles.map(([path, base, head]) => entry(path, tree_sha === 'merge-base-tree' ? base : head))
-        .filter(({ sha }) => sha)],
-  } }));
-  return getTree;
+  const entries = new Map(Object.entries({ 'merge-base-tree': [], 'head-tree': [], ...trees }));
+  return t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
+    assert.ok(entries.has(tree_sha), `Unexpected tree request: ${tree_sha}`);
+    return { data: { truncated: false, tree: entries.get(tree_sha) } };
+  });
 };
 
-test('detects source changes omitted from a capped comparison', async (t) => {
-  const getTree = stubCappedComparison(t, [['src/index.ts', 'old', 'new']]);
+test('detects omitted source changes without fetching an unchanged subtree', async (t) => {
+  const files = numberedFiles(301, 'src', 'ts');
+  const getTree = stubCappedComparison(t, {
+    'merge-base-tree': [tree('fixtures', 'same-fixtures'), tree('src', 'old-src')],
+    'head-tree': [tree('fixtures', 'same-fixtures'), tree('src', 'new-src')],
+    'old-src': [blob('unchanged.ts', 'same'), ...files.map((_, i) => blob(`${i}.ts`, 'old'))],
+    'new-src': [blob('unchanged.ts', 'same'), ...files.map((_, i) => blob(`${i}.ts`, 'new'))],
+  }, files.slice(0, 300));
+
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
-  assert.ok(result.changedSources.includes('src/index.ts'));
-  assert.ok(!result.changedSources.some((f) => f.includes('unchanged')));
+  assert.deepEqual(result.changedSources.toSorted(), files.map(({ filename }) => filename).toSorted());
   assert.deepEqual(getTree.mock.calls.map(({ arguments: [params] }) => params),
-    ['merge-base-tree', 'head-tree'].map((tree_sha) => ({ owner: 'owner', repo: 'repo', tree_sha, recursive: '1' })));
+    ['merge-base-tree', 'head-tree', 'old-src', 'new-src'].map((tree_sha) => ({ owner: 'owner', repo: 'repo', tree_sha })));
 });
 
 test('establishes that a capped documentation-only comparison is up to date', async (t) => {
-  stubCappedComparison(t);
+  stubCappedComparison(t, {
+    'head-tree': [tree('docs', 'new-docs')],
+    'new-docs': numberedFiles(301, 'docs', 'md').map((_, i) => blob(`${i}.md`, 'new')),
+  });
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
 });
 
-test('detects added and deleted source paths, including renames out of source directories', async (t) => {
-  stubCappedComparison(t, [['src/removed.ts', 'old', undefined], ['lib/added.ts', undefined, 'new']]);
-  const result = await checkPendingRelease('owner', 'repo', 'node');
-  assert.equal(result.status, 'pending');
-  assert.ok(result.changedSources.includes('src/removed.ts'));
-  assert.ok(result.changedSources.includes('lib/added.ts'));
+test('detects added and removed subtree paths, file mode changes, and file-to-directory replacements', async (t) => {
+  stubCappedComparison(t, {
+    'merge-base-tree': [tree('src', 'old-src'), tree('lib', 'shared')],
+    'head-tree': [tree('src', 'new-src'), tree('docs', 'shared')],
+    'old-src': [blob('script.ts', 'same'), blob('replaced.ts', 'old')],
+    'new-src': [blob('script.ts', 'same', '100755'), tree('replaced.ts', 'shared')],
+    shared: [tree('nested', 'nested')],
+    nested: [blob('index.ts', 'same')],
+  });
+  const { files } = await compareCommits('owner', 'repo', 'v1', { sha: commitSha('main'), treeSha: 'head-tree' });
+  assert.deepEqual(files.toSorted(), [
+    'docs/nested/index.ts', 'lib/nested/index.ts', 'src/replaced.ts', 'src/replaced.ts/nested/index.ts', 'src/script.ts',
+  ]);
+  const calls = getOctokit().git.getTree.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha);
+  assert.equal(calls.filter((sha) => sha === 'shared').length, 1);
+  assert.equal(calls.filter((sha) => sha === 'nested').length, 1);
+});
+
+test('skips fetching identical root trees', async (t) => {
+  const getTree = stubCappedComparison(t);
+  const { files } = await compareCommits('owner', 'repo', 'v1', { sha: commitSha('main'), treeSha: 'merge-base-tree' });
+  assert.deepEqual(files, []);
+  assert.equal(getTree.mock.callCount(), 0);
 });
 
 test('propagates tree fallback API failures instead of declaring up to date', async (t) => {
@@ -279,11 +307,12 @@ test('propagates tree fallback API failures instead of declaring up to date', as
 });
 
 test('rejects truncated trees on either side instead of declaring up to date', async (t) => {
-  for (const truncatedTree of ['merge-base-tree', 'head-tree']) {
+  for (const truncatedTree of ['merge-base-tree', 'head-tree', 'new-src']) {
     const getTree = stubCappedComparison(t);
-    getTree.mock.mockImplementation(async ({ tree_sha }) => ({
-      data: { truncated: tree_sha === truncatedTree, tree: [] },
-    }));
+    getTree.mock.mockImplementation(async ({ tree_sha }) => ({ data: {
+      truncated: tree_sha === truncatedTree,
+      tree: tree_sha === 'head-tree' ? [tree('src', 'new-src')] : [],
+    } }));
     await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /truncated tree/);
     t.mock.restoreAll();
   }
@@ -301,7 +330,7 @@ test('rejects missing comparison tree metadata instead of declaring up to date',
 for (const field of ['path', 'sha', 'mode', 'type']) {
   test(`rejects a comparison tree entry without ${field}`, async (t) => {
     const getTree = stubCappedComparison(t);
-    const entry = { path: 'src/index.ts', sha: 'blob-sha', mode: '100644', type: 'blob' };
+    const entry = tree('src', 'new-src');
     delete entry[field];
     getTree.mock.mockImplementation(async ({ tree_sha }) => ({
       data: { truncated: false, tree: tree_sha === 'head-tree' ? [entry] : [] },
@@ -314,7 +343,10 @@ for (const field of ['path', 'sha', 'mode', 'type']) {
 }
 
 test('uses the pinned head tree to find a dependency change that requires later pages', async (t) => {
-  const getTree = stubCappedComparison(t, [['package-lock.json', 'old', 'new']]);
+  const getTree = stubCappedComparison(t, {
+    'merge-base-tree': [blob('package-lock.json', 'old')],
+    'head-tree': [blob('package-lock.json', 'new')],
+  });
   const compare = getOctokit().repos.compareCommits;
   const { data: firstPage } = await compare();
   compare.mock.resetCalls();

@@ -2,7 +2,7 @@ import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getFileContent, getRepoContents } from './github.js';
 import { parse } from 'smol-toml';
 import type { ProjectType } from './types.js';
-import { gemfileStatements, isProductionGemIn } from './gemfile.js';
+import { productionGemNames } from './gemfile.js';
 import { rubyRuntimeDependencies } from './ruby.js';
 import { swiftDependencies } from './swift.js';
 import { parseGradleDependencies } from './gradle.js';
@@ -55,12 +55,12 @@ const loadRuby: DependencyLoader = async (file, contents) => {
   const hasGemfile = names.includes('Gemfile');
   const gemspecNames = names.filter((name) => name.endsWith('.gemspec'));
   const dependencies = new Set((await Promise.all(gemspecNames.map((name) => file(name)))).flatMap(rubyRuntimeDependencies));
-  let statements: Promise<string[][]> | undefined;
+  let gemfileDependencies: Promise<ReadonlySet<string>> | undefined;
   return async (pkg) => {
     if (dependencies.has(pkg)) return true;
     if (!hasGemfile) return false;
-    statements ??= file('Gemfile').then(gemfileStatements);
-    return isProductionGemIn(await statements, pkg);
+    gemfileDependencies ??= file('Gemfile').then(productionGemNames);
+    return (await gemfileDependencies).has(pkg);
   };
 };
 
