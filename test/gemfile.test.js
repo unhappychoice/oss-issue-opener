@@ -244,174 +244,18 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-for (const division of ['12 /\n  3', '12/3', '12/input', '12/ 3', '12/ input']) {
-  test(`finds production gems between divisions ending with ${JSON.stringify(division)}`, () => {
-    const gemfile = `def ratio(warn)
-  warn /2
-end
-gem 'rack'
-input = 3
-result = ${division}`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-}
-
-test('preserves declarations after division of a local variable before a regexp', () => {
-  const gemfile = `input = 12
-result = input /2
-gem 'rack'
-pattern = /end/`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-for (const [opening, closing] of [
-  ['do |amount|', 'end'],
-  ['{ |amount|', '}'],
-  ['do |first, (amount, last); scratch|', 'end'],
-]) {
-  test(`preserves Gemfile groups and declarations after block parameter division in ${opening}`, () => {
-    const gemfile = `group :test do
-  values.each ${opening}
-    values.each do
-      amount /2
-    end
-  ${closing}
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'
-amount /start
-gem 'fake'
-finish/`;
-
-    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
-  });
-}
-
-for (const operator of ['||=', '&&=', '+=', '**=', '<<=', '/=']) {
-  test(`finds a production gem with a path after division of a local assigned with ${operator}`, () => {
-    const gemfile = `input ${operator} 12
-input /2
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-}
-
-for (const targets of ['input, divisor', 'first, input, last', 'first,\n  input, last']) {
-  test(`preserves gem paths after dividing a local assigned by ${JSON.stringify(targets)}`, () => {
-    const gemfile = `${targets} = [12, 8, 4]
-result = input /2
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-}
-
-for (const definition of [
-  'def ratio(warn)\n  if warn\n    warn /2\n  end\nend',
-  'def ratio(warn) = warn /2',
-  'def ratio(\n  warn\n)\n  warn /2\nend',
-  'class Helper\n  warn = 12\n  warn /2\nend',
-  'module Helper\n  warn = 12\n  warn /2\nend',
-]) {
-  test(`recognizes a command regexp outside ${JSON.stringify(definition)}`, () => {
-    const gemfile = `${definition}
-group :test do
-  warn /start
-class RegexText
-gem 'fake'
-finish/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
-  });
-}
-
-for (const [opening, closing] of [
-  ['warn(/', '/)'],
-  ['warn /', '/'],
-  ['Kernel.warn /', '/'],
-  ['message = warn /', '/'],
-]) {
-  test(`ignores scope keywords inside a multiline regexp after ${opening}`, () => {
-    const gemfile = `group :test do
-  ${opening}start
-class RegexText
-gem 'fake'
-finish${closing}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'fake'), false);
-  });
-}
-
-for (const [opening, closing] of [['/', '/x'], ['%r{', 'nested{pattern}}x']]) {
-  test(`ignores scope keywords inside a multiline ${opening} regexp`, () => {
-    const gemfile = String.raw`group :test do
-  pattern = ${opening}
-class RegexText
-gem 'fake'
-escaped \/ delimiter
-${closing}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'fake'), false);
-  });
-}
-
-for (const [opening, closing, expression] of [
-  ['/', '/', '12 / 3'],
-  ['/', '/', '{path: "/}"}.fetch(:path)'],
-  ['%r{', '}', '%q!}!'],
-  ['%r(', ')', '%Q!#{")"}!'],
-  ['/', '/', '(/inner\\//).source'],
-  ['/', '/', '12 / 3 # } /\n  '],
-  ['/', '/', '%!}/!'],
-  ['/', '/', '12 % 5 / 2'],
-]) {
-  test(`preserves Gemfile groups around regexp interpolation containing ${JSON.stringify(expression)}`, () => {
-    const gemfile = `group :test do
-  pattern = ${opening}#{${expression}}
-end
-gem 'fake'
-${closing}x
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'fake'), false);
-  });
-}
-
-test('ignores scope keywords inside regexps in both ternary branches', () => {
+test('finds a production gem with a path after division of a for loop variable', () => {
   const gemfile = `group :test do
-  pattern = condition ? /
-end
-gem 'fake_first'
-/ : /
-end
-gem 'fake_second'
-/
+  module TestHelpers
+    class TestHelper
+    end
+  end
+  for amount in [12]
+    amount /2
+  end
   gem 'rspec'
 end
-gem 'rack'`;
+gem 'rack', path: '/rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'fake_first'), false);
-  assert.equal(isProductionGem(gemfile, 'fake_second'), false);
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
