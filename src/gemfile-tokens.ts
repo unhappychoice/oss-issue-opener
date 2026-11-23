@@ -2,14 +2,17 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let assignedPuts = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === 'puts' && isBareAssignment(content, pattern.lastIndex, tokens)) assignedPuts = true;
     if (token === '/' || token === '%') {
       const previous = previousTokenIndex(tokens);
-      if (expectsLiteral(tokens[previous], tokens[previousTokenIndex(tokens, previous)]) ||
-        startsPutsRegexp(content, match.index, tokens[previous])) {
+      const beforePrevious = tokens[previousTokenIndex(tokens, previous)];
+      if (expectsLiteral(tokens[previous], beforePrevious) ||
+        ((!assignedPuts || beforePrevious === '.') && startsPutsRegexp(content, match.index, tokens[previous]))) {
         const end = expressionLiteralEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
@@ -56,6 +59,12 @@ const previousTokenIndex = (tokens: string[], before = tokens.length): number =>
 };
 
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const isBareAssignment = (content: string, start: number, tokens: string[]): boolean => {
+  const assignment = /[^\S\r\n]*=(?!=|>|~)/y;
+  assignment.lastIndex = start;
+  return !['.', ':', '@', '$'].includes(tokens[previousTokenIndex(tokens)]) && assignment.test(content);
+};
 
 const startsPutsRegexp = (content: string, start: number, previous?: string): boolean =>
   previous === 'puts' && /[^\S\r\n]/.test(content[start - 1] ?? '') &&

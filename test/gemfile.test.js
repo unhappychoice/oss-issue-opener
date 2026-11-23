@@ -325,15 +325,30 @@ gem 'rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
-test('preserves division with whitespace after the slash following puts', () => {
+test('recognizes a regexp passed to a qualified puts after a local assignment', () => {
   const gemfile = `group :test do
   puts = 12
-  puts / 2
+  receiver.puts /prefix
+class Fake
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
+['/ 2', '/2'].forEach((division) => {
+  test(`preserves ${division} as division after a local assignment to puts`, () => {
+    const gemfile = `group :test do
+  puts = 12
+  puts ${division}
   gem 'rspec'
 end
 gem 'rack', path: '/rack'`;
 
-  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
 });
 
 const multilineRegexps = [
