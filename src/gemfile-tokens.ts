@@ -1,19 +1,11 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = new RegExp(tokenPattern, 'g');
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' || token === '%' || token === '?' || token === '`') {
-      const end = literalEndAt(content, match.index, token, tokens);
-      if (end !== undefined) {
-        pattern.lastIndex = end;
-        tokens.push(content.slice(match.index, end));
-        continue;
-      }
-    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -34,134 +26,6 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
-};
-
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:(?:\w+|`)|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
-
-const expectsExpressionAfter = (tokens: string[]): boolean => {
-  const index = previousTokenIndex(tokens);
-  return expectsExpression(tokens[index] ?? '\n', tokens[previousTokenIndex(tokens, index - 1)]);
-};
-
-const literalEndAt = (content: string, start: number, token: string, tokens: string[]): number | undefined => {
-  if (token === '`') {
-    return isBacktickLiteralAfter(tokens[previousTokenIndex(tokens)]) ? literalEnd(content, start) : undefined;
-  }
-  if (!expectsExpressionAfter(tokens) &&
-    !(token === '/' && /^\/\S/.test(content.slice(start, start + 2)) && followsRegexpCommand(tokens))) {
-    return undefined;
-  }
-  return token === '?' ? characterEnd(content, start) : literalEnd(content, start);
-};
-
-const isBacktickLiteralAfter = (previous: string | undefined): boolean => previous !== '.' && previous !== 'def';
-
-const followsRegexpCommand = (tokens: string[]): boolean => {
-  if (!/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
-  const method = previousTokenIndex(tokens);
-  const command = tokens[method];
-  const separator = previousTokenIndex(tokens, method - 1);
-  if (tokens[separator] === '.') return /^[a-z_]\w*[!?]?$/.test(command ?? '');
-  return (command === 'warn' || command === 'puts' || command === 'print' || command === 'p') &&
-    expectsExpression(tokens[separator] ?? '\n', tokens[previousTokenIndex(tokens, separator - 1)]) &&
-    !tokens.some((token, index) => isCommandAssignment(command, token, index, tokens));
-};
-
-const isCommandAssignment = (command: string, token: string, index: number, tokens: string[]): boolean => {
-  if (token === `${command}=`) return true;
-  if (token !== command || tokens[previousTokenIndex(tokens, index - 1)] === '.') return false;
-  while (isTokenSpacing(tokens[++index] ?? '')) {}
-  return /^(?:=(?![=~])|(?:&&|\|\||[+*/%&|^-])=)/.test(tokens.slice(index, index + 2).join(''));
-};
-
-const expectsExpression = (token: string, previous?: string): boolean =>
-  /^(?:\n|;|=|=>|~|\?|:|\(|\[|\{|,|&&|\|\|)$/.test(token) ||
-  (previous !== '.' && /^(?:!|defined\?|do|if|elsif|and|or|unless|return)$/.test(token));
-
-const characterEnd = (content: string, start: number): number | undefined => {
-  const character = /\?(?:\\[^\r\n]|[^\s\\])/uy;
-  character.lastIndex = start;
-  return character.test(content) ? character.lastIndex : undefined;
-};
-
-const closingDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
-
-const literalFrame = (content: string, start: number) => {
-  const opening = /[/`]|%([iIqQrswWx]?)([^\w\s\u0080-\uffff])/y;
-  opening.lastIndex = start;
-  const match = opening.exec(content);
-  if (!match) return undefined;
-  const delimiter = match[2] ?? match[0];
-  const type = match[1] ?? (delimiter === '/' ? 'r' : 'x');
-  return {
-    start: opening.lastIndex, delimiter, closing: closingDelimiters.get(delimiter) ?? delimiter,
-    regexp: type === 'r', interpolates: !['i', 'q', 's', 'w'].includes(type), nesting: 1, braces: 0,
-    previous: '{', expressionExpected: true,
-  };
-};
-
-const literalEnd = (content: string, start: number): number | undefined => {
-  const initial = literalFrame(content, start);
-  if (!initial) return undefined;
-  const frames = [initial];
-  const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
-  const rawLiteralPart = /\\[\s\S]|[\s\S]/y;
-  const expressionPart = new RegExp(tokenPattern, 'y');
-  const options = /[imxounes]*/y;
-  let offset = initial.start;
-  while (offset < content.length) {
-    const frame = frames.at(-1)!;
-    if (frame.braces === 0 && content[offset] === frame.closing && --frame.nesting === 0) {
-      offset++;
-      if (frame.regexp) {
-        options.lastIndex = offset;
-        options.exec(content);
-        offset = options.lastIndex;
-      }
-      frames.pop();
-      if (frames.length === 0) return offset;
-      continue;
-    }
-    const part = frame.braces > 0 ? expressionPart : frame.interpolates ? literalPart : rawLiteralPart;
-    part.lastIndex = offset;
-    const token = part.exec(content)?.[0];
-    if (token === undefined) return undefined;
-    if (frame.braces === 0) {
-      if (token === frame.delimiter && frame.delimiter !== frame.closing) frame.nesting++;
-      if (token === '#{') {
-        frame.braces = 1;
-        frame.previous = '{';
-        frame.expressionExpected = true;
-      }
-    } else if (!isTokenSpacing(token) && !token.startsWith('#') && !token.startsWith('=begin')) {
-      if (((token === '/' || token === '%') && frame.expressionExpected) ||
-        (token === '`' && isBacktickLiteralAfter(frame.previous))) {
-        const nested = literalFrame(content, offset);
-        if (nested) {
-          frames.push(nested);
-          frame.previous = 'literal';
-          frame.expressionExpected = false;
-          offset = nested.start;
-          continue;
-        }
-      }
-      if (token === '?' && frame.expressionExpected) {
-        const end = characterEnd(content, offset);
-        if (end !== undefined) {
-          frame.previous = 'literal';
-          frame.expressionExpected = false;
-          offset = end;
-          continue;
-        }
-      }
-      if (token === '{') frame.braces++;
-      if (token === '}') frame.braces--;
-      frame.expressionExpected = expectsExpression(token, frame.previous);
-      frame.previous = token;
-    }
-    offset = part.lastIndex;
-  }
-  return undefined;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {

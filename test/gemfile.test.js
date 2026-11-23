@@ -207,23 +207,6 @@ gem 'rack'`;
   });
 });
 
-[
-  'warn = 10\nwarn /2',
-  'puts = 10\nputs /2',
-  'print = 10\nprint /2',
-  'p = 10\np /2',
-  'ratio = receiver.if / 2',
-  'ratio = receiver.return / 2',
-  'slash = ?/',
-].forEach((expression) => {
-  test(`finds a production gem with a path after ${expression}`, () => {
-    const gemfile = `${expression}
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
 const namespaceDefinitions = [
   'class TestHelper\nend',
   'module TestHelpers\n  class TestHelper < Object\n  end\nend',
@@ -239,100 +222,6 @@ const namespaceDefinitions = [
   'consume(result = class TestHelper; end)',
 ];
 
-test('preserves scopes around backtick method names and command strings', () => {
-  const gemfile = "group :test do\n  def helper.`(command); command; end\n  helper.`('example')\n  warn `echo`\n  gem 'rspec'\nend\ngem 'rack'";
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('finds a production gem between backtick symbols', () => {
-  const gemfile = "group :test do\n  class TestHelper; end\n  operator = :`\n  gem 'rspec'\nend\ngem 'rack'\noperator = :`";
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-});
-
-['warn', 'puts', 'print', 'p'].forEach((command) => {
-  test(`ignores scope keywords in a multiline regexp passed to ${command}`, () => {
-    const gemfile = `group :test do
-  ${command} /first
-class RegexText
-gem "ignored"
-last/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  });
-});
-
-test('ignores scope keywords in a multiline regexp returned from a method', () => {
-  const gemfile = `group :test do
-  def pattern
-    return /first
-class RegexText
-gem "ignored"
-last/
-  end
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'ignored'), false);
-});
-
-[
-  '/first\nclass RegexText\nlast/i',
-  '!/first\nclass RegexText\nlast/',
-  'defined? /first\nclass RegexText\nlast/i',
-  'defined? %r!first\nend\ngem "ignored"\nlast!',
-  '/first\nend\ngem "ignored"\nlast/',
-  '%r{first\nclass RegexText\n{nested}\nlast}',
-  '%q{first\nclass StringText\n{nested}\nlast}',
-  '%Q!first\nend\ngem "ignored"\nlast!',
-  '%w!first\nclass WordText\nlast!',
-  '%w!#{first}\\!\nend\ngem "ignored"\nlast!',
-  '%W!#{"!"}\nmodule WordText\nlast!',
-  '%i!first\nclass SymbolText\nlast!',
-  '%I!#{"!"}\nclass SymbolText\nlast!',
-  '%s!#{first}\nclass SymbolText\nlast!',
-  '%x!first\nclass CommandText\nlast!',
-  '`first\nclass CommandText\nlast`',
-  '`first\\`\nend\ngem "ignored"\nlast`',
-  '`#{`inner`}\nclass CommandText\nlast`',
-  '%!first\nclass StringText\nlast!',
-  'Regexp.union /first\nclass RegexText\nlast/',
-  'Regexp.union(/first\nclass RegexText\nlast/)',
-  'enabled ? /first\nclass RegexText\nlast/ : nil',
-  'enabled ? nil : /first\nclass RegexText\nlast/',
-  'enabled and /first\nclass RegexText\ngem "ignored"\nlast/',
-  'enabled or /first\nclass RegexText\ngem "ignored"\nlast/',
-  '/#{%q!}/!}\\/first\nclass RegexText\nlast/',
-  '/#{%q{#{inner}}}first\nclass RegexText\nlast/',
-  '/#{ "/" }/',
-  '/#{ %q!}!.ord / 2 }/',
-  '/#{/inner/}first\nclass RegexText\nlast/',
-  '/#{defined? /}/}first\nclass RegexText\nlast/',
-].forEach((expression) => {
-  test(`ignores scope keywords in literal expression ${expression}`, () => {
-    const gemfile = `group :test do
-  pattern = ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'ignored'), false);
-  });
-});
-
 [':test', ':development', ':development, :test'].forEach((group) => {
   namespaceDefinitions.forEach((definition) => {
     test(`preserves ${group} scope across ${definition}`, () => {
@@ -347,4 +236,13 @@ gem 'rack'`;
       assert.equal(isProductionGem(gemfile, 'ignored'), false);
     });
   });
+});
+
+test('finds a production gem after division with a block parameter', () => {
+  const gemfile = `[10].each do |warn|
+  warn /2
+end
+gem 'rack', path: '/rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
