@@ -266,6 +266,16 @@ pattern = /end/`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+for (const targets of ['input, divisor', 'first, input, last', 'first,\n  input, last']) {
+  test(`preserves gem paths after dividing a local assigned by ${JSON.stringify(targets)}`, () => {
+    const gemfile = `${targets} = [12, 8, 4]
+result = input /2
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
+
 for (const definition of [
   'def ratio(warn)\n  if warn\n    warn /2\n  end\nend',
   'def ratio(warn) = warn /2',

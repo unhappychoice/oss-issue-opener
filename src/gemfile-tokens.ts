@@ -71,13 +71,23 @@ class LocalScopes {
       (this.methodStart !== undefined || this.assignment.test(content))) {
       this.names.add(token);
     }
+    if (startsStatement && this.depth === 0 && isLocalName(token)) {
+      this.readMultipleAssignment(content, offset - token.length);
+    }
   }
 
   private readonly root = new Set<string>();
   private readonly scopes: LocalScope[] = [];
   private readonly assignment = /[ \t]*=(?!=|[>~])/y;
+  private readonly multipleAssignment = /[a-z_]\w*(?:[ \t]*,[ \t\r\n]*[a-z_]\w*)+[ \t]*=(?!=|[>~])/y;
   private methodStart: number | undefined;
   private depth = 0;
+
+  private readMultipleAssignment(content: string, offset: number): void {
+    this.multipleAssignment.lastIndex = offset;
+    const targets = this.multipleAssignment.exec(content)?.[0];
+    targets?.match(/[a-z_]\w*/g)?.forEach((name) => this.names.add(name));
+  }
 
   private updateScope(
     token: string, previous: string | undefined, startsStatement: boolean, lineEnd: boolean, tokens: string[],
