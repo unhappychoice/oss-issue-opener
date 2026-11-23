@@ -2,12 +2,13 @@ import { gemfileTokens } from './gemfile-tokens.js';
 import { rubyDependencyName } from './ruby.js';
 
 export const isProductionGem = (content: string, pkg: string): boolean =>
-  isProductionGemIn(gemfileStatements(content), pkg);
+  productionGemNames(content).has(pkg);
 
-export const isProductionGemIn = (statements: string[][], pkg: string): boolean => {
+export const productionGemNames = (content: string): ReadonlySet<string> => {
+  const names = new Set<string>();
   const blocks: boolean[] = [];
   let excludedScopes = 0;
-  return statements.some((tokens) => {
+  gemfileStatements(content).forEach((tokens) => {
     if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
     const excluded = excludedScopes > 0;
     if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
@@ -16,11 +17,12 @@ export const isProductionGemIn = (statements: string[][], pkg: string): boolean 
       blocks.push(excludesGroup);
       if (excludesGroup) excludedScopes++;
     }
-    if (tokens[0] !== 'gem') return false;
+    if (tokens[0] !== 'gem' || excluded) return;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
-    return rubyDependencyName(tokens[nameIndex]) === pkg && !excluded &&
-      !hasInlineExcludedGroup(tokens.slice(nameIndex + 1));
+    const name = rubyDependencyName(tokens[nameIndex]);
+    if (name !== undefined && !hasInlineExcludedGroup(tokens.slice(nameIndex + 1))) names.add(name);
   });
+  return names;
 };
 
 const isEndlessMethod = (tokens: string[]): boolean => {
@@ -49,7 +51,7 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
   return hasExcludedGroup(values.slice(0, valueLength));
 });
 
-export const gemfileStatements = (content: string): string[][] => {
+const gemfileStatements = (content: string): string[][] => {
   const tokens = gemfileTokens(content);
   const result: string[][] = [];
   let current: string[] = [];
