@@ -260,10 +260,12 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
-test('finds a production gem with a path after division of a keyword-named method result', () => {
-  const gemfile = "ratio = receiver.if / 2\ngem 'rack', path: '/rack'";
+['if', 'and', 'or'].forEach((method) => {
+  test(`finds a production gem with a path after division of a method named ${method}`, () => {
+    const gemfile = `ratio = receiver.${method} / 2\ngem 'rack', path: '/rack'`;
 
-  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
 });
 
 test('ignores scope keywords in a multiline regexp after if', () => {
@@ -303,7 +305,7 @@ gem 'rack'`;
   });
 });
 
-['&&', '||'].forEach((operator) => {
+['&&', '||', 'and', 'or'].forEach((operator) => {
   test(`ignores scope keywords in a multiline regexp after ${operator}`, () => {
     const gemfile = `group :test do
   pattern = enabled ${operator} /prefix
