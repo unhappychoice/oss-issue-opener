@@ -7,7 +7,7 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if ((token === '/' || token === '%') && expectsExpression(tokens)) {
-      const end = regexpEnd(content, match.index);
+      const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
@@ -51,18 +51,19 @@ const literalFrame = (opening: string, interpolates: boolean) => ({
   opening, closing: pairedDelimiters.get(opening) ?? opening, interpolates, depth: 1,
 });
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%r([^a-zA-Z0-9\u0080-\uffff])/y;
-  opening.lastIndex = start;
-  const match = opening.exec(content);
-  if (!match) return undefined;
+const literalEnd = (content: string, start: number): number | undefined => {
+  const percentLiteral = /%([qQrwWiIxs])?([^a-zA-Z0-9\u0080-\uffff])/y;
+  const slash = content[start] === '/';
+  percentLiteral.lastIndex = start;
+  const match = slash ? undefined : percentLiteral.exec(content);
+  if (!slash && !match) return undefined;
+  const isRegexp = slash || match?.[1] === 'r';
   const frames: (ReturnType<typeof literalFrame> | { tokens: string[]; depth: number })[] = [
-    literalFrame(match[1] ?? '/', true),
+    literalFrame(match?.[2] ?? '/', interpolatesPercentLiteral(match?.[1])),
   ];
   const expression = new RegExp(tokenPattern, 'y');
-  const percentLiteral = /%([qQrwWiIxs])?([^a-zA-Z0-9\u0080-\uffff])/y;
   const options = /[imxounes]*/y;
-  let offset = opening.lastIndex;
+  let offset = slash ? start + 1 : percentLiteral.lastIndex;
   while (offset < content.length && frames.length) {
     const frame = frames.at(-1)!;
     const character = content[offset];
@@ -70,7 +71,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       percentLiteral.lastIndex = offset;
       const literal = expectsExpression(frame.tokens) && percentLiteral.exec(content);
       if (literal) {
-        frames.push(literalFrame(literal[2], !/^[qwis]$/.test(literal[1] ?? '')));
+        frames.push(literalFrame(literal[2], interpolatesPercentLiteral(literal[1])));
         frame.tokens.push(literal[0]);
         offset = percentLiteral.lastIndex;
         continue;
@@ -101,10 +102,13 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     offset++;
   }
   if (frames.length) return undefined;
+  if (!isRegexp) return offset;
   options.lastIndex = offset;
   options.exec(content);
   return options.lastIndex;
 };
+
+const interpolatesPercentLiteral = (type?: string): boolean => !/^[qwis]$/.test(type ?? '');
 
 const followsClassKeyword = (tokens: string[]): boolean => {
   let index = previousTokenIndex(tokens);

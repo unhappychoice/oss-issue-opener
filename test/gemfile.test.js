@@ -278,3 +278,16 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });
+
+test('ignores class declarations inside a multiline percent string', () => {
+  const gemfile = `group :test do
+  description = %q!prefix
+class Example
+suffix!
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
