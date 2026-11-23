@@ -47,8 +47,10 @@ const canStartRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   const previous = tokens[index] ?? '\n';
   if (/^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|\{|,|\?|:)$/.test(previous)) return true;
-  return /^(?:if|unless|elsif|while|until|case|when)$/.test(previous) &&
-    tokens[previousTokenIndex(tokens, index - 1)] !== '.';
+  if (!/^(?:if|unless|elsif|while|until|case|when|return)$/.test(previous)) return false;
+  const beforeKeyword = previousTokenIndex(tokens, index - 1);
+  return tokens[beforeKeyword] !== '.' &&
+    !(tokens[beforeKeyword] === ':' && tokens[beforeKeyword - 1] === ':');
 };
 
 type Literal = { open: string; close: string; interpolates: boolean };

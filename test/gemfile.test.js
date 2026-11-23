@@ -251,9 +251,10 @@ gem 'rack'`;
   });
 });
 
-test('keeps namespace scopes visible between division operators', () => {
-  const gemfile = `group :test do
-  result = metrics.if / 2
+['metrics.if', 'metrics.return', 'metrics::return'].forEach((method) => {
+  test(`keeps namespace scopes visible after division of ${method}`, () => {
+    const gemfile = `group :test do
+  result = ${method} / 2
   class TestHelper
     result = 100 / 2
   end
@@ -263,8 +264,9 @@ test('keeps namespace scopes visible between division operators', () => {
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [
@@ -275,10 +277,12 @@ gem 'rack'`;
   ['until', 'until /\nclass Decoy\n/\nend'],
   ['when', 'case input\nwhen /\nclass Decoy\n/\nend'],
   ['case', 'case /\nclass Decoy\n/\nwhen input\nend'],
-].forEach(([keyword, conditional]) => {
+  ['return', 'def helper\n  return /\nclass Decoy\n/\nend'],
+  ['return with %r', 'def helper\n  return %r{\nclass Decoy\n}\nend'],
+].forEach(([keyword, statement]) => {
   test(`ignores namespace keywords in a regexp after ${keyword}`, () => {
     const gemfile = `group :test do
-${conditional}
+${statement}
   gem 'rspec'
 end
 gem 'rack'`;
