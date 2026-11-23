@@ -259,3 +259,25 @@ gem 'rack', path: '/rack'`;
 
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
+
+const multilineRegexps = [
+  "/escaped\\/\nclass Fake\nmodule Fake\ngem 'ignored'\n/x",
+  "%r{nested{pattern}\nclass Fake\nmodule Fake\ngem 'ignored'\n}x",
+  "condition ? /\nclass Fake\n/ : /\nmodule Fake\n/",
+  "/#{%q!} /!}\nclass Fake\nmodule Fake\n/",
+  "/#{{ pattern: '' }.fetch(:pattern)}#{/nested/}#{%Q!#{'foo'}!}\nclass Fake\n/",
+];
+
+multilineRegexps.forEach((regexp, index) => {
+  test(`ignores scope keywords in multiline regexp form ${index + 1}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    pattern = ${regexp}
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});

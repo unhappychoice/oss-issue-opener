@@ -1,11 +1,19 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if ((token === '/' || token === '%') && expectsRegexp(tokens[previousTokenIndex(tokens)])) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push('<regexp>');
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -28,15 +36,85 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
+
 const followsClassKeyword = (tokens: string[]): boolean => {
-  let index = tokens.length - 1;
-  while (index >= 0 && isTokenSpacing(tokens[index])) index--;
-  if (tokens[index--] !== 'class') return false;
-  while (index >= 0 && isTokenSpacing(tokens[index])) index--;
+  const classIndex = previousTokenIndex(tokens);
+  if (tokens[classIndex] !== 'class') return false;
+  const index = previousTokenIndex(tokens, classIndex);
   return index < 0 || ['\n', ';', 'do', '{', '=', '(', ','].includes(tokens[index]);
 };
 
+const previousTokenIndex = (tokens: string[], before = tokens.length): number => {
+  let index = before - 1;
+  while (index >= 0 && isTokenSpacing(tokens[index])) index--;
+  return index;
+};
+
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const expectsRegexp = (previous = '\n'): boolean =>
+  /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|if|elsif|unless)$/.test(previous);
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const opening = /\/|%r([^\w\s])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
+  if (end === undefined) return undefined;
+  const options = /[imxounes]*/y;
+  options.lastIndex = end;
+  options.exec(content);
+  return options.lastIndex;
+};
+
+const literalEnd = (content: string, start: number, opening: string, interpolated: boolean): number | undefined => {
+  const closing = pairedDelimiters.get(opening) ?? opening;
+  let depth = 1;
+  for (let index = start; index < content.length; index++) {
+    const char = content[index];
+    if (char === closing && --depth === 0) return index + 1;
+    if (char === '\\') {
+      index++;
+    } else if (interpolated && content.startsWith('#{', index)) {
+      const end = interpolationEnd(content, index + 2);
+      if (end === undefined) return undefined;
+      index = end - 1;
+    } else if (opening !== closing && char === opening) {
+      depth++;
+    }
+  }
+  return undefined;
+};
+
+const interpolationEnd = (content: string, start: number): number | undefined => {
+  const pattern = new RegExp(tokenPattern, 'y');
+  pattern.lastIndex = start;
+  let depth = 1;
+  let previous = '{';
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    const token = match[0];
+    if (token === '{') depth++;
+    if (token === '}' && --depth === 0) return pattern.lastIndex;
+    if (isTokenSpacing(token) || token.startsWith('#')) continue;
+
+    if ((token === '%' || token === '/') && expectsRegexp(previous)) {
+      const percentString = /%([qQ]?)([^\w\s])/y;
+      percentString.lastIndex = match.index;
+      const string = percentString.exec(content);
+      const end = string
+        ? literalEnd(content, percentString.lastIndex, string[2], string[1] !== 'q')
+        : regexpEnd(content, match.index);
+      if (end !== undefined) pattern.lastIndex = end;
+    }
+    previous = token;
+  }
+  return undefined;
+};
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {
   const lines = /([^\n]*)(?:\n|$)/g;
