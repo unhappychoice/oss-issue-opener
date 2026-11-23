@@ -162,11 +162,17 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
   assert.equal(await check('rack'), true);
 });
 
-test('Gemfile fallback ignores class keywords inside multiline regexps', async () => {
+test('Gemfile fallback ignores class keywords inside multiline literals', async () => {
   mockRubyRepository('', `group :test do
     matcher = %r!prefix
 class RegexText
 suffix!
+    literal = %q{prefix
+class StringText
+suffix}
+    Regexp.union /prefix
+class CommandArgument
+suffix/
     gem 'rspec'
   end
   gem 'rack'`);

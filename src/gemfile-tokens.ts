@@ -6,8 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%' || token === '?') && expectsExpressionAfter(tokens)) {
-      const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
+    if (token === '/' || token === '%' || token === '?') {
+      const end = literalEndAt(content, match.index, token, tokens);
       if (end !== undefined) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
@@ -43,6 +43,21 @@ const expectsExpressionAfter = (tokens: string[]): boolean => {
   return expectsExpression(tokens[index] ?? '\n', tokens[previousTokenIndex(tokens, index - 1)]);
 };
 
+const literalEndAt = (content: string, start: number, token: string, tokens: string[]): number | undefined => {
+  if (!expectsExpressionAfter(tokens) &&
+    !(token === '/' && /^\/\S/.test(content.slice(start, start + 2)) && followsQualifiedCommand(tokens))) {
+    return undefined;
+  }
+  return token === '?' ? characterEnd(content, start) : literalEnd(content, start);
+};
+
+const followsQualifiedCommand = (tokens: string[]): boolean => {
+  if (!/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
+  const method = previousTokenIndex(tokens);
+  const separator = previousTokenIndex(tokens, method - 1);
+  return /^[a-z_]\w*[!?]?$/.test(tokens[method] ?? '') && tokens[separator] === '.';
+};
+
 const expectsExpression = (token: string, previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\?|:|\(|\[|\{|,|&&|\|\|)$/.test(token) ||
   (previous !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
@@ -55,13 +70,12 @@ const characterEnd = (content: string, start: number): number | undefined => {
 
 const closingDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, interpolation: boolean) => {
+const literalFrame = (content: string, start: number) => {
   const opening = /\/|%([rqQ])([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
   const regexp = match[1] !== 'q' && match[1] !== 'Q';
-  if (!regexp && !interpolation) return undefined;
   const delimiter = match[2] ?? '/';
   return {
     start: opening.lastIndex, delimiter, closing: closingDelimiters.get(delimiter) ?? delimiter,
@@ -70,8 +84,8 @@ const literalFrame = (content: string, start: number, interpolation: boolean) =>
   };
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const initial = literalFrame(content, start, false);
+const literalEnd = (content: string, start: number): number | undefined => {
+  const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
   const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
@@ -105,7 +119,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       }
     } else if (!isTokenSpacing(token) && !token.startsWith('#') && !token.startsWith('=begin')) {
       if ((token === '/' || token === '%') && frame.expressionExpected) {
-        const nested = literalFrame(content, offset, true);
+        const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);
           frame.previous = 'literal';

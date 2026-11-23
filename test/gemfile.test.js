@@ -236,6 +236,10 @@ const namespaceDefinitions = [
   '!/first\nclass RegexText\nlast/',
   '/first\nend\ngem "ignored"\nlast/',
   '%r{first\nclass RegexText\n{nested}\nlast}',
+  '%q{first\nclass StringText\n{nested}\nlast}',
+  '%Q!first\nend\ngem "ignored"\nlast!',
+  'Regexp.union /first\nclass RegexText\nlast/',
+  'Regexp.union(/first\nclass RegexText\nlast/)',
   'enabled ? /first\nclass RegexText\nlast/ : nil',
   'enabled ? nil : /first\nclass RegexText\nlast/',
   '/#{%q!}/!}\\/first\nclass RegexText\nlast/',
@@ -244,7 +248,7 @@ const namespaceDefinitions = [
   '/#{ %q!}!.ord / 2 }/',
   '/#{/inner/}first\nclass RegexText\nlast/',
 ].forEach((expression) => {
-  test(`ignores scope keywords in regexp expression ${expression}`, () => {
+  test(`ignores scope keywords in literal expression ${expression}`, () => {
     const gemfile = `group :test do
   pattern = ${expression}
   gem 'rspec'
