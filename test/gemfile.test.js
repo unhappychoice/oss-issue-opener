@@ -288,6 +288,22 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+['warn, divisor = 8, 2', 'divisor, warn = 2, 8'].forEach((assignment) => {
+  test(`detects division after parallel assignment ${assignment}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class Helper; end
+  end
+  gem 'rspec'
+end
+${assignment}
+warn /divisor
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 ['(warn, divisor)', ' warn, divisor', '(divisor, warn: 8)'].forEach((parameters) => {
   test(`detects production gems after division involving a warn parameter ${parameters}`, () => {
     const gemfile = `group :test do

@@ -61,12 +61,21 @@ const hasLocalWarn = (tokens: string[]): boolean => {
       local = { hasWarn: false };
     } else if (statement.at(-1) === 'do' && hasBlockWarnParameter(statements[index + 1])) {
       local = { hasWarn: true };
-    } else if (statement.some((token, index) => token === 'warn' && !isQualifiedName(statement[index - 1]) &&
-      statement[index + 1] === '=' && !['=', '~'].includes(statement[index + 2]))) {
+    } else if (assignsLocalWarn(statement)) {
       local.hasWarn = true;
     }
   });
   return local.hasWarn;
+};
+
+const assignsLocalWarn = (statement: string[]): boolean => {
+  if (statement.some((token, index) => token === 'warn' && !isQualifiedName(statement[index - 1]) &&
+    statement[index + 1] === '=' && !['=', '~'].includes(statement[index + 2]))) return true;
+
+  const equals = statement.indexOf('=');
+  const targets = statement.slice(0, equals);
+  return equals >= 3 && targets.includes('warn') &&
+    targets.every((token, index) => index % 2 === 1 ? token === ',' : /^(?:@@?|\$)?[A-Za-z_]\w*$/.test(token));
 };
 
 const hasWarnParameter = (statement: string[]): boolean => {
