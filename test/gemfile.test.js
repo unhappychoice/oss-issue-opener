@@ -260,7 +260,28 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('finds a production gem with a path after division of a keyword-named method result', () => {
+  const gemfile = "ratio = receiver.if / 2\ngem 'rack', path: '/rack'";
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
+test('ignores scope keywords in a multiline regexp after if', () => {
+  const gemfile = `group :test do
+  if /prefix
+class Fake
+suffix/
+    gem 'rspec'
+  end
+end
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 const multilineRegexps = [
+  "!/prefix\nclass Fake\nsuffix/",
+  "/#{receiver.if / 2}#{'foo/bar'}\nclass Fake\n/",
   "/escaped\\/\nclass Fake\nmodule Fake\ngem 'ignored'\n/x",
   "%r{nested{pattern}\nclass Fake\nmodule Fake\ngem 'ignored'\n}x",
   "condition ? /\nclass Fake\n/ : /\nmodule Fake\n/",

@@ -6,12 +6,15 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(tokens[previousTokenIndex(tokens)])) {
-      const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
-        pattern.lastIndex = end;
-        tokens.push('<regexp>');
-        continue;
+    if (token === '/' || token === '%') {
+      const previous = previousTokenIndex(tokens);
+      if (expectsRegexp(tokens[previous], tokens[previousTokenIndex(tokens, previous)])) {
+        const end = regexpEnd(content, match.index);
+        if (end !== undefined) {
+          pattern.lastIndex = end;
+          tokens.push('<regexp>');
+          continue;
+        }
       }
     }
     if (token.startsWith('<<')) {
@@ -53,8 +56,9 @@ const previousTokenIndex = (tokens: string[], before = tokens.length): number =>
 
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const expectsRegexp = (previous = '\n'): boolean =>
-  /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|if|elsif|unless)$/.test(previous);
+const expectsRegexp = (token = '\n', before?: string): boolean =>
+  /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:)$/.test(token) ||
+  (before !== '.' && /^(?:!|if|elsif|unless)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
@@ -95,6 +99,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   pattern.lastIndex = start;
   let depth = 1;
   let previous = '{';
+  let beforePrevious: string | undefined;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -102,7 +107,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
     if (token === '}' && --depth === 0) return pattern.lastIndex;
     if (isTokenSpacing(token) || token.startsWith('#')) continue;
 
-    if ((token === '%' || token === '/') && expectsRegexp(previous)) {
+    if ((token === '%' || token === '/') && expectsRegexp(previous, beforePrevious)) {
       const percentString = /%([qQ]?)([^\w\s])/y;
       percentString.lastIndex = match.index;
       const string = percentString.exec(content);
@@ -111,6 +116,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
         : regexpEnd(content, match.index);
       if (end !== undefined) pattern.lastIndex = end;
     }
+    beforePrevious = previous;
     previous = token;
   }
   return undefined;
