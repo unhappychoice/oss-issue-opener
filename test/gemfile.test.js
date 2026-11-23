@@ -244,16 +244,18 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('finds production gems between divisions with a parameter named warn', () => {
-  const gemfile = `def ratio(warn)
+for (const division of ['12 /\n  3', '12/3', '12/input']) {
+  test(`finds production gems between divisions ending with ${JSON.stringify(division)}`, () => {
+    const gemfile = `def ratio(warn)
   warn /2
 end
 gem 'rack'
-result = 12 /
-  3`;
+input = 3
+result = ${division}`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
 
 test('ignores scope keywords inside a multiline regexp passed as a command argument', () => {
   const gemfile = `group :test do

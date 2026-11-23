@@ -53,7 +53,7 @@ const commandRegexpEnd = (content: string, start: number, tokens: string[]): num
     !/^[a-zA-Z_]\w*[!?]?$/.test(tokens[previousTokenIndex(tokens)] ?? '') ||
     !/^\S/.test(content[start + 1] ?? '')) return undefined;
   const end = regexpEnd(content, start);
-  if (end === undefined) return undefined;
+  if (end === undefined || /^[\p{L}\p{N}_]/u.test(content.slice(end))) return undefined;
   const literal = content.slice(start, end);
   // A spaced trailing slash can start a continued division expression.
   return /\n(?:[\s\S]*\S|[ \t]*)\/[imxounes]*$/.test(literal) ? end : undefined;
