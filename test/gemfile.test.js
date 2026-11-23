@@ -222,6 +222,38 @@ const namespaceDefinitions = [
   'consume(result = class TestHelper; end)',
 ];
 
+[
+  'pattern = /\nclass Decoy\nmodule Decoy\n/',
+  'pattern = enabled ? /\nclass Decoy\n/ : nil',
+  'pattern = enabled ? nil : /\nclass Decoy\n/',
+  'pattern = /escaped \\/\nclass Decoy\nend\n/i',
+].forEach((expression) => {
+  test(`ignores namespace keywords in ${expression}`, () => {
+    const gemfile = `group :test do
+${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps namespace scopes visible between division operators', () => {
+  const gemfile = `group :test do
+  result = 100 / 2
+  class TestHelper
+    result = 100 / 2
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [':test', ':development', ':development, :test'].forEach((group) => {
   namespaceDefinitions.forEach((definition) => {
     test(`preserves ${group} scope across ${definition}`, () => {
