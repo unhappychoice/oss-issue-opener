@@ -162,17 +162,19 @@ test('Gemfile fallback preserves group exclusions across a nested class and modu
   assert.equal(await check('rack'), true);
 });
 
-test('Gemfile fallback preserves group exclusions around a multiline percent regexp', async () => {
-  mockRubyRepository('', `group :test do
-    matcher = %r!prefix
+['matcher =', 'warn', 'Kernel.warn'].forEach((prefix) => {
+  test(`Gemfile fallback preserves group exclusions around a multiline percent regexp after ${prefix}`, async () => {
+    mockRubyRepository('', `group :test do
+    ${prefix} %r!prefix
 class RegexText
 suffix!i
     gem 'rspec'
   end
   gem 'rack'`);
 
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('rack'), true);
+    assert.equal(await check('rspec'), false);
+    assert.equal(await check('rack'), true);
+  });
 });
 
 ['warn', 'puts', 'print', 'p', 'Array', 'String', 'Kernel.warn', 'Kernel . warn'].forEach((command) => {

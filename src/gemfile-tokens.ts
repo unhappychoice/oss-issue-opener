@@ -14,7 +14,7 @@ export const gemfileTokens = (content: string): string[] => {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (((token === '/' || token === '%') && regexpExpected) ||
-      (regexpCommand && isCommandRegexp(token, tokens.at(-1), content[match.index + 1]))) {
+      (regexpCommand && isCommandRegexp(content, match.index, token, tokens.at(-1)))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined && (!regexpCommand || !/^\w$/.test(content[end] ?? ''))) {
         pattern.lastIndex = end;
@@ -69,8 +69,12 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 
 const regexpCommands = new Set(['warn', 'puts', 'print', 'p', 'Array', 'String']);
 
-const isCommandRegexp = (token: string, spacing?: string, next?: string): boolean =>
-  token === '/' && spacing !== undefined && isSpacing(spacing) && next !== undefined && !/[\s=]/.test(next);
+const isCommandRegexp = (content: string, start: number, token: string, spacing?: string): boolean => {
+  if (spacing === undefined || !isSpacing(spacing)) return false;
+  if (token === '%') return content.startsWith('%r', start);
+  const next = content[start + 1];
+  return token === '/' && next !== undefined && !/[\s=]/.test(next);
+};
 
 const readToken = (pattern: RegExp, match: RegExpExecArray, content: string, operandExpected: boolean): string => {
   if (match[0] !== '?' || !operandExpected) return match[0];
