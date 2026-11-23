@@ -1,0 +1,65 @@
+export const gemfileScope = (tokens: string[]): 'local' | 'block' | 'control' | undefined => {
+  if (opensNamespace(tokens) || (tokens[0] === 'def' && !isEndlessMethod(tokens))) return 'local';
+  if (/^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) return 'control';
+  if (tokens.includes('do')) return 'block';
+  return undefined;
+};
+
+export const gemfileStatementReader = (read: (statement: string[]) => void) => {
+  let current: string[] = [];
+  let depth = 0;
+  const push = (token: string): void => {
+    if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
+    if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
+      if (current.length) read(current);
+      current = [];
+      return;
+    }
+    if (token === '\n') return;
+    if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
+      read([...current, 'do']);
+      current = [];
+      return;
+    }
+    if (depth === 0 && token === '}') {
+      if (current.length) read(current);
+      read(['end']);
+      current = [];
+      return;
+    }
+    if (token === 'end' && depth === 0 && current.length) {
+      read(current);
+      current = [];
+    }
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    current.push(token);
+    if ((token === 'do' || token === 'end') && depth === 0) {
+      read(current);
+      current = [];
+    }
+  };
+  return { push, finish: () => { if (current.length) read(current); } };
+};
+
+const opensNamespace = (tokens: string[]): boolean => {
+  if (isNamespaceKeyword(tokens[0])) return true;
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return depth === 0 && token === '=' && isNamespaceKeyword(tokens[index + 1]);
+  });
+};
+
+const isNamespaceKeyword = (token?: string): boolean => token === 'class' || token === 'module';
+
+const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
+};

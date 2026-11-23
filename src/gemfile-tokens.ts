@@ -1,21 +1,35 @@
+import { gemfileScope, gemfileStatementReader } from './gemfile-statements.js';
+
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
-  let putsAssigned = false;
+  const scopes = [{ putsAssigned: false }];
+  const statements = gemfileStatementReader((statement) => {
+    if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
+    const kind = gemfileScope(statement);
+    if (kind === 'local') scopes.push({ putsAssigned: false });
+    if (kind === 'block') scopes.push({ ...scopes.at(-1)! });
+    if (kind === 'control') scopes.push(scopes.at(-1)!);
+  });
+  const emit = (token: string): void => {
+    tokens.push(token);
+    statements.push(token);
+  };
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const commandRegexp = token === '/' && previous === 'puts' && !putsAssigned &&
+    const scope = scopes.at(-1)!;
+    const commandRegexp = token === '/' && previous === 'puts' && !scope.putsAssigned &&
       /[ \t]/.test(content[match.index - 1] ?? '') && /\S/.test(content[match.index + 1] ?? '');
     if (commandRegexp || ((token === '/' || token === '%') && expectsRegexp(previous))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         previous = content.slice(match.index, end);
-        tokens.push(previous);
+        emit(previous);
         pattern.lastIndex = end;
         classHeader = false;
         continue;
@@ -23,14 +37,14 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (classHeader && token.startsWith('<<')) {
       pattern.lastIndex = match.index + 2;
-      tokens.push('<<');
+      emit('<<');
       previous = '<<';
       classHeader = false;
       continue;
     }
     if (!isSpacing(token)) {
       if (previous === 'puts' && token === '=' && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
-        putsAssigned = true;
+        scope.putsAssigned = true;
       }
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       previous = regexpContext(previous, token);
@@ -39,10 +53,10 @@ export const gemfileTokens = (content: string): string[] => {
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
       pending.push({ delimiter, indented });
-      tokens.push('""');
+      emit('""');
       continue;
     }
-    tokens.push(token);
+    emit(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
         pattern.lastIndex = heredocEnd(content, pattern.lastIndex, delimiter, indented);

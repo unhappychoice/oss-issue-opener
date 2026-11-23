@@ -265,6 +265,29 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['in a previous method', 'def helper; puts = 4; end', ''],
+  ['at the top level', 'puts = 4', 'def helper'],
+  ['in a previous class', 'class Helper\n  puts = 4\nend', ''],
+  ['in a previous module', 'module Helper\n  puts = 4\nend', ''],
+].forEach(([location, assignment, method]) => {
+  test(`ignores scope keywords in a regexp after assigning puts ${location}`, () => {
+    const gemfile = `${assignment}
+group :test do
+  ${method}
+  puts /start
+class Pattern
+finish/
+  ${method ? 'end' : ''}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 ['puts', 'receiver.if', 'receiver&.if', 'receiver.\nif'].forEach((call) => {
   test(`detects production gems after division of ${call}`, () => {
     const gemfile = `${call} / 2\ngem 'rack', path: '/rack'`;
