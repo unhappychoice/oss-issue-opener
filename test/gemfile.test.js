@@ -246,6 +246,9 @@ gem 'rack', path: '/rack'`;
 });
 
 [
+  'description = %!\nclass Decoy\n!',
+  'description = %{#{ %(/}) }\nclass Decoy\n}',
+  'description = %{#{ 10%-3 }\nclass Decoy\n}',
   'description = %q{\nclass Decoy\n}',
   'description = %q!\nmodule Decoy\nend\n!',
   'description = %q{nested {braces} and escaped \\}\nclass Decoy\n}',

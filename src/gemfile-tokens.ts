@@ -84,7 +84,7 @@ const percentLiteral = (type: string, open: string): Literal => ({
 });
 
 const percentLiteralStart = (content: string, index: number): RegExpExecArray | null => {
-  const pattern = /%([qQwWiIrxs])([^a-zA-Z0-9\s])/y;
+  const pattern = /%([qQwWiIrxs]?)([^a-zA-Z0-9\s])/y;
   pattern.lastIndex = index;
   return pattern.exec(content);
 };
@@ -132,12 +132,18 @@ const scanInterpolation = (content: string, index: number, frames: (Literal | un
     return newline < 0 ? content.length : newline;
   } else if (char === '%') {
     const match = percentLiteralStart(content, index);
-    if (match) {
+    if (match && (match[1] || followsInterpolationOperator(content, index))) {
       frames.push(percentLiteral(match[1], match[2]));
       return index + match[0].length - 1;
     }
   }
   return index;
+};
+
+const followsInterpolationOperator = (content: string, index: number): boolean => {
+  let previous = index - 1;
+  while (/[\t \r\n]/.test(content[previous] ?? '')) previous--;
+  return /[=([{,?:!~&|+*/%-]/.test(content[previous] ?? '');
 };
 
 const previousTokenIndex = (tokens: string[], index = tokens.length - 1): number => {
