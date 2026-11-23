@@ -61,7 +61,8 @@ const expectsRegexpAfter = (tokens: string[]): boolean => {
 };
 
 const startsCommandRegexp = (tokens: string[], next: string | undefined): boolean => {
-  if (!next || /\s/.test(next) || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
+  // Prefer division for a numeric operand after an ambiguous bare identifier.
+  if (!next || /[\s0-9]/.test(next) || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
   const index = previousTokenIndex(tokens);
   if (!/^[a-z_]\w*[!?]?$/.test(tokens[index] ?? '')) return false;
   const before = previousTokenIndex(tokens, index);

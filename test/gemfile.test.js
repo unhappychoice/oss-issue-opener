@@ -258,8 +258,18 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('detects a production gem between division and a slash in a comment', () => {
+  const gemfile = `value = 8
+value /2
+gem 'rack'
+# /`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 [
   'matcher = /prefix\nclass RegexText\nsuffix/',
+  'matcher = /2\nclass RegexText\nsuffix/',
   'matcher = /prefix\nend\ngem "ignored"\nsuffix/',
   'matcher = /prefix\\/\nmodule RegexText\nsuffix/i',
   'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
