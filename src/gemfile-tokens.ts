@@ -1,11 +1,17 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    const literalEnd = regexpEnd(content, match.index, token, tokens[previousTokenIndex(tokens)]);
+    if (literalEnd !== undefined) {
+      tokens.push(content.slice(match.index, literalEnd));
+      pattern.lastIndex = literalEnd;
+      continue;
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -26,6 +32,81 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const expectsRegexp = (previous?: string): boolean =>
+  previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\||do|if|elsif|unless)$/.test(previous);
+
+const regexpEnd = (
+  content: string, start: number, token: string, previous?: string,
+): number | undefined => {
+  if ((token !== '/' && token !== '%') || !expectsRegexp(previous)) return undefined;
+  const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
+  if (end === undefined) return undefined;
+  const options = /[imxounes]*/y;
+  options.lastIndex = end;
+  options.exec(content);
+  return options.lastIndex;
+};
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalEnd = (
+  content: string, start: number, opening: string, interpolates: boolean,
+): number | undefined => {
+  const closing = pairedDelimiters.get(opening) ?? opening;
+  let depth = 1;
+  for (let index = start; index < content.length; index++) {
+    const char = content[index];
+    if (char === '\\') {
+      index++;
+    } else if (char === closing) {
+      if (--depth === 0) return index + 1;
+    } else if (interpolates && char === '#' && content[index + 1] === '{') {
+      const end = interpolationEnd(content, index + 2);
+      if (end === undefined) return undefined;
+      index = end - 1;
+    } else if (char === opening) {
+      depth++;
+    }
+  }
+  return undefined;
+};
+
+const interpolationEnd = (content: string, start: number): number | undefined => {
+  const pattern = new RegExp(tokenPattern, 'gy');
+  pattern.lastIndex = start;
+  let depth = 1;
+  let previous = '{';
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    const token = match[0];
+    if (token.startsWith('#') || token.startsWith('=begin') || isTokenSpacing(token)) continue;
+    const end = regexpEnd(content, match.index, token, previous) ??
+      (token === '%' && expectsRegexp(previous) ? percentStringEnd(content, match.index) : undefined);
+    if (end !== undefined) {
+      pattern.lastIndex = end;
+      previous = 'literal';
+      continue;
+    }
+    if (token === '{') depth++;
+    if (token === '}' && --depth === 0) return pattern.lastIndex;
+    previous = token;
+  }
+  return undefined;
+};
+
+const percentStringEnd = (content: string, start: number): number | undefined => {
+  const opening = /%([qQ]?)([^\w\s\u0080-\uffff])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  return match ? literalEnd(content, opening.lastIndex, match[2], match[1] !== 'q') : undefined;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {

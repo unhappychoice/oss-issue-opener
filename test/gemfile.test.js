@@ -259,3 +259,21 @@ value /
 
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
+
+[
+  '/first\\/line\nclass TestHelper\ngem "ignored"\nlast/im',
+  '/first\nend\ngem "ignored"\nlast/',
+  '%r{first{nested}\nclass TestHelper\ngem "ignored"\nlast}x',
+  'enabled ? /first\nclass TestHelper\nlast/ : /other\nmodule TestHelpers\nlast/',
+  '/first#{%q(/}) + /nested/.source}\nclass TestHelper\nlast/',
+].forEach((literal) => {
+  test(`ignores scope keywords inside ${literal}`, () => {
+    const gemfile = `group :test do
+  pattern = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
