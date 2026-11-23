@@ -247,10 +247,11 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('finds a production gem with a relative path after division of a local variable', () => {
+test('finds a production gem between two division expressions', () => {
   const gemfile = `warn = 10
 warn /2
-gem 'rack', path: './'`;
+gem 'rack'
+ratio = 12 / 3`;
 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
@@ -258,6 +259,11 @@ gem 'rack', path: './'`;
 [
   `warn /prefix
 class RegexText
+suffix/`,
+  `warn == nil
+warn /2
+end
+gem 'rspec'
 suffix/`,
   `puts /prefix
 class RegexText

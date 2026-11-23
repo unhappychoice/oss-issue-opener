@@ -2,11 +2,16 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  const assignedCommands = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const commandRegexp = token === '/' && startsCommandRegexp(tokens, content[pattern.lastIndex]);
+    if (token === '=' && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
+      const name = bareCommandName(tokens);
+      if (name !== undefined) assignedCommands.add(name);
+    }
+    const commandRegexp = token === '/' && startsCommandRegexp(tokens, assignedCommands, content[pattern.lastIndex]);
     if ((token === '/' || token === '%') && (commandRegexp || expectsExpression(tokens))) {
       const end = literalEnd(content, match.index);
       // A slash inside a later quoted argument can look like the end of a command regexp.
@@ -40,12 +45,18 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
-const startsCommandRegexp = (tokens: string[], nextCharacter?: string): boolean => {
+const startsCommandRegexp = (tokens: string[], assignedCommands: ReadonlySet<string>, nextCharacter?: string): boolean => {
   if (!nextCharacter || /\s/.test(nextCharacter) || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
+  const name = bareCommandName(tokens);
+  return name !== undefined && !assignedCommands.has(name);
+};
+
+const bareCommandName = (tokens: string[]): string | undefined => {
   const index = previousTokenIndex(tokens);
-  if (!['warn', 'puts'].includes(tokens[index])) return false;
+  const name = tokens[index];
+  if (name !== 'warn' && name !== 'puts') return undefined;
   const before = tokens[previousTokenIndex(tokens, index - 1)] ?? '\n';
-  return ['\n', ';', 'do'].includes(before);
+  return ['\n', ';', 'do'].includes(before) ? name : undefined;
 };
 
 const expectsExpression = (tokens: string[]): boolean => {
