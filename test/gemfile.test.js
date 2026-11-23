@@ -250,6 +250,8 @@ test('recognizes a heredoc argument after a method named class', () => {
   ['%r!', '!x'],
   ['! /', '/x'],
   ['enabled ? /', '/x : nil'],
+  ['enabled and /', '/x'],
+  ['enabled or %r{', '}x'],
 ].forEach(([opening, closing]) => {
   test(`keeps multiline regexp contents out of Gemfile scopes (${opening})`, () => {
     const gemfile = `group :test do
@@ -286,6 +288,7 @@ gem 'rack'`;
 [
   ['a destructured local variable', '(warn, divisor) = [8, 2]\nwarn /divisor'],
   ['a keyword-shaped method name', 'receiver.if / 2'],
+  ['a method named and', 'receiver.and / 2'],
 ].forEach(([description, expression]) => {
   test(`detects a production gem after division involving ${description}`, () => {
     const gemfile = `group :test do

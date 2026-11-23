@@ -55,7 +55,7 @@ const expectsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   const previous = tokens[index] ?? '\n';
   return /^(?:\n|;|=|=>|~|\(|\[|\{|,|[?!:&|])$/.test(previous) ||
-    (/^(?:do|if|elsif|unless|when|return)$/.test(previous) &&
+    (/^(?:do|if|elsif|unless|when|return|and|or)$/.test(previous) &&
       tokens[previousTokenIndex(tokens, index)] !== '.');
 };
 
