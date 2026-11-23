@@ -2,17 +2,15 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const slashRegexp = /\/(?:\\[\s\S]|[^/\\])*\/[imxounes]*/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' && canStartRegexp(tokens)) {
-      slashRegexp.lastIndex = match.index;
-      const literal = slashRegexp.exec(content);
-      if (literal) {
-        tokens.push(literal[0]);
-        pattern.lastIndex = slashRegexp.lastIndex;
+    if ((token === '/' || token === '%') && canStartRegexp(tokens)) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        tokens.push(content.slice(match.index, end));
+        pattern.lastIndex = end;
         continue;
       }
     }
@@ -47,6 +45,69 @@ const followsClassKeyword = (tokens: string[]): boolean => {
 
 const canStartRegexp = (tokens: string[]): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:)$/.test(tokens[previousTokenIndex(tokens)] ?? '\n');
+
+type Literal = { open: string; close: string; interpolates: boolean };
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const percentLiteral = (type: string, open: string): Literal => ({
+  open,
+  close: pairedDelimiters.get(open) ?? open,
+  interpolates: !/[qwis]/.test(type),
+});
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const percent = /%r([^\w\s])/y;
+  percent.lastIndex = start;
+  const match = percent.exec(content);
+  const literal = match ? percentLiteral('r', match[1]) : { open: '/', close: '/', interpolates: true };
+  if (!match && content[start] !== '/') return undefined;
+  const end = literalEnd(content, match ? percent.lastIndex : start + 1, literal);
+  if (end === undefined) return undefined;
+  const options = /[imxounes]*/y;
+  options.lastIndex = end;
+  options.exec(content);
+  return options.lastIndex;
+};
+
+const literalEnd = (content: string, start: number, literal: Literal): number | undefined => {
+  const frames: (Literal | undefined)[] = [literal];
+  for (let index = start; index < content.length; index++) {
+    const frame = frames.at(-1);
+    const char = content[index];
+    if (char === '\\') index++;
+    else if (!frame) index = scanInterpolation(content, index, frames);
+    else if (char === frame.close) frames.pop();
+    else if (char === frame.open) frames.push(frame);
+    else if (frame.interpolates && char === '#' && content[index + 1] === '{') {
+      frames.push(undefined);
+      index++;
+    }
+    if (frames.length === 0) return index + 1;
+  }
+  return undefined;
+};
+
+const scanInterpolation = (content: string, index: number, frames: (Literal | undefined)[]): number => {
+  const char = content[index];
+  if (char === '{') frames.push(undefined);
+  else if (char === '}') frames.pop();
+  else if (char === '"' || char === "'" || char === '`') {
+    frames.push({ open: char, close: char, interpolates: char !== "'" });
+  } else if (char === '#') {
+    const newline = content.indexOf('\n', index);
+    return newline < 0 ? content.length : newline;
+  } else if (char === '%') {
+    const percent = /%([qQwWiIrxs])([^\w\s])/y;
+    percent.lastIndex = index;
+    const match = percent.exec(content);
+    if (match) {
+      frames.push(percentLiteral(match[1], match[2]));
+      return percent.lastIndex - 1;
+    }
+  }
+  return index;
+};
 
 const previousTokenIndex = (tokens: string[], index = tokens.length - 1): number => {
   while (index >= 0 && isTokenSpacing(tokens[index])) index--;
