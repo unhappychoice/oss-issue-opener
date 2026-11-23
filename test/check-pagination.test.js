@@ -90,7 +90,7 @@ test('shares four suite slots across repositories for the full pagination and yi
     const octokit = getOctokit();
     t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
     t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-    t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
+    t.mock.method(octokit.repos, 'listCommitStatusesForRef', async () => ({ data: [] }));
     t.mock.method(octokit.checks, 'listSuitesForRef', async () => ({ data: { total_count: 1000 } }));
     const requests = [];
     const firstUrl = `https://api.github.com/repos/owner/repo/commits/${sha}/check-runs?per_page=100`;
@@ -143,7 +143,7 @@ test('shares four suite slots across repositories for the full pagination and yi
   test(name, async (t) => {
     initOctokit('test-token');
     const octokit = getOctokit();
-    t.mock.method(octokit.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
+    t.mock.method(octokit.repos, 'listCommitStatusesForRef', async () => ({ data: [] }));
     const pageError = Object.assign(new Error('Check run page unavailable'), { status: 503 });
     const suites = Array.from({ length: 1001 }, (_, i) => ({ id: 1001 - i }));
     const success = { name: 'build', status: 'completed', conclusion: 'success' };
