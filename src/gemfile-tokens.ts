@@ -6,9 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   let regexpExpected = true;
   let classHeader = false;
   let regexpCommand = false;
-  let afterKernelDot = false;
-  const assignedCommands = new Set<string>();
-  const assignment = /[^\S\n]*=(?!=|~|>)/y;
+  const assignedNames = new Set<string>();
+  const assignment = /[^\S\n]*(?:&&|\|\||[+*/%&|^<>-])?=(?!=|~|>)/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
@@ -36,13 +35,16 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      regexpCommand = afterKernelDot && regexpCommands.has(token);
-      if (regexpCommands.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
-        assignment.lastIndex = pattern.lastIndex;
-        if (assignment.test(content)) assignedCommands.add(token);
-        regexpCommand = !assignedCommands.has(token);
+      regexpCommand = false;
+      if (isMethodName(token)) {
+        if (previous === '.') {
+          regexpCommand = true;
+        } else if (!rubyKeywords.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
+          assignment.lastIndex = pattern.lastIndex;
+          if (assignment.test(content)) assignedNames.add(token);
+          regexpCommand = !assignedNames.has(token);
+        }
       }
-      afterKernelDot = token === '.' && previous === 'Kernel';
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;
@@ -68,7 +70,14 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const regexpCommands = new Set(['warn', 'puts', 'print', 'p', 'Array', 'String', 'log', 'describe']);
+const isMethodName = (token: string): boolean => /^[a-zA-Z_]\w*[!?]?$/.test(token);
+
+const rubyKeywords = new Set([
+  'BEGIN', 'END', '__ENCODING__', '__FILE__', '__LINE__', 'alias', 'and', 'begin', 'break', 'case', 'class',
+  'def', 'defined?', 'do', 'else', 'elsif', 'end', 'ensure', 'false', 'for', 'if', 'in', 'module', 'next',
+  'nil', 'not', 'or', 'redo', 'rescue', 'retry', 'return', 'self', 'super', 'then', 'true', 'undef',
+  'unless', 'until', 'when', 'while', 'yield',
+]);
 
 const isCommandLiteral = (content: string, start: number, token: string, spacing?: string): boolean => {
   if (spacing === undefined || !isSpacing(spacing)) return false;

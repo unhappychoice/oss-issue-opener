@@ -177,21 +177,8 @@ suffix!i
   });
 });
 
-test('Gemfile fallback preserves production gems after a multiline regexp passed to log', async () => {
-  mockRubyRepository('', `group :test do
-    log /prefix
-class RegexText
-module RegexText
-suffix/
-    gem 'rspec'
-  end
-  gem 'rack'`);
-
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('rack'), true);
-});
-
-['warn', 'puts', 'print', 'p', 'Array', 'String', 'Kernel.warn', 'Kernel . warn', 'describe'].forEach((command) => {
+['warn', 'puts', 'print', 'p', 'Array', 'String', 'Kernel.warn', 'Kernel . warn', 'describe',
+  'log', 'register_pattern', 'matcher.register_pattern'].forEach((command) => {
   test(`Gemfile fallback preserves group exclusions around a regexp passed to ${command}`, async () => {
     mockRubyRepository('', `group :test do
       ${command} /prefix
