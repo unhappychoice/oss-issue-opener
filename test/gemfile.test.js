@@ -317,14 +317,20 @@ gem 'rack'`;
   });
 });
 
-const multilinePercentStrings = [
+const multilinePercentLiterals = [
   ['%q', '%q!#{literal text}\nclass Fake\nmodule Fake\ngem "ignored"\n!'],
   ['%Q', '%Q{nested {text} and #{%q!}!}\nclass Fake\nmodule Fake\ngem "ignored"\n}'],
   ['%', '%[escaped \\]\nclass Fake\nmodule Fake\ngem "ignored"\n]'],
+  ['%w', '%w!escaped \\!\nclass Fake\nmodule Fake\n!'],
+  ['%W', '%W!#{%w!nested words!}\nclass Fake\n!'],
+  ['%i', '%i[plain\nclass Fake\n]'],
+  ['%I', '%I!#{%i!nested symbols!}\nmodule Fake\n!'],
+  ['%s', '%s!#{literal text}\nclass Fake\n!'],
+  ['%x', '%x!#{%q!nested!}\nclass Fake\n!'],
 ];
 
-multilinePercentStrings.forEach(([form, literal]) => {
-  test(`ignores scope keywords in multiline ${form} strings`, () => {
+multilinePercentLiterals.forEach(([form, literal]) => {
+  test(`ignores scope keywords in multiline ${form} literals`, () => {
     const gemfile = `group :test do
   description = ${literal}
   gem 'rspec'

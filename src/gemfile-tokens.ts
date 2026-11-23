@@ -63,11 +63,11 @@ const expectsLiteral = (token = '\n', before?: string): boolean =>
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const expressionLiteralEnd = (content: string, start: number): number | undefined => {
-  const percentString = /%([qQ]?)([^\w\s])/y;
-  percentString.lastIndex = start;
-  const string = percentString.exec(content);
-  return string
-    ? literalEnd(content, percentString.lastIndex, string[2], string[1] !== 'q')
+  const percentLiteral = /%([qQwWiIsx]?)([^\w\s])/y;
+  percentLiteral.lastIndex = start;
+  const literal = percentLiteral.exec(content);
+  return literal
+    ? literalEnd(content, percentLiteral.lastIndex, literal[2], !/^[qwis]$/.test(literal[1]))
     : regexpEnd(content, start);
 };
 
