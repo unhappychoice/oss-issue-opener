@@ -6,6 +6,14 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push('<regexp>');
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -42,6 +50,37 @@ const previousTokenIndex = (tokens: string[], before = tokens.length): number =>
 };
 
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const expectsRegexp = (tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  const previous = tokens[index] ?? '\n';
+  return /^(?:\n|;|=|=>|~|\(|\[|\{|,|[?!:&|])$/.test(previous) ||
+    (/^(?:do|if|elsif|unless|when|return)$/.test(previous) &&
+      tokens[previousTokenIndex(tokens, index)] !== '.');
+};
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const opener = /\/|%r([^a-zA-Z0-9\s\u0080-\uffff])/y;
+  opener.lastIndex = start;
+  const match = opener.exec(content);
+  if (!match) return undefined;
+  const opening = match[1] ?? '/';
+  const closing = pairedDelimiters.get(opening) ?? opening;
+  let depth = 1;
+  for (let index = opener.lastIndex; index < content.length; index++) {
+    const char = content[index];
+    if (char === '\\') index++;
+    else if (char === closing && --depth === 0) {
+      const options = /[imxounes]*/y;
+      options.lastIndex = index + 1;
+      options.exec(content);
+      return options.lastIndex;
+    } else if (opening !== closing && char === opening) depth++;
+  }
+  return undefined;
+};
 
 const heredocEnd = (content: string, start: number, delimiter: string, indented: boolean): number => {
   const lines = /([^\n]*)(?:\n|$)/g;

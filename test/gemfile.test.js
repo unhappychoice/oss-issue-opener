@@ -244,6 +244,27 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['/', '/x'],
+  ['%r{', '}x'],
+  ['%r!', '!x'],
+  ['enabled ? /', '/x : nil'],
+].forEach(([opening, closing]) => {
+  test(`keeps multiline regexp contents out of Gemfile scopes (${opening})`, () => {
+    const gemfile = `group :test do
+  pattern = ${opening}
+class NotAClass
+gem 'hidden'
+[{escaped\\/${opening === '%r!' ? '\\!' : ''}}]
+${closing}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 test('detects a production gem after division of a destructured local variable', () => {
   const gemfile = `group :test do
   class TestHelper
