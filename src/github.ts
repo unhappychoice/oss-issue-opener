@@ -368,6 +368,18 @@ export const completeIssue = async (
   return true;
 };
 
+export const updateIssueBody = async (
+  owner: string, repo: string, issue_number: number,
+  revise: (issue: Awaited<ReturnType<Octokit['issues']['get']>>['data']) => string | undefined
+): Promise<boolean> => {
+  const client = getOctokit();
+  const params = { owner, repo, issue_number };
+  const body = revise((await client.issues.get(params)).data);
+  if (body === undefined) return false;
+  await client.issues.update({ ...params, body });
+  return true;
+};
+
 export const createIssue = async (
   owner: string,
   repo: string,
