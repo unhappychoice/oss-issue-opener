@@ -270,16 +270,6 @@ gem 'rack'`;
   });
 });
 
-test('finds a production gem between two divisions when warn is a block parameter', () => {
-  const gemfile = `[10].each do |warn|
-  warn /2
-end
-gem 'rack'
-ratio = 12 / 3`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
@@ -313,6 +303,36 @@ end
 gem 'rack'
 ratio = 12 / 3`;
 
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['warn', 'puts'].forEach((command) => {
+  test(`finds a production gem between two divisions with a ${command} block parameter`, () => {
+    const gemfile = `[10].each do |${command}|
+  ${command} /2
+end
+gem 'rack'
+ratio = 12 /
+  3`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+
+  test(`keeps bare ${command} regexps opaque after a block parameter goes out of scope`, () => {
+    const gemfile = `[10].each do |${command}|
+  ${command} /2
+end
+group :test do
+  ${command} /prefix
+class RegexText
+/
+  gem 'rspec'
+end
+gem 'rack'
+ratio = 12 / 3`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });

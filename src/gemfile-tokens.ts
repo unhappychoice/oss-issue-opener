@@ -2,22 +2,18 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = tokenPattern();
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const localAssignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;
-  let warnAssigned = false;
+  const commandLocals = commandLocalScopes(content);
   let previous = '\n';
   let regexpExpected = true;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (!warnAssigned && token === 'warn' && !['.', ':', '@', '$'].includes(previous)) {
-      localAssignment.lastIndex = pattern.lastIndex;
-      warnAssigned = localAssignment.test(content);
-    }
-    const warnRegexp = token === '/' && previous === 'warn' && !warnAssigned && startsWarnRegexp(content, match.index);
-    if (((token === '/' || token === '%') && regexpExpected) || warnRegexp) {
+    const commandRegexp = token === '/' && isBareRegexpCommand(previous) &&
+      !commandLocals.has(previous) && startsCommandRegexp(content, match.index, previous);
+    if (((token === '/' || token === '%') && regexpExpected) || commandRegexp) {
       const literal = readRegexp(content, match.index);
-      if (literal && (!warnRegexp || endsWarnRegexp(content, match.index + literal.length))) {
+      if (literal && (!commandRegexp || endsCommandRegexp(content, match.index + literal.length))) {
         pattern.lastIndex = match.index + literal.length;
         tokens.push(literal);
         previous = literal;
@@ -26,10 +22,12 @@ export const gemfileTokens = (content: string): string[] => {
       }
     }
     if (!isTokenSpacing(token)) {
+      commandLocals.track(token, previous, pattern.lastIndex);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;
     }
     if (token.startsWith('<<')) {
+      // In a singleton class header, << starts the receiver expression.
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
         pattern.lastIndex -= token.length - 2;
@@ -51,12 +49,46 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const startsWarnRegexp = (content: string, start: number): boolean => {
-  const lineStart = Math.max(content.lastIndexOf('\n', start), content.lastIndexOf(';', start)) + 1;
-  return /^[\t ]*warn[\t ]+$/.test(content.slice(lineStart, start)) && /^\S/.test(content.slice(start + 1, start + 2));
+const isBareRegexpCommand = (token: string): boolean => token === 'warn' || token === 'puts';
+
+const commandLocalScopes = (content: string) => {
+  const locals = new Set<string>();
+  const scopes: Set<string>[] = [];
+  const assignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;
+  const parameters = /\s*\|([^|]*)\|/y;
+  let loopHeader = false;
+
+  return {
+    has: (name: string) => locals.has(name) || scopes.some((scope) => scope.has(name)),
+    track(token: string, previous: string, offset: number) {
+      const statementStart = previous === '\n' || previous === ';' || previous === 'do' || previous === '{';
+      if (statementStart) loopHeader = /^(?:while|until|for)$/.test(token);
+      if (token === 'end' || token === '}') {
+        scopes.pop();
+      } else if (token === 'do' || token === '{') {
+        if (token === 'do' && loopHeader) return;
+        parameters.lastIndex = offset;
+        const names = parameters.exec(content)?.[1].split(/[,;]/).map((parameter) =>
+          parameter.trim().match(/^(?:[*&]+)?(\w+)/)?.[1] ?? '');
+        scopes.push(new Set(names?.filter(isBareRegexpCommand)));
+      } else if ((statementStart || previous === '=') &&
+        /^(?:class|module|if|unless|case|begin|while|until|for)$/.test(token)) {
+        scopes.push(new Set());
+      } else if (isBareRegexpCommand(token) && !['.', ':', '@', '$'].includes(previous)) {
+        assignment.lastIndex = offset;
+        if (assignment.test(content)) locals.add(token);
+      }
+    },
+  };
 };
 
-const endsWarnRegexp = (content: string, end: number): boolean => {
+const startsCommandRegexp = (content: string, start: number, command: string): boolean => {
+  const lineStart = Math.max(content.lastIndexOf('\n', start), content.lastIndexOf(';', start)) + 1;
+  const prefix = content.slice(lineStart, start);
+  return prefix.trim() === command && /[\t ]$/.test(prefix) && /^\S/.test(content.slice(start + 1, start + 2));
+};
+
+const endsCommandRegexp = (content: string, end: number): boolean => {
   // A later division slash can look like the closing delimiter of a bare argument.
   const boundary = /[^\S\n]*(?:[\n#,;)]|$)/y;
   boundary.lastIndex = end;
