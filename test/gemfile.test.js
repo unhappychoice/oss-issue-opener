@@ -253,9 +253,11 @@ gem 'rack'`;
 
 test('keeps namespace scopes visible between division operators', () => {
   const gemfile = `group :test do
-  result = 100 / 2
+  result = metrics.if / 2
   class TestHelper
     result = 100 / 2
+  end
+  if 100 / 2 / 5
   end
   gem 'rspec'
 end
@@ -263,6 +265,27 @@ gem 'rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+[
+  ['if', 'if /\nclass Decoy\n/\nend'],
+  ['unless', 'unless %r!\nmodule Decoy\n!\nend'],
+  ['elsif', 'if enabled\nelsif /\nclass Decoy\n/\nend'],
+  ['while', 'while /\nclass Decoy\n/\nend'],
+  ['until', 'until /\nclass Decoy\n/\nend'],
+  ['when', 'case input\nwhen /\nclass Decoy\n/\nend'],
+  ['case', 'case /\nclass Decoy\n/\nwhen input\nend'],
+].forEach(([keyword, conditional]) => {
+  test(`ignores namespace keywords in a regexp after ${keyword}`, () => {
+    const gemfile = `group :test do
+${conditional}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 [':test', ':development', ':development, :test'].forEach((group) => {

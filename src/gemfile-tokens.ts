@@ -43,8 +43,13 @@ const followsClassKeyword = (tokens: string[]): boolean => {
   return index < 0 || ['\n', ';', 'do', '{', '=', '(', ','].includes(tokens[index]);
 };
 
-const canStartRegexp = (tokens: string[]): boolean =>
-  /^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|\{|,|\?|:)$/.test(tokens[previousTokenIndex(tokens)] ?? '\n');
+const canStartRegexp = (tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  const previous = tokens[index] ?? '\n';
+  if (/^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|\{|,|\?|:)$/.test(previous)) return true;
+  return /^(?:if|unless|elsif|while|until|case|when)$/.test(previous) &&
+    tokens[previousTokenIndex(tokens, index - 1)] !== '.';
+};
 
 type Literal = { open: string; close: string; interpolates: boolean };
 
