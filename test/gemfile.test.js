@@ -231,9 +231,10 @@ const namespaceDefinitions = [
   'consume(result = class TestHelper; end)',
 ];
 
-test('ignores scope keywords in a multiline regexp passed to warn', () => {
-  const gemfile = `group :test do
-  warn /first
+['warn', 'puts'].forEach((command) => {
+  test(`ignores scope keywords in a multiline regexp passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} /first
 class RegexText
 gem "ignored"
 last/
@@ -241,9 +242,10 @@ last/
 end
 gem 'rack'`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
 });
 
 [

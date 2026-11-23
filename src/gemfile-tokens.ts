@@ -54,16 +54,17 @@ const literalEndAt = (content: string, start: number, token: string, tokens: str
 const followsRegexpCommand = (tokens: string[]): boolean => {
   if (!/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
   const method = previousTokenIndex(tokens);
+  const command = tokens[method];
   const separator = previousTokenIndex(tokens, method - 1);
-  if (tokens[separator] === '.') return /^[a-z_]\w*[!?]?$/.test(tokens[method] ?? '');
-  return tokens[method] === 'warn' &&
+  if (tokens[separator] === '.') return /^[a-z_]\w*[!?]?$/.test(command ?? '');
+  return (command === 'warn' || command === 'puts') &&
     expectsExpression(tokens[separator] ?? '\n', tokens[previousTokenIndex(tokens, separator - 1)]) &&
-    !tokens.some(isWarnAssignment);
+    !tokens.some((token, index) => isCommandAssignment(command, token, index, tokens));
 };
 
-const isWarnAssignment = (token: string, index: number, tokens: string[]): boolean => {
-  if (token === 'warn=') return true;
-  if (token !== 'warn' || tokens[previousTokenIndex(tokens, index - 1)] === '.') return false;
+const isCommandAssignment = (command: string, token: string, index: number, tokens: string[]): boolean => {
+  if (token === `${command}=`) return true;
+  if (token !== command || tokens[previousTokenIndex(tokens, index - 1)] === '.') return false;
   while (isTokenSpacing(tokens[++index] ?? '')) {}
   return /^(?:=(?![=~])|(?:&&|\|\||[+*/%&|^-])=)/.test(tokens.slice(index, index + 2).join(''));
 };
