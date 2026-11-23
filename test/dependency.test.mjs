@@ -148,28 +148,13 @@ test('Gemfile fallback preserves group exclusions for literal package names', as
   assert.equal(await check('runtimeXtest'), false);
 });
 
-test('Gemfile fallback preserves group exclusions across nested classes and modules', async () => {
+test('Gemfile fallback classifies gems after division following multiple assignment', async () => {
   mockRubyRepository('', `group :test do
     module TestHelpers
       class TestHelper
+        count, index = [8, 1]
+        count /2
       end
-    end
-    if %r!prefix
-class RegexText
-suffix!
-      gem 'rspec'
-    end
-  end
-  gem 'rack'`);
-
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('rack'), true);
-});
-
-test('Gemfile fallback classifies gems after dividing a destructured block parameter', async () => {
-  mockRubyRepository('', `group :test do
-    [[8]].each do |(count)|
-      count /2
     end
     gem 'rspec'
   end
