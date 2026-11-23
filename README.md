@@ -64,8 +64,8 @@ Supported Languages. There is no override for an unrecognized ecosystem; its
 `unknown` fallback checks `src/` changes only and ignores dependency bump commits.
 
 Both `npm run start` and `npm run check` run the scan and create issues;
-`npm run check` builds first. There is no dry-run mode. Existing open issues with
-the same title and matching `ci-failure` or `pending-release` label are skipped.
+`npm run check` builds first. There is no dry-run mode. Matching open issues prevent duplicates. Subsequent failures update eligible CI alerts with
+additional checks to verify before closure.
 
 ## Quick Start
 
@@ -144,7 +144,7 @@ All detected issues are collected, sorted by:
 1. Issue type (`ci-failure` first, then `pending-release`)
 2. Repository name (alphabetically)
 
-Then created in batch, skipping any that already exist.
+Then processed in batch, creating missing issues and updating recovery metadata on existing CI alerts.
 Creation failures are logged per issue, and remaining issues are still attempted.
 After the batch, any failures are reported together and the process exits with a nonzero status.
 
@@ -162,7 +162,7 @@ recorded job name and workflow ID. A missing, pending, skipped, neutral, or
 unreadable recorded check leaves the issue open. The scanner comments with a link
 to the verified commit and closes the issue as completed.
 
-Alerts require manual closure when the initial CI scan could not retrieve all
+Alerts require manual closure when any failing CI scan could not retrieve all
 results, when the recovery metadata is missing, when a check run has no verified
 GitHub Actions workflow ID, or when the complete check list cannot fit in the
 metadata. Linear links do not affect eligibility.
