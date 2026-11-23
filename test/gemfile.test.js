@@ -207,7 +207,13 @@ gem 'rack'`;
   });
 });
 
-['warn = 10\nwarn /2', 'puts = 10\nputs /2', 'ratio = receiver.if / 2', 'slash = ?/'].forEach((expression) => {
+[
+  'warn = 10\nwarn /2',
+  'puts = 10\nputs /2',
+  'print = 10\nprint /2',
+  'ratio = receiver.if / 2',
+  'slash = ?/',
+].forEach((expression) => {
   test(`finds a production gem with a path after ${expression}`, () => {
     const gemfile = `${expression}
 gem 'rack', path: '/rack'`;
@@ -231,7 +237,7 @@ const namespaceDefinitions = [
   'consume(result = class TestHelper; end)',
 ];
 
-['warn', 'puts'].forEach((command) => {
+['warn', 'puts', 'print'].forEach((command) => {
   test(`ignores scope keywords in a multiline regexp passed to ${command}`, () => {
     const gemfile = `group :test do
   ${command} /first
