@@ -287,6 +287,26 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+['[warn]', '[[0], warn] if enabled', '[*warn]'].forEach((pattern) => {
+  test(`detects division involving a warn variable bound by in ${pattern}`, () => {
+    const gemfile = `divisor = 2
+group :test do
+  module TestHelpers
+    class Helper; end
+  end
+  enabled = true
+  case ${pattern.startsWith('[[') ? '[[0], 8]' : '[8]'}
+  in ${pattern}
+    warn /divisor unless warn.is_a?(Array)
+  end
+  gem 'rspec', path: '/rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 test('detects division of a local warn assigned inside a conditional', () => {
   const gemfile = `if enabled
   warn = 8
@@ -439,6 +459,7 @@ gem 'rack', path: '/rack'`;
   'warn /first\nclass TestHelper\ngem "ignored"\nlast/',
   'Kernel.warn /first\nend\ngem "ignored"\nlast/',
   'warn = 8\n  Kernel.warn /first\nend\ngem "ignored"\nlast/',
+  'case [[0, nil]]\n  in [^([0, warn])]\n    warn /first\nend\ngem "ignored"\nlast/\n  end',
   'def matcher\n    return /first\nclass TestHelper\ngem "ignored"\nlast/\n  end',
   'def matcher\n    return %r{first\nclass TestHelper\ngem "ignored"\nlast}\n  end',
   'def matcher(value = [warn])\n    warn /first\nclass TestHelper\ngem "ignored"\nlast/\n  end',

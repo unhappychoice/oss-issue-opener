@@ -61,11 +61,24 @@ const hasLocalBinding = (tokens: string[], name: string): boolean => {
       local = { bound: false };
     } else if (statement.at(-1) === 'do' && hasBlockParameter(statements[index + 1] ?? [], name)) {
       local = { bound: true };
-    } else if (assignsLocal(statement, name)) {
+    } else if (assignsLocal(statement, name) || bindsArrayPatternLocal(statement, name)) {
       local.bound = true;
     }
   });
   return local.bound;
+};
+
+const bindsArrayPatternLocal = (statement: string[], name: string): boolean => {
+  if (statement[0] !== 'in' || statement[1] !== '[') return false;
+  let depth = 1;
+  for (let index = 2; index < statement.length && depth > 0; index++) {
+    const token = statement[index];
+    if (depth === 1 && token === name && ['[', ',', '*'].includes(statement[index - 1]) &&
+      [',', ']'].includes(statement[index + 1])) return true;
+    if (['[', '(', '{'].includes(token)) depth++;
+    if ([']', ')', '}'].includes(token)) depth--;
+  }
+  return false;
 };
 
 const assignsLocal = (statement: string[], name: string): boolean => {
