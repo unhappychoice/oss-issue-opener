@@ -316,3 +316,21 @@ gem 'rack'`;
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });
 });
+
+const multilinePercentStrings = [
+  ['%q', '%q!#{literal text}\nclass Fake\nmodule Fake\ngem "ignored"\n!'],
+  ['%Q', '%Q{nested {text} and #{%q!}!}\nclass Fake\nmodule Fake\ngem "ignored"\n}'],
+  ['%', '%[escaped \\]\nclass Fake\nmodule Fake\ngem "ignored"\n]'],
+];
+
+multilinePercentStrings.forEach(([form, literal]) => {
+  test(`ignores scope keywords in multiline ${form} strings`, () => {
+    const gemfile = `group :test do
+  description = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});

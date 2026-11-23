@@ -8,11 +8,11 @@ export const gemfileTokens = (content: string): string[] => {
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '/' || token === '%') {
       const previous = previousTokenIndex(tokens);
-      if (expectsRegexp(tokens[previous], tokens[previousTokenIndex(tokens, previous)])) {
-        const end = regexpEnd(content, match.index);
+      if (expectsLiteral(tokens[previous], tokens[previousTokenIndex(tokens, previous)])) {
+        const end = expressionLiteralEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
-          tokens.push('<regexp>');
+          tokens.push('<literal>');
           continue;
         }
       }
@@ -56,11 +56,20 @@ const previousTokenIndex = (tokens: string[], before = tokens.length): number =>
 
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const expectsRegexp = (token = '\n', before?: string): boolean =>
+const expectsLiteral = (token = '\n', before?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
   (before !== '.' && /^(?:!|if|elsif|unless)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const expressionLiteralEnd = (content: string, start: number): number | undefined => {
+  const percentString = /%([qQ]?)([^\w\s])/y;
+  percentString.lastIndex = start;
+  const string = percentString.exec(content);
+  return string
+    ? literalEnd(content, percentString.lastIndex, string[2], string[1] !== 'q')
+    : regexpEnd(content, start);
+};
 
 const regexpEnd = (content: string, start: number): number | undefined => {
   const opening = /\/|%r([^\w\s])/y;
@@ -107,13 +116,8 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
     if (token === '}' && --depth === 0) return pattern.lastIndex;
     if (isTokenSpacing(token) || token.startsWith('#')) continue;
 
-    if ((token === '%' || token === '/') && expectsRegexp(previous, beforePrevious)) {
-      const percentString = /%([qQ]?)([^\w\s])/y;
-      percentString.lastIndex = match.index;
-      const string = percentString.exec(content);
-      const end = string
-        ? literalEnd(content, percentString.lastIndex, string[2], string[1] !== 'q')
-        : regexpEnd(content, match.index);
+    if ((token === '%' || token === '/') && expectsLiteral(previous, beforePrevious)) {
+      const end = expressionLiteralEnd(content, match.index);
       if (end !== undefined) pattern.lastIndex = end;
     }
     beforePrevious = previous;
