@@ -280,6 +280,21 @@ gem 'rack'`;
   });
 });
 
+['/prefix\nclass TestHelper\nsuffix/', '%r{prefix\nmodule TestHelpers\nsuffix}'].forEach((regexp) => {
+  test(`preserves group exclusions around return ${regexp}`, () => {
+    const gemfile = `group :test do
+  def matcher
+    return ${regexp}
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('ignores scope keywords in a multiline regexp after then', () => {
   const gemfile = `group :test do
   if enabled then /prefix
@@ -314,7 +329,7 @@ gem 'rack'`;
   });
 });
 
-['if', '!', 'puts', 'then'].forEach((method) => {
+['if', '!', 'puts', 'then', 'return'].forEach((method) => {
   test(`preserves production gems between divisions after receiver.${method}`, () => {
     const gemfile = `ratio = receiver.${method} / 2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
