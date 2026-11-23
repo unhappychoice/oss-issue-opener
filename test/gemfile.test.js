@@ -260,6 +260,31 @@ gem 'rack'`;
   });
 });
 
+[
+  ['note =', '%q!prefix\nclass Example\n!'],
+  ['note =', '%q{#{literal}\nclass Example\n}'],
+  ['note =', '%Q{prefix{nested}\nmodule Example\n#{ %q!}! }\n}'],
+  ['note =', '%{prefix\nend\ngem "ignored"\n}'],
+  ['puts', '%q!prefix\\!\nclass Example\n!'],
+].forEach(([prefix, expression]) => {
+  test(`ignores scope keywords in a multiline percent string after ${prefix}: ${expression}`, () => {
+    const gemfile = `group :test do
+  ${prefix} ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
+
+test('preserves production gems after modulo expressions', () => {
+  const gemfile = `count = 7 % 3\ngem 'rack', path: '%q!path!'`;
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['warn', 'puts', 'print', 'p'].forEach((command) => {
   test(`preserves group exclusions after a multiline regexp passed to Kernel.${command}`, () => {
     const gemfile = `group :test do

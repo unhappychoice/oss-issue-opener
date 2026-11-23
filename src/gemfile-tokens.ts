@@ -14,12 +14,13 @@ export const gemfileTokens = (content: string): string[] => {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (((token === '/' || token === '%') && regexpExpected) ||
-      (regexpCommand && isCommandRegexp(content, match.index, token, tokens.at(-1)))) {
-      const end = regexpEnd(content, match.index);
+      (regexpCommand && isCommandLiteral(content, match.index, token, tokens.at(-1)))) {
+      const end = literalEnd(content, match.index);
       if (end !== undefined && (!regexpCommand || !/^\w$/.test(content[end] ?? ''))) {
         pattern.lastIndex = end;
-        tokens.push('/.../');
-        previous = '/.../';
+        const literal = token === '/' || content.startsWith('%r', match.index) ? '/.../' : '%...%';
+        tokens.push(literal);
+        previous = literal;
         regexpExpected = false;
         classHeader = false;
         regexpCommand = false;
@@ -69,9 +70,9 @@ const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(toke
 
 const regexpCommands = new Set(['warn', 'puts', 'print', 'p', 'Array', 'String', 'log', 'describe']);
 
-const isCommandRegexp = (content: string, start: number, token: string, spacing?: string): boolean => {
+const isCommandLiteral = (content: string, start: number, token: string, spacing?: string): boolean => {
   if (spacing === undefined || !isSpacing(spacing)) return false;
-  if (token === '%') return content.startsWith('%r', start);
+  if (token === '%') return /^[rqQ]$/.test(content[start + 1] ?? '');
   const next = content[start + 1];
   return token === '/' && next !== undefined && !/[\s=]/.test(next);
 };
@@ -92,13 +93,12 @@ const expectsRegexp = (token: string, previous: string): boolean =>
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
-const literalFrame = (content: string, start: number, inInterpolation = false) => {
+const literalFrame = (content: string, start: number) => {
   const opening = /\/|%([rqQ]?)([^a-zA-Z0-9\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
   const regexp = match[1] === undefined || match[1] === 'r';
-  if (!regexp && !inInterpolation) return undefined;
   const delimiter = match[2] ?? '/';
   return {
     delimiter,
@@ -113,11 +113,12 @@ const literalFrame = (content: string, start: number, inInterpolation = false) =
   };
 };
 
-const regexpEnd = (content: string, start: number): number | undefined => {
+const literalEnd = (content: string, start: number): number | undefined => {
   const initial = literalFrame(content, start);
   if (!initial) return undefined;
   const frames = [initial];
-  const regexpPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const interpolatedPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const plainPart = /\\[\s\S]|[\s\S]/y;
   const expressionPart = new RegExp(tokenPattern, 'gy');
   const options = /[imxounes]*/y;
   let offset = initial.start;
@@ -135,21 +136,22 @@ const regexpEnd = (content: string, start: number): number | undefined => {
       if (frames.length === 0) return offset;
       continue;
     }
-    const part = frame.braces === 0 ? regexpPart : expressionPart;
+    const literalPart = frame.interpolated ? interpolatedPart : plainPart;
+    const part = frame.braces === 0 ? literalPart : expressionPart;
     part.lastIndex = offset;
     const match = part.exec(content);
     if (!match) return undefined;
     const token = frame.braces === 0 ? match[0] : readToken(part, match, content, frame.regexpExpected);
     if (frame.braces === 0) {
       if (frame.delimiter !== frame.closing && token === frame.delimiter) frame.delimiters++;
-      if (frame.interpolated && token === '#{') {
+      if (token === '#{') {
         frame.braces++;
         frame.previous = '{';
         frame.regexpExpected = true;
       }
     } else if (!token.startsWith('#') && !isSpacing(token)) {
       if ((token === '/' || token === '%') && frame.regexpExpected) {
-        const nested = literalFrame(content, offset, true);
+        const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);
           frame.previous = token;
