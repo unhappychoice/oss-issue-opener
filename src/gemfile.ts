@@ -6,22 +6,29 @@ export const isProductionGem = (content: string, pkg: string): boolean =>
 
 export const productionGemNames = (content: string): ReadonlySet<string> => {
   const names = new Set<string>();
-  const blocks: boolean[] = [];
+  const blocks: { excludesGroup: boolean; scope: { localPuts: boolean } }[] = [];
+  const rootScope = { localPuts: false };
+  const currentScope = () => blocks.at(-1)?.scope ?? rootScope;
   let excludedScopes = 0;
-  gemfileStatements(content).forEach((tokens) => {
-    if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
+  for (const tokens of gemfileStatements(gemfileTokens(content, currentScope))) {
+    if (tokens[0] === 'end' && blocks.pop()?.excludesGroup) excludedScopes--;
     const excluded = excludedScopes > 0;
-    if (opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+    const namespace = opensNamespace(tokens);
+    const method = tokens[0] === 'def' && !isEndlessMethod(tokens);
+    if (namespace || tokens.includes('do') || method ||
       /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
       const excludesGroup = tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1));
-      blocks.push(excludesGroup);
+      const scope = namespace || method
+        ? { localPuts: method && hasPutsParameter(tokens) }
+        : currentScope();
+      blocks.push({ excludesGroup, scope });
       if (excludesGroup) excludedScopes++;
     }
-    if (tokens[0] !== 'gem' || excluded) return;
+    if (tokens[0] !== 'gem' || excluded) continue;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
     const name = rubyDependencyName(tokens[nameIndex]);
     if (name !== undefined && !hasInlineExcludedGroup(tokens.slice(nameIndex + 1))) names.add(name);
-  });
+  }
   return names;
 };
 
@@ -63,42 +70,55 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
   return hasExcludedGroup(values.slice(0, valueLength));
 });
 
-const gemfileStatements = (content: string): string[][] => {
-  const tokens = gemfileTokens(content);
-  const result: string[][] = [];
+const hasPutsParameter = (tokens: string[]): boolean => {
+  const start = tokens[2] === '.' ? 4 : 2;
+  const parenthesized = tokens[start] === '(';
+  const parameterDepth = parenthesized ? 1 : 0;
+  let depth = parameterDepth;
+  let startsParameter = true;
+  return tokens.slice(start + Number(parenthesized)).some((token) => {
+    if (depth < parameterDepth) return false;
+    if (depth === parameterDepth && token === 'puts' && startsParameter) return true;
+    if (depth === parameterDepth && token !== '*' && token !== '&') startsParameter = token === ',';
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return false;
+  });
+};
+
+function* gemfileStatements(tokens: Iterable<string>): Generator<string[]> {
   let current: string[] = [];
   let depth = 0;
-  tokens.forEach((token) => {
-    if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
+  for (const token of tokens) {
+    if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) continue;
     if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
-      if (current.length) result.push(current);
+      if (current.length) yield current;
       current = [];
-      return;
+      continue;
     }
-    if (token === '\n') return;
+    if (token === '\n') continue;
     if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
-      result.push([...current, 'do']);
+      yield [...current, 'do'];
       current = [];
-      return;
+      continue;
     }
     if (depth === 0 && token === '}') {
-      if (current.length) result.push(current);
-      result.push(['end']);
+      if (current.length) yield current;
+      yield ['end'];
       current = [];
-      return;
+      continue;
     }
     if (token === 'end' && depth === 0 && current.length) {
-      result.push(current);
+      yield current;
       current = [];
     }
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
     current.push(token);
     if ((token === 'do' || token === 'end') && depth === 0) {
-      result.push(current);
+      yield current;
       current = [];
     }
-  });
-  if (current.length) result.push(current);
-  return result;
-};
+  }
+  if (current.length) yield current;
+}

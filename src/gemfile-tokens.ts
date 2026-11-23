@@ -1,47 +1,54 @@
-export const gemfileTokens = (content: string): string[] => {
+export function* gemfileTokens(
+  content: string,
+  putsScope?: () => { localPuts: boolean },
+): Generator<string> {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  let assignedPuts = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === 'puts' && isBareAssignment(content, pattern.lastIndex, tokens)) assignedPuts = true;
-    if (token === '/' || token === '%') {
+    if (putsScope && token === 'puts' && isBareAssignment(content, pattern.lastIndex, tokens)) {
+      putsScope().localPuts = true;
+    }
+    if (putsScope && (token === '/' || token === '%')) {
       const previous = previousTokenIndex(tokens);
       const beforePrevious = tokens[previousTokenIndex(tokens, previous)];
       if (expectsLiteral(tokens[previous], beforePrevious) ||
-        ((!assignedPuts || beforePrevious === '.') && startsPutsRegexp(content, match.index, tokens[previous]))) {
+        ((!putsScope().localPuts || beforePrevious === '.') && startsPutsRegexp(content, match.index, tokens[previous]))) {
         const end = expressionLiteralEnd(content, match.index);
         if (end !== undefined) {
           pattern.lastIndex = end;
           tokens.push('<literal>');
+          yield '<literal>';
           continue;
         }
       }
     }
     if (token.startsWith('<<')) {
-      if (followsClassKeyword(tokens)) {
+      if (putsScope && followsClassKeyword(tokens)) {
         tokens.push('<<');
         pattern.lastIndex -= token.length - 2;
+        yield '<<';
         continue;
       }
       const indented = /^<<[-~]/.test(token);
       const delimiter = token.slice(indented ? 3 : 2).replace(/^['"`]|['"`]$/g, '');
       pending.push({ delimiter, indented });
       tokens.push('""');
+      yield '""';
       continue;
     }
     tokens.push(token);
+    yield token;
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
         pattern.lastIndex = heredocEnd(content, pattern.lastIndex, delimiter, indented);
       });
     }
   }
-  return tokens;
-};
+}
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 

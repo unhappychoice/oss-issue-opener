@@ -412,3 +412,40 @@ gem 'rack'`;
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });
 });
+
+[
+  'def measure(puts)',
+  'def measure(label = ["a", "b"], puts: 12)',
+  'def measure puts',
+  'def self.measure(*puts)',
+].forEach((signature) => {
+  test(`treats puts as a local parameter in ${signature}`, () => {
+    const gemfile = `group :test do
+  ${signature}
+    if enabled
+      puts /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
+test('recognizes a regexp argument to puts after a method with a puts parameter', () => {
+  const gemfile = `group :test do
+  def measure(puts)
+    puts /2
+  end
+  puts /2
+class Fake
+module Fake
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
