@@ -309,7 +309,10 @@ gem 'zeitwerk'`;
   });
 });
 
-['receiver.if', 'receiver&.elsif', 'receiver::unless', 'warn'].forEach((call) => {
+[
+  'receiver.if', 'receiver&.elsif', 'receiver::unless',
+  'receiver.return', 'receiver&.return', 'receiver::return', 'receiver:: return', 'warn',
+].forEach((call) => {
   test(`detects a production gem after division of ${call}`, () => {
     const gemfile = `${call} / 2
 gem 'rack'
@@ -364,6 +367,8 @@ gem 'rack', path: '/rack'`;
   'warn /first\nclass TestHelper\ngem "ignored"\nlast/',
   'Kernel.warn /first\nend\ngem "ignored"\nlast/',
   'warn = 8\n  Kernel.warn /first\nend\ngem "ignored"\nlast/',
+  'def matcher\n    return /first\nclass TestHelper\ngem "ignored"\nlast/\n  end',
+  'def matcher\n    return %r{first\nclass TestHelper\ngem "ignored"\nlast}\n  end',
 ]).forEach((statement) => {
   test(`ignores scope keywords inside ${statement}`, () => {
     const gemfile = `group :test do

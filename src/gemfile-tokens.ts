@@ -40,11 +40,11 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|(?:@@?|\$)[A-Za-z_]\w*|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|(?:@@?|\$)[A-Za-z_]\w*|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
   previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\|)$/.test(previous) ||
-  (beforePrevious !== '.' && /^(?:do|if|elsif|unless)$/.test(previous));
+  (beforePrevious !== '.' && beforePrevious !== '::' && /^(?:do|if|elsif|unless|return)$/.test(previous));
 
 const hasLocalWarn = (tokens: string[]): boolean => {
   let local = { hasWarn: false };
@@ -92,7 +92,7 @@ const bindsWarn = (parameters: string[]): boolean => {
 };
 
 const isQualifiedName = (previous?: string): boolean =>
-  previous === '.' || previous === ':';
+  previous === '.' || previous === ':' || previous === '::';
 
 const expressionLiteralEnd = (
   content: string, start: number, token: string, previous?: string, beforePrevious?: string, localWarn?: () => boolean,
