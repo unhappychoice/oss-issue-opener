@@ -105,6 +105,28 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
   });
 });
 
+test('resolves the failed check workflow when commit statuses are unavailable', async () => {
+  const client = getOctokit();
+  const statusesError = new Error('Commit statuses HTTP 503');
+  mock.method(client.repos, 'getCombinedStatusForRef', async () => { throw statusesError; });
+  mock.method(client.paginate, 'iterator', async function* () {
+    yield { data: [{
+      name: 'build', status: 'completed', conclusion: 'failure', html_url: checkUrl,
+      app: { slug: 'github-actions' }, check_suite: { id: 200 },
+    }] };
+  });
+  const workflows = mock.method(client.actions, 'listWorkflowRunsForRepo', async () => ({
+    data: { workflow_runs: [{ check_suite_id: 200, workflow_id: 10 }] },
+  }));
+
+  assert.deepEqual(await checkCIStatus('owner', 'repo', undefined, true), {
+    status: 'failure',
+    failedChecks: [{ name: 'build', source: 'check', url: checkUrl, workflowId: 10 }],
+    endpointErrors: [statusesError],
+  });
+  assert.equal(workflows.mock.callCount(), 1);
+});
+
 [
   { expected: 'success' },
   { expected: 'pending', lastStatus: 'in_progress' },

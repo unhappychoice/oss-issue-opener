@@ -27,14 +27,15 @@ export const checkCIStatus = async (
 
   const failures = results.flatMap(({ failures }) => failures);
   const endpointErrors = results.flatMap(({ errors }) => errors);
-  if (endpointErrors.length > 0) {
-    const failedChecks = failures.map((result) => failedCheck(result));
-    return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
-  }
   if (failures.length > 0) {
     const workflows = await loadWorkflows(owner, repo, sha, failures);
-    return { status: 'failure', failedChecks: failures.map((result) => failedCheck(result, workflows)) };
+    return {
+      status: 'failure',
+      failedChecks: failures.map((result) => failedCheck(result, workflows)),
+      ...(endpointErrors.length > 0 ? { endpointErrors } : {}),
+    };
   }
+  if (endpointErrors.length > 0) return { status: 'incomplete', failedChecks: [], endpointErrors };
   if (results.some(({ hasPending }) => hasPending)) return { status: 'pending', failedChecks: [] };
   if (!results.some(({ hasRelevant }) => hasRelevant)) return { status: 'no-ci', failedChecks: [] };
   if (!verifyRecovery) return { status: 'success', failedChecks: [] };

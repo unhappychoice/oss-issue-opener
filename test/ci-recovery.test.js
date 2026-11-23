@@ -232,6 +232,7 @@ test('keeps an alert from a partial check scan open after the recorded job passe
     checksError: new Error('Later check page unavailable'),
   });
   await assert.rejects(partial.run(true), /Failed 1 maintenance operations/);
+  assert.equal(partial.workflowRuns.mock.callCount(), 1);
   assert.equal(partial.created.length, 1);
   const [{ body: partialBody }] = partial.created;
   assert.match(partialBody, /- build/);
