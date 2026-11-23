@@ -243,3 +243,28 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+test('keeps scope keywords inside multiline regexps out of the group stack', () => {
+  const bodies = [
+    String.raw`pattern = /prefix\/
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = %r{prefix{nested}
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+  ];
+
+  bodies.forEach((body) => {
+    const gemfile = `group :test do
+  ${body}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});

@@ -6,6 +6,14 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push('/…/');
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -26,6 +34,37 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const expectsRegexp = (tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  if (index < 0 || /^(?:\n|;|[=(\[,~?!:]|=>)$/.test(tokens[index])) return true;
+  return /^(?:if|elsif|unless|when|do)$/.test(tokens[index]) &&
+    tokens[previousTokenIndex(tokens, index)] !== '.';
+};
+
+const regexpDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const opening = /\/|%r([^\p{L}\p{N}\s])/uy;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+
+  const delimiter = match[1] ?? '/';
+  const closing = regexpDelimiters.get(delimiter) ?? delimiter;
+  let depth = 1;
+  for (let index = opening.lastIndex; index < content.length; index++) {
+    const char = content[index];
+    if (char === '\\') index++;
+    else if (char === closing && --depth === 0) {
+      const options = /[imxounes]*/y;
+      options.lastIndex = index + 1;
+      options.exec(content);
+      return options.lastIndex;
+    } else if (delimiter !== closing && char === delimiter) depth++;
+  }
+  return undefined;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {
