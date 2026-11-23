@@ -5,6 +5,22 @@ export const gemfileScope = (tokens: string[]): 'local' | 'block' | 'control' | 
   return undefined;
 };
 
+export const hasPutsParameter = (tokens: string[]): boolean => {
+  if (tokens[0] !== 'def') return false;
+  const nameEnd = methodNameEnd(tokens);
+  const start = tokens[nameEnd] === '(' ? nameEnd + 1 : nameEnd;
+  let depth = 0;
+  let atParameterStart = true;
+  return tokens.slice(start).some((token) => {
+    if (depth === 0 && atParameterStart && token === 'puts') return true;
+    if (depth === 0 && (token === '*' || token === '&') && atParameterStart) return false;
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    atParameterStart = depth === 0 && token === ',';
+    return false;
+  });
+};
+
 export const gemfileStatementReader = (read: (statement: string[]) => void) => {
   let current: string[] = [];
   let depth = 0;
@@ -39,7 +55,11 @@ export const gemfileStatementReader = (read: (statement: string[]) => void) => {
       current = [];
     }
   };
-  return { push, finish: () => { if (current.length) read(current); } };
+  return {
+    push,
+    inMethodHeader: () => current[0] === 'def',
+    finish: () => { if (current.length) read(current); },
+  };
 };
 
 const opensNamespace = (tokens: string[]): boolean => {
@@ -54,12 +74,14 @@ const opensNamespace = (tokens: string[]): boolean => {
 
 const isNamespaceKeyword = (token?: string): boolean => token === 'class' || token === 'module';
 
+const methodNameEnd = (tokens: string[]): number => tokens[2] === '.' ? 4 : 2;
+
 const isEndlessMethod = (tokens: string[]): boolean => {
   let depth = 0;
+  const nameEnd = methodNameEnd(tokens);
   return tokens.some((token, index) => {
     if (token === '(') depth++;
     if (token === ')') depth--;
-    const nameEnd = tokens[2] === '.' ? 4 : 2;
     return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };

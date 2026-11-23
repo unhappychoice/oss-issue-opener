@@ -1,4 +1,4 @@
-import { gemfileScope, gemfileStatementReader } from './gemfile-statements.js';
+import { gemfileScope, gemfileStatementReader, hasPutsParameter } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
@@ -6,11 +6,11 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
-  const scopes = [{ putsAssigned: false }];
+  const scopes = [{ putsLocal: false }];
   const statements = gemfileStatementReader((statement) => {
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
     const kind = gemfileScope(statement);
-    if (kind === 'local') scopes.push({ putsAssigned: false });
+    if (kind === 'local') scopes.push({ putsLocal: hasPutsParameter(statement) });
     if (kind === 'block') scopes.push({ ...scopes.at(-1)! });
     if (kind === 'control') scopes.push(scopes.at(-1)!);
   });
@@ -23,7 +23,7 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const scope = scopes.at(-1)!;
-    const commandRegexp = token === '/' && previous === 'puts' && !scope.putsAssigned &&
+    const commandRegexp = token === '/' && previous === 'puts' && !scope.putsLocal &&
       /[ \t]/.test(content[match.index - 1] ?? '') && /\S/.test(content[match.index + 1] ?? '');
     if (commandRegexp || ((token === '/' || token === '%') && expectsRegexp(previous))) {
       const end = regexpEnd(content, match.index);
@@ -43,8 +43,9 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      if (previous === 'puts' && token === '=' && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
-        scope.putsAssigned = true;
+      if (previous === 'puts' && token === '=' && !/[=~]/.test(content[pattern.lastIndex] ?? '') &&
+        !statements.inMethodHeader()) {
+        scope.putsLocal = true;
       }
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       previous = regexpContext(previous, token);

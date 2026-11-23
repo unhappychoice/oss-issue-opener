@@ -265,9 +265,28 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['def helper(puts)', 'def helper puts', 'def self.helper(value, puts = 4)', 'def helper(*puts)'].forEach((signature) => {
+  test(`detects production gems after division of a puts parameter in ${signature}`, () => {
+    const gemfile = `group :test do
+  class TestHelper
+    ${signature}
+      puts /2
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 [
   ['in a previous method', 'def helper; puts = 4; end', ''],
+  ['as an optional parameter in a previous method', 'def helper(puts = 4); end', ''],
   ['at the top level', 'puts = 4', 'def helper'],
+  ['only in a default expression', '', 'def helper(value = [1, puts])'],
   ['in a previous class', 'class Helper\n  puts = 4\nend', ''],
   ['in a previous module', 'module Helper\n  puts = 4\nend', ''],
 ].forEach(([location, assignment, method]) => {
