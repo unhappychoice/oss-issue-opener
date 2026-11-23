@@ -224,6 +224,8 @@ const namespaceDefinitions = [
 
 [
   'pattern = /\nclass Decoy\nmodule Decoy\n/',
+  '! /\nclass Decoy\n/',
+  '!%r{\nclass Decoy\n}',
   'pattern = enabled ? /\nclass Decoy\n/ : nil',
   'pattern = enabled ? nil : /\nclass Decoy\n/',
   'pattern = /escaped \\/\nclass Decoy\nend\n/i',

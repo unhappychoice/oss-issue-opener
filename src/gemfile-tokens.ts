@@ -44,7 +44,7 @@ const followsClassKeyword = (tokens: string[]): boolean => {
 };
 
 const canStartRegexp = (tokens: string[]): boolean =>
-  /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:)$/.test(tokens[previousTokenIndex(tokens)] ?? '\n');
+  /^(?:\n|;|=|=>|!|~|\(|\[|\{|,|\?|:)$/.test(tokens[previousTokenIndex(tokens)] ?? '\n');
 
 type Literal = { open: string; close: string; interpolates: boolean };
 
