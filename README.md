@@ -164,12 +164,14 @@ with `GH_TOKEN` that carry scanner-generated recovery metadata for the scanned r
 The existing alert must be present when the scan starts. Its recorded check runs and
 commit statuses must each explicitly pass on the checked default-branch commit,
 and the overall CI scan must succeed. GitHub Actions jobs must match both the
-recorded job name and workflow ID. A recorded check run must complete with the `success`
-conclusion to satisfy recovery. A missing, pending, skipped, neutral, or unreadable recorded
-check leaves the issue open even if the scan logs `CI: success`. The scanner comments with a
-link to the verified commit and closes the issue as completed.
+recorded job name and workflow ID. Commit statuses must match both the recorded
+context and the publisher's GitHub account ID. A recorded check run must complete with the
+`success` conclusion to satisfy recovery. A missing, pending, skipped, neutral, or unreadable
+recorded check leaves the issue open even if the scan logs `CI: success`. The scanner comments
+with a link to the verified commit and closes the issue as completed.
 
 Alerts require manual closure when any failing CI scan could not retrieve all
 results, when the recovery metadata is missing, when a check run has no verified
-GitHub Actions workflow ID, or when the complete check list cannot fit in the
-metadata. Linear links do not affect eligibility.
+GitHub Actions workflow ID, when a commit status has no verified publisher ID
+(including older alerts that recorded only the context), or when the complete
+check list cannot fit in the metadata. Linear links do not affect eligibility.

@@ -97,17 +97,17 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
         if (pathname.endsWith('/example/branches/main')) {
           return Response.json({ commit: { sha: '${sha}', commit: { tree: { sha: 'head-tree' } } } });
         }
-        if (pathname.endsWith('/example/commits/${sha}/status')) {
+        if (pathname.endsWith('/example/commits/${sha}/statuses')) {
           if (endpoint === 'statuses') {
             if (searchParams.get('page') === '2') {
               return Response.json({ message: 'CI page unavailable' }, { status: 503 });
             }
-            return Response.json({ statuses: Array.from({ length: 100 }, (_, index) => ({
+            return Response.json(Array.from({ length: 100 }, (_, index) => ({
               state: ${hasFailure} && index === 0 ? 'failure' : 'success', context: index === 0 ? 'build' : 'lint-' + index,
-            })) });
+            })));
           }
-          return Response.json({ statuses: (endpoint === 'first-check-page' || endpoint === 'listing')
-            ? [{ state: 'failure', context: 'build' }] : [] });
+          return Response.json((endpoint === 'first-check-page' || endpoint === 'listing')
+            ? [{ state: 'failure', context: 'build' }] : []);
         }
         if (pathname.endsWith('/example/commits/${sha}/check-suites')) {
           if (endpoint === 'check-suite') {

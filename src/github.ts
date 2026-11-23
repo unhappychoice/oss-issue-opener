@@ -118,13 +118,26 @@ export async function* getCommitStatus(
   repo: string,
   ref: string
 ): AsyncGenerator<CIResult[]> {
+  const seen = new Set<string>();
   for (let page = 1; ; page++) {
-    const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-    yield data.statuses.map((s) => ({
-      state: ['success', 'failure', 'error'].includes(s.state) ? s.state : 'pending',
-      context: s.context, url: s.target_url ?? '', source: 'status', passed: s.state === 'success',
-    }));
-    if (data.statuses.length < 100) return;
+    const { data } = await getOctokit().repos.listCommitStatusesForRef({ owner, repo, ref, per_page: 100, page });
+    const results: CIResult[] = [];
+    // The API returns newest first. Keep the latest status per context across pages.
+    for (const status of data) {
+      const context = status.context;
+      if (typeof context === 'string') {
+        const key = context.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      results.push({
+        state: ['success', 'failure', 'error'].includes(status.state) ? status.state : 'pending',
+        context, url: status.target_url ?? '', source: 'status', passed: status.state === 'success',
+        publisherId: status.creator?.id,
+      });
+    }
+    yield results;
+    if (data.length < 100) return;
   }
 }
 
@@ -162,7 +175,7 @@ export async function* getCheckRuns(
   }
 }
 
-export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowId?: number | undefined };
+export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowId?: number | undefined; publisherId?: number | undefined };
 
 async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
   const workflows = new Map<number, number>();

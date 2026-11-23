@@ -19,7 +19,7 @@ afterEach(() => mock.restoreAll());
 const pendingIssue = () => buildCIFailureIssue('owner/repo', []);
 
 [
-  ['commit statuses', 'getCombinedStatusForRef', () => Array.fromAsync(getCommitStatus('owner', 'repo', 'main'))],
+  ['commit statuses', 'listCommitStatusesForRef', () => Array.fromAsync(getCommitStatus('owner', 'repo', 'main'))],
   ['releases', 'listReleases', () => getLatestRelease('owner', 'repo')],
   ['fallback tags', 'listTags', () => getLatestRelease('owner', 'repo')],
 ].forEach(([name, method, read]) => {
@@ -100,7 +100,7 @@ test('reports no-ci and no-tag after successful empty reads', async () => {
   const client = getOctokit();
   mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha: 'a'.repeat(40), commit: { tree: { sha: 'head-tree' } } } } }));
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
+  mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: [] }));
   mock.method(client.paginate, 'iterator', async function* () { yield { data: [] }; });
   mock.method(client.repos, 'listReleases', async () => ({ data: [] }));
   mock.method(client.repos, 'listTags', async () => ({ data: [] }));
