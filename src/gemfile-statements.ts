@@ -9,14 +9,18 @@ export const hasPutsParameter = (tokens: string[]): boolean => {
   if (tokens[0] !== 'def') return false;
   const nameEnd = methodNameEnd(tokens);
   const start = tokens[nameEnd] === '(' ? nameEnd + 1 : nameEnd;
+  return declaresPutsParameter(tokens.slice(start));
+};
+
+export const declaresPutsParameter = (tokens: string[]): boolean => {
   let depth = 0;
   let atParameterStart = true;
-  return tokens.slice(start).some((token) => {
+  return tokens.some((token) => {
     if (depth === 0 && atParameterStart && token === 'puts') return true;
     if (depth === 0 && (token === '*' || token === '&') && atParameterStart) return false;
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
-    atParameterStart = depth === 0 && token === ',';
+    atParameterStart = depth === 0 && (token === ',' || token === ';');
     return false;
   });
 };

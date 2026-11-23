@@ -1,4 +1,4 @@
-import { gemfileScope, gemfileStatementReader, hasPutsParameter } from './gemfile-statements.js';
+import { declaresPutsParameter, gemfileScope, gemfileStatementReader, hasPutsParameter } from './gemfile-statements.js';
 
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
@@ -6,15 +6,29 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
+  let blockParameters: string[] | undefined;
   const scopes = [{ putsLocal: false }];
   const statements = gemfileStatementReader((statement) => {
     if (statement[0] === 'end' && scopes.length > 1) scopes.pop();
     const kind = gemfileScope(statement);
     if (kind === 'local') scopes.push({ putsLocal: hasPutsParameter(statement) });
-    if (kind === 'block') scopes.push({ ...scopes.at(-1)! });
+    if (kind === 'block') {
+      scopes.push({ ...scopes.at(-1)! });
+      blockParameters = [];
+    }
     if (kind === 'control') scopes.push(scopes.at(-1)!);
   });
   const emit = (token: string): void => {
+    if (blockParameters && !isSpacing(token) && token !== '\n') {
+      if (blockParameters.length === 0 && token !== '|') {
+        blockParameters = undefined;
+      } else if (blockParameters.length > 0 && token === '|') {
+        if (declaresPutsParameter(blockParameters.slice(1))) scopes.at(-1)!.putsLocal = true;
+        blockParameters = undefined;
+      } else {
+        blockParameters.push(token);
+      }
+    }
     tokens.push(token);
     statements.push(token);
   };

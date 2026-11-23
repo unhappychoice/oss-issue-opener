@@ -252,6 +252,40 @@ gem 'rack', path: '/'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+[
+  ['[4].each do |puts|', 'end'],
+  ['[0, 4].each { |value, puts|', '}'],
+  ['[4].each do |*puts|', 'end'],
+  ['[4].each { |value; puts|', '}'],
+].forEach(([opening, closing]) => {
+  test(`detects production gems after division of a puts block parameter in ${opening}`, () => {
+    const gemfile = `group :test do
+  ${opening} puts /2
+  ${closing}
+  gem 'rspec'
+end
+gem 'rack', path: '/'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('recognizes a regexp passed to puts after a block parameter leaves scope', () => {
+  const gemfile = `group :test do
+  [4].each do |puts|
+  end
+  puts /start
+class Pattern
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('ignores scope keywords in a multiline regexp passed to puts', () => {
   const gemfile = `group :test do
   puts /start
