@@ -364,6 +364,16 @@ gem 'rack', path: '/'`;
   });
 });
 
+['left', 'right'].forEach((name) => {
+  test(`preserves production gems after dividing ${name} from a multiple assignment`, () => {
+    const gemfile = `left, right = 4, 6
+${name} /2
+gem 'rack', path: '/'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 test('detects production gems after division of self inside a class', () => {
   const gemfile = `group :test do
   class TestHelper

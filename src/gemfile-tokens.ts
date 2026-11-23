@@ -7,7 +7,7 @@ export const gemfileTokens = (content: string): string[] => {
   let classHeader = false;
   let regexpCommand = false;
   const assignedNames = new Set<string>();
-  const assignment = /[^\S\n]*(?:&&|\|\||[+*/%&|^<>-])?=(?!=|~|>)/y;
+  const assignment = /(?:((?:[^\S\n]*,\s*[a-z_]\w*)+)[^\S\n]*|[^\S\n]*(?:&&|\|\||[+*/%&|^<>-])?)=(?!=|~|>)/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
@@ -41,7 +41,11 @@ export const gemfileTokens = (content: string): string[] => {
           regexpCommand = true;
         } else if (!rubyKeywords.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
           assignment.lastIndex = pattern.lastIndex;
-          if (assignment.test(content)) assignedNames.add(token);
+          const targets = assignment.exec(content);
+          if (targets) {
+            assignedNames.add(token);
+            targets[1]?.split(',').slice(1).forEach((name) => assignedNames.add(name.trim()));
+          }
           regexpCommand = !assignedNames.has(token);
         }
       }
