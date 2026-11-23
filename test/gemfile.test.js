@@ -252,7 +252,20 @@ gem 'rack', path: '/'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['receiver.if', 'receiver&.if', 'receiver.\nif'].forEach((call) => {
+test('ignores scope keywords in a multiline regexp passed to puts', () => {
+  const gemfile = `group :test do
+  puts /start
+class Pattern
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['puts', 'receiver.if', 'receiver&.if', 'receiver.\nif'].forEach((call) => {
   test(`detects production gems after division of ${call}`, () => {
     const gemfile = `${call} / 2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -266,6 +279,8 @@ gem 'rack', path: '/'`;
   '/start\nend\nfinish/',
   '/start#{"/"}\nclass Pattern\nfinish/',
   '/start#{%q(}/)}\nclass Pattern\nfinish/',
+  '/#{ %q!}!.ord / 2 }/',
+  '!/start\nclass Pattern\nfinish/',
   '/start#{/nested/}\nclass Pattern\nfinish/',
   '/start#{1..if /}/; 2; end}\nclass Pattern\nfinish/',
   '/start#{receiver.if / 2}\nclass Pattern\nfinish/',

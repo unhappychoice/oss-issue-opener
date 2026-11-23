@@ -4,11 +4,14 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   let previous = '\n';
   let classHeader = false;
+  let putsAssigned = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(previous)) {
+    const commandRegexp = token === '/' && previous === 'puts' && !putsAssigned &&
+      /[ \t]/.test(content[match.index - 1] ?? '') && /\S/.test(content[match.index + 1] ?? '');
+    if (commandRegexp || ((token === '/' || token === '%') && expectsRegexp(previous))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         previous = content.slice(match.index, end);
@@ -26,6 +29,9 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
+      if (previous === 'puts' && token === '=' && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
+        putsAssigned = true;
+      }
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
       previous = regexpContext(previous, token);
     }
