@@ -63,10 +63,50 @@ const nameToken = /^[A-Za-z_]\w*[!?=]?$/;
 
 const isQualifiedName = (previous?: string): boolean => ['.', ':', '@', '$'].includes(previous ?? '');
 
-type ParameterScope = { closing: 'end' | '}'; names?: string[]; loopHeader?: boolean };
+type ParameterScope = { closing: 'end' | '}'; names?: string[]; loopHeader?: boolean } |
+  { closing: 'statement'; names: string[]; bodyStart: number; loopHeader?: never };
 
 const hasParameter = (scopes: ParameterScope[], name: string): boolean =>
   scopes.some(({ names }) => names?.includes(name));
+
+const methodParameterScope = (content: string, offset: number): ParameterScope => {
+  const methodName = /[ \t]+(?:\w+(?:::|\.))*\w+[!?=]?/y;
+  methodName.lastIndex = offset;
+  if (!methodName.test(content)) return { closing: 'end' };
+
+  const signature = new RegExp(tokenPattern, 'gy');
+  const names: string[] = [];
+  signature.lastIndex = methodName.lastIndex;
+  let token = signature.exec(content)?.[0];
+  while (token && isTokenSpacing(token)) token = signature.exec(content)?.[0];
+  const parenthesized = token === '(';
+  if (parenthesized) token = signature.exec(content)?.[0];
+
+  let depth = 0;
+  let destructuring = 0;
+  let expectsName = true;
+  while (token) {
+    const endsBareSignature = token === ';' || token === '\n' || (token === '=' && names.length === 0);
+    if (depth === 0 && (parenthesized ? token === ')' : endsBareSignature)) break;
+    if (token === '(' && expectsName && depth === destructuring) destructuring++;
+    if ('([{'.includes(token)) depth++;
+    if (')]}'.includes(token)) {
+      depth--;
+      destructuring = Math.min(depth, destructuring);
+    }
+    if (depth === destructuring && token === ',') expectsName = true;
+    if (depth === destructuring && expectsName && /^[a-z_]\w*$/.test(token)) {
+      names.push(token);
+      expectsName = false;
+    }
+    token = signature.exec(content)?.[0];
+  }
+
+  const bodyStart = signature.lastIndex;
+  return token === '=' || (parenthesized && token === ')' && /^[ \t]*=(?!=|>)/.test(content.slice(bodyStart)))
+    ? { closing: 'statement', names, bodyStart }
+    : { closing: 'end', names };
+};
 
 const trackParameterScope = (
   content: string, offset: number, token: string, tokens: string[], scopes: ParameterScope[],
@@ -75,7 +115,8 @@ const trackParameterScope = (
   const previous = tokens[previousTokenIndex(tokens)];
   if (isQualifiedName(previous) || content[offset] === ':') return;
   const scope = scopes.at(-1);
-  if (scope?.closing === token) {
+  if (scope?.closing === token || (scope?.closing === 'statement' && offset > scope.bodyStart &&
+    (token === '\n' || token === ';'))) {
     scopes.pop();
     return;
   }
@@ -90,7 +131,8 @@ const trackParameterScope = (
     scopes.push({ closing: token === 'do' ? 'end' : '}', names });
   } else if (/^(?:class|module|def|if|unless|case|begin|while|until|for)$/.test(token) &&
     (previous === undefined || /^(?:\n|;|=|do|\{|\(|\|)$/.test(previous))) {
-    scopes.push({ closing: 'end', loopHeader: /^(?:while|until|for)$/.test(token) });
+    scopes.push(token === 'def' ? methodParameterScope(content, offset) :
+      { closing: 'end', loopHeader: /^(?:while|until|for)$/.test(token) });
   }
 };
 

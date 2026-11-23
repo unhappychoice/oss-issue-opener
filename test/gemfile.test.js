@@ -238,6 +238,44 @@ gem 'rack'`;
   });
 });
 
+[
+  'def ratio(count)\n  count /2\nend',
+  'def self.ratio count\n  count /2\nend',
+  'def ratio count = 8\n  count /2\nend',
+  'def ratio(scale = [1, 2], count: 8)\n  count /2\nend',
+  'def ratio((index, count))\n  count /2\nend',
+  'def ratio(count) = count /2',
+].forEach((definition) => {
+  test(`detects a production gem after division in ${JSON.stringify(definition)}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper
+      ${definition}
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
+test('keeps method parameters local to the method body', () => {
+  const gemfile = `group :test do
+  def ratio(warn)
+    warn /2
+  end
+  warn /prefix
+class RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 test('recognizes a heredoc argument after a method named class', () => {
   const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
