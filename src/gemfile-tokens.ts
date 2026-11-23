@@ -6,9 +6,11 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexpAfter(tokens)) {
-      const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
+    if (token === '/' || token === '%') {
+      const expected = expectsRegexpAfter(tokens);
+      const commandArgument = token === '/' && startsCommandRegexp(tokens, content[pattern.lastIndex]);
+      const end = expected || commandArgument ? regexpEnd(content, match.index) : undefined;
+      if (end !== undefined && (expected || endsCommandRegexp(content, match.index, end))) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
         continue;
@@ -57,6 +59,18 @@ const expectsRegexpAfter = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   return index < 0 || expectsRegexp(tokens[index], tokens[previousTokenIndex(tokens, index)]);
 };
+
+const startsCommandRegexp = (tokens: string[], next: string | undefined): boolean => {
+  if (!next || /\s/.test(next) || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
+  const index = previousTokenIndex(tokens);
+  if (!/^[a-z_]\w*[!?]?$/.test(tokens[index] ?? '')) return false;
+  const before = previousTokenIndex(tokens, index);
+  return before < 0 || /^(?:\n|;|do)$/.test(tokens[before]);
+};
+
+// A bare command argument is ambiguous with division. Require a complete multiline statement.
+const endsCommandRegexp = (content: string, start: number, end: number): boolean =>
+  content.slice(start, end).includes('\n') && /^[ \t\r]*(?:\n|;|#|$)/.test(content.slice(end));
 
 const expectsRegexp = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||

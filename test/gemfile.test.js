@@ -278,6 +278,7 @@ gem 'rack', path: '/rack'`;
   'matcher = /prefix#{ %Q!#{ %q(}) } /! }\nclass RegexText\nsuffix/',
   'matcher = %r#prefix\nclass RegexText\nsuffix#',
   '/prefix\nclass RegexText\nsuffix/',
+  '  puts /prefix\nclass RegexText\nsuffix/',
 ].forEach((expression) => {
   test(`ignores scope keywords inside ${JSON.stringify(expression)}`, () => {
     const gemfile = `group :test do
