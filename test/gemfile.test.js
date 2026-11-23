@@ -289,6 +289,7 @@ gem 'rack'`;
   ['a destructured local variable', '(warn, divisor) = [8, 2]\nwarn /divisor'],
   ['a keyword-shaped method name', 'receiver.if / 2'],
   ['a method named and', 'receiver.and / 2'],
+  ['puts with a spaced operand', 'puts = 8\nputs / 2'],
 ].forEach(([description, expression]) => {
   test(`detects a production gem after division involving ${description}`, () => {
     const gemfile = `group :test do
@@ -298,6 +299,24 @@ gem 'rack'`;
 end
 ${expression}
 gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
+[
+  ['puts /pattern', '/x'],
+  ['puts %r{pattern', '}x'],
+].forEach(([opening, closing]) => {
+  test(`keeps multiline regexp arguments to ${opening} out of Gemfile scopes`, () => {
+    const gemfile = `group :test do
+  ${opening}
+class NotAClass
+gem 'hidden'
+${closing}
+  gem 'rspec'
+end
+gem 'rack'`;
 
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });

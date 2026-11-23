@@ -6,7 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
+    if ((token === '/' || token === '%') &&
+      (expectsRegexp(tokens) || followsPutsCommand(content, match.index, tokens))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -50,6 +51,14 @@ const previousTokenIndex = (tokens: string[], before = tokens.length): number =>
 };
 
 const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const followsPutsCommand = (content: string, start: number, tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  if (tokens[index] !== 'puts' || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
+  if (content[start] === '/' && /[\s=]/.test(content[start + 1] ?? '')) return false;
+  const previous = tokens[previousTokenIndex(tokens, index)] ?? '\n';
+  return ['\n', ';', 'do', '{'].includes(previous);
+};
 
 const expectsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
