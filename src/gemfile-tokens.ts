@@ -76,7 +76,7 @@ const isCommandAssignment = (command: string, token: string, index: number, toke
 
 const expectsExpression = (token: string, previous?: string): boolean =>
   /^(?:\n|;|=|=>|~|\?|:|\(|\[|\{|,|&&|\|\|)$/.test(token) ||
-  (previous !== '.' && /^(?:!|defined\?|do|if|elsif|or|unless|return)$/.test(token));
+  (previous !== '.' && /^(?:!|defined\?|do|if|elsif|and|or|unless|return)$/.test(token));
 
 const characterEnd = (content: string, start: number): number | undefined => {
   const character = /\?(?:\\[^\r\n]|[^\s\\])/uy;
