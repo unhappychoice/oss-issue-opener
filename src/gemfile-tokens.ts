@@ -9,7 +9,8 @@ export const gemfileTokens = (content: string): string[] => {
     const commandRegexp = token === '/' && startsWarnRegexp(tokens, content[pattern.lastIndex]);
     if ((token === '/' || token === '%') && (commandRegexp || expectsExpression(tokens))) {
       const end = literalEnd(content, match.index);
-      if (end !== undefined && (!commandRegexp || !/\w/.test(content[end] ?? ''))) {
+      // A slash inside a later quoted argument can look like the end of a warn regexp.
+      if (end !== undefined && (!commandRegexp || !/[\w'"`]/.test(content[end] ?? ''))) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
         continue;

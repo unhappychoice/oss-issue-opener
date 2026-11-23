@@ -247,6 +247,14 @@ gem 'rack', path: '/rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('finds a production gem with a relative path after division of a local variable', () => {
+  const gemfile = `warn = 10
+warn /2
+gem 'rack', path: './'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   `warn /prefix
 class RegexText
