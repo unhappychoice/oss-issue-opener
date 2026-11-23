@@ -252,6 +252,13 @@ gem 'rack', path: '/'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['receiver.if', 'receiver&.if', 'receiver.\nif'].forEach((call) => {
+  test(`detects production gems after division of ${call}`, () => {
+    const gemfile = `${call} / 2\ngem 'rack', path: '/rack'`;
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 [
   '/start\\/\nclass Pattern\nend\nfinish/x',
   '%r{start{nested}\nclass Pattern\nend\nfinish}x',
@@ -260,6 +267,8 @@ gem 'rack', path: '/'`;
   '/start#{"/"}\nclass Pattern\nfinish/',
   '/start#{%q(}/)}\nclass Pattern\nfinish/',
   '/start#{/nested/}\nclass Pattern\nfinish/',
+  '/start#{1..if /}/; 2; end}\nclass Pattern\nfinish/',
+  '/start#{receiver.if / 2}\nclass Pattern\nfinish/',
   'enabled ? /start\nclass Pattern\nfinish/ : /start\nend\nfinish/',
 ].forEach((literal) => {
   test(`ignores Gemfile scope keywords in regexp ${JSON.stringify(literal)}`, () => {
