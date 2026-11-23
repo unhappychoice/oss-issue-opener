@@ -6,7 +6,7 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' || token === '%' || token === '?') {
+    if (token === '/' || token === '%' || token === '?' || token === '`') {
       const end = literalEndAt(content, match.index, token, tokens);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -44,12 +44,17 @@ const expectsExpressionAfter = (tokens: string[]): boolean => {
 };
 
 const literalEndAt = (content: string, start: number, token: string, tokens: string[]): number | undefined => {
+  if (token === '`') {
+    return isBacktickLiteralAfter(tokens[previousTokenIndex(tokens)]) ? literalEnd(content, start) : undefined;
+  }
   if (!expectsExpressionAfter(tokens) &&
     !(token === '/' && /^\/\S/.test(content.slice(start, start + 2)) && followsRegexpCommand(tokens))) {
     return undefined;
   }
   return token === '?' ? characterEnd(content, start) : literalEnd(content, start);
 };
+
+const isBacktickLiteralAfter = (previous: string | undefined): boolean => previous !== '.' && previous !== 'def';
 
 const followsRegexpCommand = (tokens: string[]): boolean => {
   if (!/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
@@ -82,12 +87,12 @@ const characterEnd = (content: string, start: number): number | undefined => {
 const closingDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([iIqQrswWx]?)([^\w\s\u0080-\uffff])/y;
+  const opening = /[/`]|%([iIqQrswWx]?)([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
-  const type = match[1] ?? 'r';
-  const delimiter = match[2] ?? '/';
+  const delimiter = match[2] ?? match[0];
+  const type = match[1] ?? (delimiter === '/' ? 'r' : 'x');
   return {
     start: opening.lastIndex, delimiter, closing: closingDelimiters.get(delimiter) ?? delimiter,
     regexp: type === 'r', interpolates: !['i', 'q', 's', 'w'].includes(type), nesting: 1, braces: 0,
@@ -129,7 +134,8 @@ const literalEnd = (content: string, start: number): number | undefined => {
         frame.expressionExpected = true;
       }
     } else if (!isTokenSpacing(token) && !token.startsWith('#') && !token.startsWith('=begin')) {
-      if ((token === '/' || token === '%') && frame.expressionExpected) {
+      if (((token === '/' || token === '%') && frame.expressionExpected) ||
+        (token === '`' && isBacktickLiteralAfter(frame.previous))) {
         const nested = literalFrame(content, offset);
         if (nested) {
           frames.push(nested);

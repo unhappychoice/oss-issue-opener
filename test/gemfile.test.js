@@ -237,6 +237,13 @@ const namespaceDefinitions = [
   'consume(result = class TestHelper; end)',
 ];
 
+test('preserves scopes around backtick method names and command strings', () => {
+  const gemfile = "group :test do\n  def helper.`(command); command; end\n  helper.`('example')\n  warn `echo`\n  gem 'rspec'\nend\ngem 'rack'";
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 ['warn', 'puts', 'print'].forEach((command) => {
   test(`ignores scope keywords in a multiline regexp passed to ${command}`, () => {
     const gemfile = `group :test do
@@ -270,6 +277,9 @@ gem 'rack'`;
   '%I!#{"!"}\nclass SymbolText\nlast!',
   '%s!#{first}\nclass SymbolText\nlast!',
   '%x!first\nclass CommandText\nlast!',
+  '`first\nclass CommandText\nlast`',
+  '`first\\`\nend\ngem "ignored"\nlast`',
+  '`#{`inner`}\nclass CommandText\nlast`',
   '%!first\nclass StringText\nlast!',
   'Regexp.union /first\nclass RegexText\nlast/',
   'Regexp.union(/first\nclass RegexText\nlast/)',
