@@ -246,6 +246,13 @@ test('preserves scopes around backtick method names and command strings', () => 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('finds a production gem between backtick symbols', () => {
+  const gemfile = "group :test do\n  class TestHelper; end\n  operator = :`\n  gem 'rspec'\nend\ngem 'rack'\noperator = :`";
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+});
+
 ['warn', 'puts', 'print', 'p'].forEach((command) => {
   test(`ignores scope keywords in a multiline regexp passed to ${command}`, () => {
     const gemfile = `group :test do
