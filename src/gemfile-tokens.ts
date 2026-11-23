@@ -1,11 +1,19 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if ((token === '/' || token === '%') && expectsExpression(tokens)) {
+      const end = regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push(content.slice(match.index, end));
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -26,6 +34,76 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const expectsExpression = (tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  const token = tokens[index] ?? '\n';
+  return /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
+    (/^(?:!|do|if|elsif|unless)$/.test(token) && tokens[previousTokenIndex(tokens, index - 1)] !== '.');
+};
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalFrame = (opening: string, interpolates: boolean) => ({
+  opening, closing: pairedDelimiters.get(opening) ?? opening, interpolates, depth: 1,
+});
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const opening = /\/|%r([^a-zA-Z0-9\u0080-\uffff])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const frames: (ReturnType<typeof literalFrame> | { tokens: string[]; depth: number })[] = [
+    literalFrame(match[1] ?? '/', true),
+  ];
+  const expression = new RegExp(tokenPattern, 'y');
+  const percentLiteral = /%([qQrwWiIxs])?([^a-zA-Z0-9\u0080-\uffff])/y;
+  const options = /[imxounes]*/y;
+  let offset = opening.lastIndex;
+  while (offset < content.length && frames.length) {
+    const frame = frames.at(-1)!;
+    const character = content[offset];
+    if ('tokens' in frame) {
+      percentLiteral.lastIndex = offset;
+      const literal = expectsExpression(frame.tokens) && percentLiteral.exec(content);
+      if (literal) {
+        frames.push(literalFrame(literal[2], !/^[qwis]$/.test(literal[1] ?? '')));
+        frame.tokens.push(literal[0]);
+        offset = percentLiteral.lastIndex;
+        continue;
+      }
+      if (character === '/' && expectsExpression(frame.tokens)) {
+        frames.push(literalFrame('/', true));
+      } else {
+        expression.lastIndex = offset;
+        const token = expression.exec(content)?.[0];
+        if (!token) return undefined;
+        if (token === '{') frame.depth++;
+        if (token === '}' && --frame.depth === 0) frames.pop();
+        if (!token.startsWith('#')) frame.tokens.push(token);
+        offset = expression.lastIndex;
+        continue;
+      }
+      frame.tokens.push('/');
+    } else if (character === frame.closing) {
+      if (--frame.depth === 0) frames.pop();
+    } else if (character === '\\') {
+      offset++;
+    } else if (frame.interpolates && content.startsWith('#{', offset)) {
+      frames.push({ tokens: ['{'], depth: 1 });
+      offset++;
+    } else if (character === frame.opening) {
+      frame.depth++;
+    }
+    offset++;
+  }
+  if (frames.length) return undefined;
+  options.lastIndex = offset;
+  options.exec(content);
+  return options.lastIndex;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {

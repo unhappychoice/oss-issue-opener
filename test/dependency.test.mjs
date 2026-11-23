@@ -148,12 +148,15 @@ test('Gemfile fallback preserves group exclusions for literal package names', as
   assert.equal(await check('runtimeXtest'), false);
 });
 
-test('Gemfile fallback preserves group exclusions across a nested class and module', async () => {
+test('Gemfile fallback preserves group exclusions across namespaces and a multiline regexp', async () => {
   mockRubyRepository('', `group :test do
     module TestHelpers
       class TestHelper
       end
     end
+    matcher = /prefix
+class RegexText
+suffix/
     gem 'rspec'
   end
   gem 'rack'`);

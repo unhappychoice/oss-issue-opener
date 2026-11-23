@@ -246,3 +246,35 @@ gem 'rack', path: '/rack'`;
 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  `matcher = /prefix
+class RegexText
+suffix/`,
+  String.raw`matcher = /prefix
+class RegexText
+end\/suffix/i`,
+  `matcher = enabled ? /prefix
+class RegexText
+suffix/ : nil`,
+  `matcher = enabled ? nil : %r{prefix{2}
+module RegexText
+suffix}`,
+  `matcher = /prefix#{ %q!}/! }
+class RegexText
+suffix/`,
+  `matcher = /prefix#{ { "}" => /[}]/ }["}"] }
+class RegexText
+suffix/`,
+].forEach((definition) => {
+  test(`ignores scope keywords inside a regular expression: ${definition}`, () => {
+    const gemfile = `group :test do
+${definition}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
