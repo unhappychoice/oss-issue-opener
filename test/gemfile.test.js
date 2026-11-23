@@ -288,6 +288,23 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+['||=', '&&='].forEach((operator) => {
+  test(`detects division of a local warn after ${operator} assignment`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class Helper; end
+  end
+  gem 'rspec'
+end
+divisor = 2
+warn ${operator} 8
+warn /divisor
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 ['for warn in [8]', 'for divisor, warn in [[2, 8]] do'].forEach((loop) => {
   test(`detects division involving a warn variable bound by ${loop}`, () => {
     const gemfile = `divisor = 2

@@ -75,8 +75,12 @@ const assignsLocalWarn = (statement: string[]): boolean => {
       (index === 0 || [',', '*'].includes(targets[index - 1])) &&
       (index === targets.length - 1 || targets[index + 1] === ','))) return true;
   }
-  if (statement.some((token, index) => token === 'warn' && !isQualifiedName(statement[index - 1]) &&
-    statement[index + 1] === '=' && !['=', '~'].includes(statement[index + 2]))) return true;
+  if (statement.some((token, index) => {
+    if (token !== 'warn' || isQualifiedName(statement[index - 1])) return false;
+    const operator = statement[index + 1];
+    const next = statement[index + 2];
+    return operator === '=' ? !['=', '~'].includes(next) : ['||', '&&'].includes(operator) && next === '=';
+  })) return true;
 
   const equals = statement.indexOf('=');
   const targets = statement.slice(0, equals);
