@@ -211,6 +211,7 @@ gem 'rack'`;
   'warn = 10\nwarn /2',
   'puts = 10\nputs /2',
   'print = 10\nprint /2',
+  'p = 10\np /2',
   'ratio = receiver.if / 2',
   'ratio = receiver.return / 2',
   'slash = ?/',
@@ -245,7 +246,7 @@ test('preserves scopes around backtick method names and command strings', () => 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['warn', 'puts', 'print'].forEach((command) => {
+['warn', 'puts', 'print', 'p'].forEach((command) => {
   test(`ignores scope keywords in a multiline regexp passed to ${command}`, () => {
     const gemfile = `group :test do
   ${command} /first

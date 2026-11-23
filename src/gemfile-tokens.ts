@@ -62,7 +62,7 @@ const followsRegexpCommand = (tokens: string[]): boolean => {
   const command = tokens[method];
   const separator = previousTokenIndex(tokens, method - 1);
   if (tokens[separator] === '.') return /^[a-z_]\w*[!?]?$/.test(command ?? '');
-  return (command === 'warn' || command === 'puts' || command === 'print') &&
+  return (command === 'warn' || command === 'puts' || command === 'print' || command === 'p') &&
     expectsExpression(tokens[separator] ?? '\n', tokens[previousTokenIndex(tokens, separator - 1)]) &&
     !tokens.some((token, index) => isCommandAssignment(command, token, index, tokens));
 };
