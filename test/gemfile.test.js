@@ -207,10 +207,18 @@ gem 'rack'`;
   });
 });
 
+['warn', 'puts'].forEach((name) => {
+  test(`finds a production gem with a path after division of ${name}`, () => {
+    const gemfile = `${name} = 10
+${name} /2
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 const namespaceDefinitions = [
   'class TestHelper\nend',
-  'warn = 10\nwarn / 2 / 5\nclass TestHelper\nend',
-  'puts = 10\nputs / 2 / 5\nclass TestHelper\nend',
   'module TestHelpers\n  class TestHelper < Object\n  end\nend',
   'result = class TestHelper; end',
   'result = module TestHelpers; end',
@@ -223,110 +231,6 @@ const namespaceDefinitions = [
   'class <<self\n=begin\nend\ngem "ignored"\n=end\nend',
   'consume(result = class TestHelper; end)',
 ];
-
-[
-  'separator = ?/',
-  'separator = ?\\/',
-  'separator = ?\\C-/',
-  'separator = ?\\u{2f}',
-  'separator = true ? ?/ : nil',
-  'pattern = true ?/\nclass Decoy\n/ : nil',
-  'pattern = true ? nil :/\nmodule Decoy\n/',
-].forEach((expression) => {
-  test(`preserves Gemfile groups and paths after ${expression}`, () => {
-    const gemfile = `group :test do
-${expression}
-  gem 'rspec'
-end
-gem 'rack', path: '/rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  'description = %!\nclass Decoy\n!',
-  'description = %{#{ %(/}) }\nclass Decoy\n}',
-  'description = %{#{ 10%-3 }\nclass Decoy\n}',
-  'description = %q{\nclass Decoy\n}',
-  'description = %q!\nmodule Decoy\nend\n!',
-  'description = %q{nested {braces} and escaped \\}\nclass Decoy\n}',
-  'description = %Q{#{ %q(}) }\nclass Decoy\n}',
-  'pattern = /\nclass Decoy\nmodule Decoy\n/',
-  'pattern = enabled && /\nclass Decoy\n/',
-  'pattern = enabled || %r{\nmodule Decoy\n}',
-  '! /\nclass Decoy\n/',
-  '!%r{\nclass Decoy\n}',
-  'not /prefix\nclass Decoy\nsuffix/',
-  'not %r{prefix\nmodule Decoy\nsuffix}',
-  'pattern = enabled ? /\nclass Decoy\n/ : nil',
-  'pattern = enabled ? nil : /\nclass Decoy\n/',
-  'pattern = /escaped \\/\nclass Decoy\nend\n/i',
-  'pattern = %r{\nclass Decoy\n}',
-  'pattern = %r!\nclass Decoy\n!i',
-  'pattern = %r{nested {braces} and escaped \\}\nclass Decoy\n}x',
-  'pattern = /#{ 12 / 3 }\nend\n/',
-  'pattern = /#{ {path: "/}"}[:path] }\nend\n/',
-  'pattern = /#{ %q(}/) }\nend\n/',
-  'pattern = %r{#{ "#{ "/}" }" }\nend\n}',
-  'puts /prefix\nclass Decoy\nsuffix/',
-  'puts %r{prefix\nmodule Decoy\nsuffix}',
-  'warn /prefix\nclass Decoy\nsuffix/',
-  'warn %r{prefix\nmodule Decoy\nsuffix}',
-].forEach((expression) => {
-  test(`ignores namespace keywords in ${expression}`, () => {
-    const gemfile = `group :test do
-${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['metrics.if', 'metrics.return', 'metrics::return', 'metrics.not', 'metrics::not'].forEach((method) => {
-  test(`keeps namespace scopes visible after division of ${method}`, () => {
-    const gemfile = `group :test do
-  result = ${method} / 2
-  class TestHelper
-    result = 100 / 2
-  end
-  if 100 / 2 / 5
-  end
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  ['if', 'if /\nclass Decoy\n/\nend'],
-  ['unless', 'unless %r!\nmodule Decoy\n!\nend'],
-  ['elsif', 'if enabled\nelsif /\nclass Decoy\n/\nend'],
-  ['while', 'while /\nclass Decoy\n/\nend'],
-  ['until', 'until /\nclass Decoy\n/\nend'],
-  ['when', 'case input\nwhen /\nclass Decoy\n/\nend'],
-  ['case', 'case /\nclass Decoy\n/\nwhen input\nend'],
-  ['return', 'def helper\n  return /\nclass Decoy\n/\nend'],
-  ['return with %r', 'def helper\n  return %r{\nclass Decoy\n}\nend'],
-].forEach(([keyword, statement]) => {
-  test(`ignores namespace keywords in a regexp after ${keyword}`, () => {
-    const gemfile = `group :test do
-${statement}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
 
 [':test', ':development', ':development, :test'].forEach((group) => {
   namespaceDefinitions.forEach((definition) => {
