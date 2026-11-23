@@ -27,7 +27,7 @@ export const gemfileTokens = (content: string): string[] => {
     }
     if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
-      previous = token;
+      previous = regexpContext(previous, token);
     }
     if (token.startsWith('<<')) {
       const indented = /^<<[-~]/.test(token);
@@ -46,9 +46,12 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|::|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./;
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
+
+const regexpContext = (previous: string, token: string): string =>
+  (previous === '.' || previous === '::') && /^[a-z]/.test(token) ? `${previous}${token}` : token;
 
 const expectsRegexp = (previous: string): boolean =>
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&|\||if|elsif|unless|do|then|else)$/.test(previous);
@@ -119,7 +122,7 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     }
     if (token === '{') frame.braces++;
     if (token === '}') frame.braces--;
-    frame.previous = token;
+    frame.previous = regexpContext(frame.previous, token);
   }
   return undefined;
 };

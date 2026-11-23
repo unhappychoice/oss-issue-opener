@@ -248,6 +248,14 @@ halve(4)`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+['receiver.if', 'receiver&.unless', 'receiver::if', 'receiver:: if'].forEach((call) => {
+  test(`detects production gems after division of ${call}`, () => {
+    const gemfile = `${call} / 2\ngem 'rack', path: '/'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
 [
   '/first\nclass FakeScope\nlast/',
   '%r{first\nclass FakeScope\nlast}',
@@ -255,6 +263,7 @@ halve(4)`;
   'flag ? /other/ : /first\nclass FakeScope\nlast/',
   '/first\n#{%q(}/)}\nclass FakeScope\nlast/i',
   '/first\n#{flag ? /}/ : /other/}\nclass FakeScope\nlast/',
+  '/first\n#{receiver.if / 2}\nclass FakeScope\nlast/',
   '/first\\/\nclass FakeScope\nlast/',
   '%r{first{nested}\nclass FakeScope\nlast}',
 ].forEach((expression) => {
