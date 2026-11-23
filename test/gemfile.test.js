@@ -252,6 +252,8 @@ test('detects a production gem after dividing a local variable without operand s
 end
 puts = 8
 puts /2
+ratio = receiver.if / 2
+marker = ?/
 gem 'rack', path: '/rack'`;
 
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
@@ -277,6 +279,19 @@ finish}im`,
   `true ? /start
 class TestHelper
 finish/ : nil`,
+  `false ? nil : /start
+class TestHelper
+finish/`,
+  '/#{"/"}/',
+  '/#{ %q!}!.ord / 2 }/',
+  '/#{ /nested/.source }/',
+  '/#{ %q{#{}} }/',
+  '/#{ ?/ }/',
+  `/start
+class TestHelper
+finish/ && /start
+module TestHelpers
+finish/`,
 ].forEach((expression) => {
   test(`ignores class and module keywords in regexp expression ${JSON.stringify(expression)}`, () => {
     const gemfile = `group :test do
@@ -287,4 +302,19 @@ gem 'rack'`;
 
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });
+});
+
+test('ignores namespace keywords in a multiline regexp used as an if condition', () => {
+  const gemfile = `group :test do
+  if /prefix
+class RegexText
+module RegexText
+suffix/
+    gem 'rspec'
+  end
+  gem 'minitest'
+end
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });

@@ -154,7 +154,11 @@ test('Gemfile fallback preserves group exclusions across nested classes and modu
       class TestHelper
       end
     end
-    gem 'rspec'
+    if %r!prefix
+class RegexText
+suffix!
+      gem 'rspec'
+    end
   end
   gem 'rack'`);
 

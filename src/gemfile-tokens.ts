@@ -1,18 +1,19 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
-  const regexp = /\/(?:\\[\s\S]|[^/\\])*\/[imxounes]*/y;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === '?' && content[pattern.lastIndex] === '/' && startsRegexp(tokens)) {
+      tokens.push('?/');
+      pattern.lastIndex++;
+      continue;
+    }
     if ((token === '/' || token === '%') && startsRegexp(tokens)) {
-      regexp.lastIndex = match.index;
-      const literal = token === '/'
-        ? regexp.exec(content)?.[0]
-        : percentRegexp(content, match.index);
-      if (literal?.includes('\n')) {
+      const literal = readRegexp(content, match.index);
+      if (literal) {
         tokens.push(literal);
         pattern.lastIndex = match.index + literal.length;
         continue;
@@ -40,27 +41,98 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&(?!=)|\|\|(?!=)|[^\S\n]+|\n|./;
+
 const startsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
-  return index < 0 || /^(?:\n|;|=|=>|~|!|\(|\[|,|\?|:)$/.test(tokens[index]);
+  return expectsRegexp(tokens[index] ?? '\n', tokens[previousTokenIndex(tokens, index)]);
 };
 
-const percentRegexp = (content: string, start: number): string | undefined => {
-  const opener = content[start + 2];
-  if (content[start + 1] !== 'r' || !opener || /[\w\s]/.test(opener)) return;
-  const pairedDelimiters: Record<string, string> = { '(': ')', '[': ']', '{': '}', '<': '>' };
-  const closer = pairedDelimiters[opener] ?? opener;
-  let depth = 1;
-  for (let index = start + 3; index < content.length; index++) {
-    const character = content[index];
-    if (character === '\\') {
-      index++;
-    } else if (character === closer && --depth === 0) {
-      const options = content.slice(index + 1).match(/^[imxounes]*/)?.[0] ?? '';
-      return content.slice(start, index + 1 + options.length);
-    } else if (opener !== closer && character === opener) {
-      depth++;
+const expectsRegexp = (token: string, previous?: string): boolean =>
+  /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
+  (previous !== '.' && /^(?:if|elsif|unless|while|until|when|do)$/.test(token));
+
+const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalFrame = (content: string, start: number, inInterpolation = false) => {
+  const opening = inInterpolation ? /\/|%(r|[qQwWiIxs]?)([^\w\s])/y : /\/|%(r)([^\w\s])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const delimiter = match[2] ?? '/';
+  const kind = match[1] ?? 'r';
+  return {
+    delimiter,
+    regexp: kind === 'r',
+    interpolates: !/^[qwis]$/.test(kind),
+    closing: pairedDelimiters.get(delimiter) ?? delimiter,
+    start: opening.lastIndex,
+    delimiters: 1,
+    braces: 0,
+    previous: '{',
+    regexpExpected: true,
+  };
+};
+
+const readRegexp = (content: string, start: number): string | undefined => {
+  const initial = literalFrame(content, start);
+  if (!initial) return undefined;
+  const frames = [initial];
+  const interpolatedPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const literalPart = /\\[\s\S]|[\s\S]/y;
+  const expressionPart = new RegExp(tokenPattern, 'gy');
+  const options = /[imxounes]*/y;
+  let offset = initial.start;
+
+  while (offset < content.length) {
+    const frame = frames.at(-1)!;
+    if (frame.braces === 0 && content[offset] === frame.closing && --frame.delimiters === 0) {
+      offset++;
+      if (frame.regexp) {
+        options.lastIndex = offset;
+        options.exec(content);
+        offset = options.lastIndex;
+      }
+      frames.pop();
+      if (frames.length === 0) return content.slice(start, offset);
+      continue;
     }
+    const bodyPart = frame.interpolates ? interpolatedPart : literalPart;
+    const part = frame.braces === 0 ? bodyPart : expressionPart;
+    part.lastIndex = offset;
+    const match = part.exec(content);
+    if (!match) return undefined;
+    const token = match[0];
+    if (frame.braces === 0) {
+      if (frame.delimiter !== frame.closing && token === frame.delimiter) frame.delimiters++;
+      if (token === '#{') {
+        frame.braces++;
+        frame.previous = '{';
+        frame.regexpExpected = true;
+      }
+    } else if (!token.startsWith('#') && !isTokenSpacing(token)) {
+      if (token === '?' && content[part.lastIndex] === '/' && frame.regexpExpected) {
+        frame.previous = '?/';
+        frame.regexpExpected = false;
+        offset = part.lastIndex + 1;
+        continue;
+      }
+      if ((token === '/' || token === '%') && frame.regexpExpected) {
+        const nested = literalFrame(content, offset, true);
+        if (nested) {
+          frames.push(nested);
+          frame.previous = token;
+          frame.regexpExpected = false;
+          offset = nested.start;
+          continue;
+        }
+      }
+      if (token === '{') frame.braces++;
+      if (token === '}') frame.braces--;
+      frame.regexpExpected = expectsRegexp(token, frame.previous);
+      frame.previous = token;
+    }
+    offset = part.lastIndex;
   }
   return undefined;
 };
