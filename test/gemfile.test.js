@@ -210,6 +210,7 @@ gem 'rack'`;
 const namespaceDefinitions = [
   'class TestHelper\nend',
   'warn = 10\nwarn / 2 / 5\nclass TestHelper\nend',
+  'puts = 10\nputs / 2 / 5\nclass TestHelper\nend',
   'module TestHelpers\n  class TestHelper < Object\n  end\nend',
   'result = class TestHelper; end',
   'result = module TestHelpers; end',
@@ -266,6 +267,8 @@ gem 'rack', path: '/rack'`;
   'pattern = /#{ {path: "/}"}[:path] }\nend\n/',
   'pattern = /#{ %q(}/) }\nend\n/',
   'pattern = %r{#{ "#{ "/}" }" }\nend\n}',
+  'puts /prefix\nclass Decoy\nsuffix/',
+  'puts %r{prefix\nmodule Decoy\nsuffix}',
   'warn /prefix\nclass Decoy\nsuffix/',
   'warn %r{prefix\nmodule Decoy\nsuffix}',
 ].forEach((expression) => {

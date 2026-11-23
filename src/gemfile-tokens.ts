@@ -17,7 +17,7 @@ export const gemfileTokens = (content: string): string[] => {
       }
     }
     if ((token === '/' || token === '%') &&
-      (canStartLiteral(tokens) || startsWarnRegexp(content, match.index, tokens))) {
+      (canStartLiteral(tokens) || startsCommandRegexp(content, match.index, tokens))) {
       const end = expressionLiteralEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -54,12 +54,12 @@ const followsClassKeyword = (tokens: string[]): boolean => {
   return index < 0 || ['\n', ';', 'do', '{', '=', '(', ','].includes(tokens[index]);
 };
 
-const startsWarnRegexp = (content: string, index: number, tokens: string[]): boolean => {
+const startsCommandRegexp = (content: string, index: number, tokens: string[]): boolean => {
   if (!/^\s$/.test(content[index - 1] ?? '')) return false;
   if (content[index] === '/' ? /\s/.test(content[index + 1] ?? '') : content[index + 1] !== 'r') return false;
   const command = previousTokenIndex(tokens);
   const beforeCommand = previousTokenIndex(tokens, command - 1);
-  return tokens[command] === 'warn' &&
+  return (tokens[command] === 'warn' || tokens[command] === 'puts') &&
     (beforeCommand < 0 || ['\n', ';', 'do'].includes(tokens[beforeCommand]));
 };
 
