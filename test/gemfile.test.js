@@ -334,7 +334,12 @@ gem 'zeitwerk', path: '/zeitwerk'`;
   });
 });
 
-['warn, divisor = 8, 2', 'divisor, warn = 2, 8'].forEach((assignment) => {
+[
+  'warn, divisor = 8, 2',
+  'divisor, warn = 2, 8',
+  'divisor = 2; warn, = [8]',
+  'divisor = 2; value, warn, = [0, 8]',
+].forEach((assignment) => {
   test(`detects division after parallel assignment ${assignment}`, () => {
     const gemfile = `group :test do
   module TestHelpers

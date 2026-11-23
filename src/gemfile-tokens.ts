@@ -84,7 +84,7 @@ const assignsLocal = (statement: string[], name: string): boolean => {
 
   const equals = statement.indexOf('=');
   const targets = statement.slice(0, equals);
-  return equals >= 3 && targets.includes(name) &&
+  return equals >= 2 && targets.includes(name) &&
     targets.every((token, index) => index % 2 === 1 ? token === ',' : /^(?:@@?|\$)?[A-Za-z_]\w*$/.test(token));
 };
 

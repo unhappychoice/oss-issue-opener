@@ -62,4 +62,3 @@ const isEndlessMethod = (tokens: string[]): boolean => {
     return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };
-
