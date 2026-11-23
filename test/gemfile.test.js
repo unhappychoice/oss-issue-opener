@@ -207,10 +207,9 @@ gem 'rack'`;
   });
 });
 
-['warn', 'puts'].forEach((name) => {
-  test(`finds a production gem with a path after division of ${name}`, () => {
-    const gemfile = `${name} = 10
-${name} /2
+['warn = 10\nwarn /2', 'puts = 10\nputs /2', 'ratio = receiver.if / 2', 'slash = ?/'].forEach((expression) => {
+  test(`finds a production gem with a path after ${expression}`, () => {
+    const gemfile = `${expression}
 gem 'rack', path: '/rack'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -231,6 +230,32 @@ const namespaceDefinitions = [
   'class <<self\n=begin\nend\ngem "ignored"\n=end\nend',
   'consume(result = class TestHelper; end)',
 ];
+
+[
+  '/first\nclass RegexText\nlast/i',
+  '!/first\nclass RegexText\nlast/',
+  '/first\nend\ngem "ignored"\nlast/',
+  '%r{first\nclass RegexText\n{nested}\nlast}',
+  'enabled ? /first\nclass RegexText\nlast/ : nil',
+  'enabled ? nil : /first\nclass RegexText\nlast/',
+  '/#{%q!}/!}\\/first\nclass RegexText\nlast/',
+  '/#{%q{#{inner}}}first\nclass RegexText\nlast/',
+  '/#{ "/" }/',
+  '/#{ %q!}!.ord / 2 }/',
+  '/#{/inner/}first\nclass RegexText\nlast/',
+].forEach((expression) => {
+  test(`ignores scope keywords in regexp expression ${expression}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false);
+  });
+});
 
 [':test', ':development', ':development, :test'].forEach((group) => {
   namespaceDefinitions.forEach((definition) => {

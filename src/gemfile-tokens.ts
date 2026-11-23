@@ -1,11 +1,19 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if ((token === '/' || token === '%' || token === '?') && expectsExpressionAfter(tokens)) {
+      const end = token === '?' ? characterEnd(content, match.index) : regexpEnd(content, match.index);
+      if (end !== undefined) {
+        pattern.lastIndex = end;
+        tokens.push(content.slice(match.index, end));
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -26,6 +34,103 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const expectsExpressionAfter = (tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  return expectsExpression(tokens[index] ?? '\n', tokens[previousTokenIndex(tokens, index - 1)]);
+};
+
+const expectsExpression = (token: string, previous?: string): boolean =>
+  /^(?:\n|;|=|=>|~|\?|:|\(|\[|\{|,|&&|\|\|)$/.test(token) ||
+  (previous !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
+
+const characterEnd = (content: string, start: number): number | undefined => {
+  const character = /\?(?:\\[^\r\n]|[^\s\\])/uy;
+  character.lastIndex = start;
+  return character.test(content) ? character.lastIndex : undefined;
+};
+
+const closingDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+
+const literalFrame = (content: string, start: number, interpolation: boolean) => {
+  const opening = /\/|%([rqQ])([^\w\s\u0080-\uffff])/y;
+  opening.lastIndex = start;
+  const match = opening.exec(content);
+  if (!match) return undefined;
+  const regexp = match[1] !== 'q' && match[1] !== 'Q';
+  if (!regexp && !interpolation) return undefined;
+  const delimiter = match[2] ?? '/';
+  return {
+    start: opening.lastIndex, delimiter, closing: closingDelimiters.get(delimiter) ?? delimiter,
+    regexp, interpolates: match[1] !== 'q', nesting: 1, braces: 0,
+    previous: '{', expressionExpected: true,
+  };
+};
+
+const regexpEnd = (content: string, start: number): number | undefined => {
+  const initial = literalFrame(content, start, false);
+  if (!initial) return undefined;
+  const frames = [initial];
+  const literalPart = /\\[\s\S]|#\{|[\s\S]/y;
+  const rawLiteralPart = /\\[\s\S]|[\s\S]/y;
+  const expressionPart = new RegExp(tokenPattern, 'y');
+  const options = /[imxounes]*/y;
+  let offset = initial.start;
+  while (offset < content.length) {
+    const frame = frames.at(-1)!;
+    if (frame.braces === 0 && content[offset] === frame.closing && --frame.nesting === 0) {
+      offset++;
+      if (frame.regexp) {
+        options.lastIndex = offset;
+        options.exec(content);
+        offset = options.lastIndex;
+      }
+      frames.pop();
+      if (frames.length === 0) return offset;
+      continue;
+    }
+    const part = frame.braces > 0 ? expressionPart : frame.interpolates ? literalPart : rawLiteralPart;
+    part.lastIndex = offset;
+    const token = part.exec(content)?.[0];
+    if (token === undefined) return undefined;
+    if (frame.braces === 0) {
+      if (token === frame.delimiter && frame.delimiter !== frame.closing) frame.nesting++;
+      if (token === '#{') {
+        frame.braces = 1;
+        frame.previous = '{';
+        frame.expressionExpected = true;
+      }
+    } else if (!isTokenSpacing(token) && !token.startsWith('#') && !token.startsWith('=begin')) {
+      if ((token === '/' || token === '%') && frame.expressionExpected) {
+        const nested = literalFrame(content, offset, true);
+        if (nested) {
+          frames.push(nested);
+          frame.previous = 'literal';
+          frame.expressionExpected = false;
+          offset = nested.start;
+          continue;
+        }
+      }
+      if (token === '?' && frame.expressionExpected) {
+        const end = characterEnd(content, offset);
+        if (end !== undefined) {
+          frame.previous = 'literal';
+          frame.expressionExpected = false;
+          offset = end;
+          continue;
+        }
+      }
+      if (token === '{') frame.braces++;
+      if (token === '}') frame.braces--;
+      frame.expressionExpected = expectsExpression(token, frame.previous);
+      frame.previous = token;
+    }
+    offset = part.lastIndex;
+  }
+  return undefined;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {
