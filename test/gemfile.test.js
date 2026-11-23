@@ -257,6 +257,8 @@ gem 'rack'`;
 [
   '/first\nclass RegexText\nlast/i',
   '!/first\nclass RegexText\nlast/',
+  'defined? /first\nclass RegexText\nlast/i',
+  'defined? %r!first\nend\ngem "ignored"\nlast!',
   '/first\nend\ngem "ignored"\nlast/',
   '%r{first\nclass RegexText\n{nested}\nlast}',
   '%q{first\nclass StringText\n{nested}\nlast}',
@@ -278,6 +280,7 @@ gem 'rack'`;
   '/#{ "/" }/',
   '/#{ %q!}!.ord / 2 }/',
   '/#{/inner/}first\nclass RegexText\nlast/',
+  '/#{defined? /}/}first\nclass RegexText\nlast/',
 ].forEach((expression) => {
   test(`ignores scope keywords in literal expression ${expression}`, () => {
     const gemfile = `group :test do
