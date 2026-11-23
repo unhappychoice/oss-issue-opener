@@ -78,7 +78,7 @@ class LocalScopes {
 
   private readonly root = new Set<string>();
   private readonly scopes: LocalScope[] = [];
-  private readonly assignment = /[ \t]*=(?!=|[>~])/y;
+  private readonly assignment = /[ \t]*(?:\|\||&&|<<|>>|\*\*|[-+*/%&|^])?=(?!=|[>~])/y;
   private readonly multipleAssignment = /[a-z_]\w*(?:[ \t]*,[ \t\r\n]*[a-z_]\w*)+[ \t]*=(?!=|[>~])/y;
   private methodStart: number | undefined;
   private depth = 0;

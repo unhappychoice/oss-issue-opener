@@ -266,6 +266,16 @@ pattern = /end/`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+for (const operator of ['||=', '&&=', '+=', '**=', '<<=', '/=']) {
+  test(`finds a production gem with a path after division of a local assigned with ${operator}`, () => {
+    const gemfile = `input ${operator} 12
+input /2
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+}
+
 for (const targets of ['input, divisor', 'first, input, last', 'first,\n  input, last']) {
   test(`preserves gem paths after dividing a local assigned by ${JSON.stringify(targets)}`, () => {
     const gemfile = `${targets} = [12, 8, 4]
