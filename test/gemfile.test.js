@@ -248,7 +248,7 @@ halve(4)`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['receiver.if', 'receiver&.unless', 'receiver::if', 'receiver:: if', 'receiver.and', 'receiver.or'].forEach((call) => {
+['receiver.if', 'receiver&.unless', 'receiver::if', 'receiver:: if', 'receiver.and', 'receiver.or', 'receiver.return'].forEach((call) => {
   test(`detects production gems after division of ${call}`, () => {
     const gemfile = `${call} / 2\ngem 'rack', path: '/'`;
 
@@ -269,6 +269,21 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
   });
+});
+
+test('preserves Gemfile groups after returning a multiline regexp from a method', () => {
+  const gemfile = `group :test do
+  def helper_pattern
+    return /first
+class FakeScope
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
 [

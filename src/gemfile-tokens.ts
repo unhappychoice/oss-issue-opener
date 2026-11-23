@@ -56,7 +56,7 @@ const literalContext = (previous: string, token: string): string =>
   (previous === '.' || previous === '::') && /^[a-z]/.test(token) ? `${previous}${token}` : token;
 
 const expectsLiteral = (previous: string): boolean =>
-  /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&|\||and|or|if|elsif|unless|do|then|else)$/.test(previous);
+  /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&|\||and|or|return|if|elsif|unless|do|then|else)$/.test(previous);
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
