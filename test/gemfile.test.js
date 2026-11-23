@@ -212,6 +212,7 @@ gem 'rack'`;
   'puts = 10\nputs /2',
   'print = 10\nprint /2',
   'ratio = receiver.if / 2',
+  'ratio = receiver.return / 2',
   'slash = ?/',
 ].forEach((expression) => {
   test(`finds a production gem with a path after ${expression}`, () => {
@@ -259,6 +260,23 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
     assert.equal(isProductionGem(gemfile, 'ignored'), false);
   });
+});
+
+test('ignores scope keywords in a multiline regexp returned from a method', () => {
+  const gemfile = `group :test do
+  def pattern
+    return /first
+class RegexText
+gem "ignored"
+last/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'ignored'), false);
 });
 
 [
