@@ -238,104 +238,16 @@ gem 'rack'`;
   });
 });
 
-test('detects production gems after division of a method parameter', () => {
-  const gemfile = `def halve(number)
-  number /2
-  gem 'rack', path: '/'
-end
-halve(4)`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['receiver.if', 'receiver&.unless', 'receiver::if', 'receiver:: if', 'receiver.and', 'receiver.or', 'receiver.return'].forEach((call) => {
-  test(`detects production gems after division of ${call}`, () => {
-    const gemfile = `${call} / 2\ngem 'rack', path: '/'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['and', 'or'].forEach((operator) => {
-  test(`detects production gems after a multiline regexp following ${operator}`, () => {
-    const gemfile = `group :test do
-  flag ${operator} /first
-class FakeScope
-last/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  });
-});
-
-test('preserves Gemfile groups after returning a multiline regexp from a method', () => {
+test('detects production gems after division of a local variable named puts', () => {
   const gemfile = `group :test do
-  def helper_pattern
-    return /first
-class FakeScope
-last/
+  class TestHelper
   end
   gem 'rspec'
 end
-gem 'rack'`;
+puts = 4
+puts /2
+gem 'rack', path: '/'`;
 
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('preserves Gemfile groups around a multiline regexp passed to puts', () => {
-  const gemfile = `group :test do
-  puts /first\nclass FakeScope\nlast/i
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('preserves division after puts when the slash is followed by whitespace', () => {
-  const gemfile = `puts / 2\ngem 'rack', path: '/'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[
-  '/first\nclass FakeScope\nlast/',
-  '%r{first\nclass FakeScope\nlast}',
-  'flag ? /first\nclass FakeScope\nlast/ : /other/',
-  'flag ? /other/ : /first\nclass FakeScope\nlast/',
-  '/first\n#{%q(}/)}\nclass FakeScope\nlast/i',
-  '/first\n#{flag ? /}/ : /other/}\nclass FakeScope\nlast/',
-  '/first\n#{receiver.if / 2}\nclass FakeScope\nlast/',
-  '/first\\/\nclass FakeScope\nlast/',
-  '%r{first{nested}\nclass FakeScope\nlast}',
-  '%q{first{nested}\nclass FakeScope\nlast}',
-].forEach((expression) => {
-  test(`preserves Gemfile groups around ${JSON.stringify(expression)}`, () => {
-    const gemfile = `group :test do
-  pattern = ${expression}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('preserves Gemfile groups around character literals', () => {
-  const gemfile = `group :test do
-  slash = ?/
-  brace = ?}
-  gem 'rspec'
-end
-ratio = 4 / 2
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
 });
