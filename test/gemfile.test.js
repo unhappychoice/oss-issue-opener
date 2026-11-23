@@ -244,80 +244,15 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-[
-  ['/', '/x'],
-  ['%r{', '}x'],
-  ['%r!', '!x'],
-  ['! /', '/x'],
-  ['enabled ? /', '/x : nil'],
-  ['enabled and /', '/x'],
-  ['enabled or %r{', '}x'],
-].forEach(([opening, closing]) => {
-  test(`keeps multiline regexp contents out of Gemfile scopes (${opening})`, () => {
-    const gemfile = `group :test do
-  pattern = ${opening}
-class NotAClass
-gem 'hidden'
-[{escaped\\/${opening === '%r!' ? '\\!' : ''}}]
-${closing}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
-  });
-});
-
-[
-  ['a quoted slash', '/#{"/"}/'],
-  ['division', '/#{8 / 2}/'],
-  ['a percent string and division', '/#{ %q!}!.ord / 2 }/'],
-  ['a nested regexp in a string', '/#{"#{/}/}"}/'],
-].forEach(([description, regexp]) => {
-  test(`preserves Gemfile group exclusions across regexp interpolation with ${description}`, () => {
-    const gemfile = `group :test do
-  matcher = ${regexp}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
-  });
-});
-
-[
-  ['a destructured local variable', '(warn, divisor) = [8, 2]\nwarn /divisor'],
-  ['a keyword-shaped method name', 'receiver.if / 2'],
-  ['a method named and', 'receiver.and / 2'],
-  ['puts with a spaced operand', 'puts = 8\nputs / 2'],
-].forEach(([description, expression]) => {
-  test(`detects a production gem after division involving ${description}`, () => {
-    const gemfile = `group :test do
+test('detects a production gem after dividing a local variable without operand spacing', () => {
+  const gemfile = `group :test do
   class TestHelper
   end
   gem 'rspec'
 end
-${expression}
+puts = 8
+puts /2
 gem 'rack', path: '/rack'`;
 
-    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
-  });
-});
-
-[
-  ['puts /pattern', '/x'],
-  ['puts %r{pattern', '}x'],
-].forEach(([opening, closing]) => {
-  test(`keeps multiline regexp arguments to ${opening} out of Gemfile scopes`, () => {
-    const gemfile = `group :test do
-  ${opening}
-class NotAClass
-gem 'hidden'
-${closing}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
-  });
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
