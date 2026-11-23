@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gemfileStatements, isProductionGem, isProductionGemIn } from '../dist/gemfile.js';
+import { isProductionGem, productionGemNames } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
 
@@ -103,7 +103,7 @@ test('ignores bare dependency names in Gemfile declarations', () => {
 
 test('tracks excluded and shared groups through deeply nested scopes', () => {
   const depth = 4_096;
-  const statements = gemfileStatements([
+  const names = productionGemNames([
     'group :test, :production do\n'.repeat(depth),
     "gem 'shared'",
     'group :development do',
@@ -121,10 +121,10 @@ test('tracks excluded and shared groups through deeply nested scopes', () => {
   ].join('\n'));
 
   for (const pkg of ['shared', 'after_development', 'ungrouped']) {
-    assert.equal(isProductionGemIn(statements, pkg), true, pkg);
+    assert.equal(names.has(pkg), true, pkg);
   }
   for (const pkg of ['inner_test', 'after_test', 'after_production', 'missing']) {
-    assert.equal(isProductionGemIn(statements, pkg), false, pkg);
+    assert.equal(names.has(pkg), false, pkg);
   }
 });
 
@@ -235,141 +235,5 @@ gem 'rack'`;
       assert.equal(isProductionGem(gemfile, 'rack'), true);
       assert.equal(isProductionGem(gemfile, 'ignored'), false);
     });
-  });
-});
-
-test('detects production gems after division of a local variable named puts', () => {
-  const gemfile = `group :test do
-  class TestHelper
-  end
-  gem 'rspec'
-end
-puts = 4
-puts /2
-gem 'rack', path: '/'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[
-  ['[4].each do |puts|', 'end'],
-  ['[0, 4].each { |value, puts|', '}'],
-  ['[4].each do |*puts|', 'end'],
-  ['[4].each { |value; puts|', '}'],
-].forEach(([opening, closing]) => {
-  test(`detects production gems after division of a puts block parameter in ${opening}`, () => {
-    const gemfile = `group :test do
-  ${opening} puts /2
-  ${closing}
-  gem 'rspec'
-end
-gem 'rack', path: '/'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('recognizes a regexp passed to puts after a block parameter leaves scope', () => {
-  const gemfile = `group :test do
-  [4].each do |puts|
-  end
-  puts /start
-class Pattern
-finish/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('ignores scope keywords in a multiline regexp passed to puts', () => {
-  const gemfile = `group :test do
-  puts /start
-class Pattern
-finish/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-['def helper(puts)', 'def helper puts', 'def self.helper(value, puts = 4)', 'def helper(*puts)'].forEach((signature) => {
-  test(`detects production gems after division of a puts parameter in ${signature}`, () => {
-    const gemfile = `group :test do
-  class TestHelper
-    ${signature}
-      puts /2
-    end
-  end
-  gem 'rspec'
-end
-gem 'rack', path: '/'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  ['in a previous method', 'def helper; puts = 4; end', ''],
-  ['as an optional parameter in a previous method', 'def helper(puts = 4); end', ''],
-  ['at the top level', 'puts = 4', 'def helper'],
-  ['only in a default expression', '', 'def helper(value = [1, puts])'],
-  ['in a previous class', 'class Helper\n  puts = 4\nend', ''],
-  ['in a previous module', 'module Helper\n  puts = 4\nend', ''],
-].forEach(([location, assignment, method]) => {
-  test(`ignores scope keywords in a regexp after assigning puts ${location}`, () => {
-    const gemfile = `${assignment}
-group :test do
-  ${method}
-  puts /start
-class Pattern
-finish/
-  ${method ? 'end' : ''}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['puts', 'receiver.if', 'receiver&.if', 'receiver.\nif'].forEach((call) => {
-  test(`detects production gems after division of ${call}`, () => {
-    const gemfile = `${call} / 2\ngem 'rack', path: '/rack'`;
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[
-  '/start\\/\nclass Pattern\nend\nfinish/x',
-  '%r{start{nested}\nclass Pattern\nend\nfinish}x',
-  '/start\nclass Pattern\nfinish/',
-  '/start\nend\nfinish/',
-  '/start#{"/"}\nclass Pattern\nfinish/',
-  '/start#{%q(}/)}\nclass Pattern\nfinish/',
-  '/#{ %q!}!.ord / 2 }/',
-  '!/start\nclass Pattern\nfinish/',
-  '/start#{/nested/}\nclass Pattern\nfinish/',
-  '/start#{1..if /}/; 2; end}\nclass Pattern\nfinish/',
-  '/start#{receiver.if / 2}\nclass Pattern\nfinish/',
-  'enabled ? /start\nclass Pattern\nfinish/ : /start\nend\nfinish/',
-].forEach((literal) => {
-  test(`ignores Gemfile scope keywords in regexp ${JSON.stringify(literal)}`, () => {
-    const gemfile = `group :test do
-  pattern = ${literal}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
 });

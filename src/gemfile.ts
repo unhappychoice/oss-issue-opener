@@ -1,25 +1,49 @@
-import { gemfileScope, gemfileStatementReader } from './gemfile-statements.js';
 import { gemfileTokens } from './gemfile-tokens.js';
 import { rubyDependencyName } from './ruby.js';
 
 export const isProductionGem = (content: string, pkg: string): boolean =>
-  isProductionGemIn(gemfileStatements(content), pkg);
+  productionGemNames(content).has(pkg);
 
-export const isProductionGemIn = (statements: string[][], pkg: string): boolean => {
+export const productionGemNames = (content: string): ReadonlySet<string> => {
+  const names = new Set<string>();
   const blocks: boolean[] = [];
   let excludedScopes = 0;
-  return statements.some((tokens) => {
+  gemfileStatements(content).forEach((tokens) => {
     if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
     const excluded = excludedScopes > 0;
-    if (gemfileScope(tokens)) {
+    if (opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+      /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
       const excludesGroup = tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1));
       blocks.push(excludesGroup);
       if (excludesGroup) excludedScopes++;
     }
-    if (tokens[0] !== 'gem') return false;
+    if (tokens[0] !== 'gem' || excluded) return;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
-    return rubyDependencyName(tokens[nameIndex]) === pkg && !excluded &&
-      !hasInlineExcludedGroup(tokens.slice(nameIndex + 1));
+    const name = rubyDependencyName(tokens[nameIndex]);
+    if (name !== undefined && !hasInlineExcludedGroup(tokens.slice(nameIndex + 1))) names.add(name);
+  });
+  return names;
+};
+
+const opensNamespace = (tokens: string[]): boolean => {
+  if (isNamespaceKeyword(tokens[0])) return true;
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return depth === 0 && token === '=' && isNamespaceKeyword(tokens[index + 1]);
+  });
+};
+
+const isNamespaceKeyword = (token?: string): boolean => token === 'class' || token === 'module';
+
+const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
   });
 };
 
@@ -39,10 +63,42 @@ const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token
   return hasExcludedGroup(values.slice(0, valueLength));
 });
 
-export const gemfileStatements = (content: string): string[][] => {
-  const statements: string[][] = [];
-  const reader = gemfileStatementReader((statement) => statements.push(statement));
-  gemfileTokens(content).forEach(reader.push);
-  reader.finish();
-  return statements;
+const gemfileStatements = (content: string): string[][] => {
+  const tokens = gemfileTokens(content);
+  const result: string[][] = [];
+  let current: string[] = [];
+  let depth = 0;
+  tokens.forEach((token) => {
+    if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
+    if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
+      if (current.length) result.push(current);
+      current = [];
+      return;
+    }
+    if (token === '\n') return;
+    if (depth === 0 && token === '{' && current.length && !['=', ',', '=>'].includes(current.at(-1)!)) {
+      result.push([...current, 'do']);
+      current = [];
+      return;
+    }
+    if (depth === 0 && token === '}') {
+      if (current.length) result.push(current);
+      result.push(['end']);
+      current = [];
+      return;
+    }
+    if (token === 'end' && depth === 0 && current.length) {
+      result.push(current);
+      current = [];
+    }
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    current.push(token);
+    if ((token === 'do' || token === 'end') && depth === 0) {
+      result.push(current);
+      current = [];
+    }
+  });
+  if (current.length) result.push(current);
+  return result;
 };
