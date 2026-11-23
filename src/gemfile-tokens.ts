@@ -4,7 +4,7 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   const localNames = new Set<string>();
   const assignment = /[ \t]*(?:&&|\|\||\*\*|<<|>>|[+*/%&|^\-])?=(?!=|>|~)/y;
-  const blockParameters = /\s*\|\s*([*&]?[a-z_]\w*(?:\s*[,;]\s*[*&]?[a-z_]\w*)*)\s*\|/y;
+  const blockParameters = /\s*\|((?:[*&]?[a-z_]\w*\b|[\s(),;])+)\|/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];

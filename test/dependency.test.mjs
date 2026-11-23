@@ -166,6 +166,19 @@ suffix!
   assert.equal(await check('rack'), true);
 });
 
+test('Gemfile fallback classifies gems after dividing a destructured block parameter', async () => {
+  mockRubyRepository('', `group :test do
+    [[8]].each do |(count)|
+      count /2
+    end
+    gem 'rspec'
+  end
+  gem 'rack', path: '/rack'`);
+
+  assert.equal(await check('rspec'), false);
+  assert.equal(await check('rack'), true);
+});
+
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
