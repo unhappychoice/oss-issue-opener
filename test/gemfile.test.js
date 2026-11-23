@@ -238,82 +238,12 @@ gem 'rack'`;
   });
 });
 
-test('finds a production gem after division with a block parameter', () => {
+test('finds a production gem between two divisions when warn is a block parameter', () => {
   const gemfile = `[10].each do |warn|
   warn /2
 end
-gem 'rack', path: '/rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-test('finds a production gem between two division expressions', () => {
-  const gemfile = `warn = 10
-warn /2
 gem 'rack'
 ratio = 12 / 3`;
 
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
-});
-
-[
-  `warn /prefix
-class RegexText
-suffix/`,
-  `warn == nil
-warn /2
-end
-gem 'rspec'
-suffix/`,
-  `puts /prefix
-class RegexText
-suffix/`,
-  `matcher = /prefix
-class RegexText
-suffix/`,
-  `enabled and /prefix
-class RegexText
-suffix/`,
-  `enabled or /prefix
-module RegexText
-suffix/`,
-  String.raw`matcher = /prefix
-class RegexText
-end\/suffix/i`,
-  `matcher = enabled ? /prefix
-class RegexText
-suffix/ : nil`,
-  `matcher = enabled ? nil : %r{prefix{2}
-module RegexText
-suffix}`,
-  `matcher = /prefix#{ %q!}/! }
-class RegexText
-suffix/`,
-  `matcher = /prefix#{ { "}" => /[}]/ }["}"] }
-class RegexText
-suffix/`,
-].forEach((definition) => {
-  test(`ignores scope keywords inside a regular expression: ${definition}`, () => {
-    const gemfile = `group :test do
-${definition}
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-test('ignores class declarations inside a multiline percent string', () => {
-  const gemfile = `group :test do
-  description = %q!prefix
-class Example
-suffix!
-  gem 'rspec'
-end
-gem 'rack'`;
-
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });

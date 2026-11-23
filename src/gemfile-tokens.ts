@@ -1,26 +1,11 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = new RegExp(tokenPattern, 'g');
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const assignedCommands = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '=' && !/[=~]/.test(content[pattern.lastIndex] ?? '')) {
-      const name = bareCommandName(tokens);
-      if (name !== undefined) assignedCommands.add(name);
-    }
-    const commandRegexp = token === '/' && startsCommandRegexp(tokens, assignedCommands, content[pattern.lastIndex]);
-    if ((token === '/' || token === '%') && (commandRegexp || expectsExpression(tokens))) {
-      const end = literalEnd(content, match.index);
-      // A slash inside a later quoted argument can look like the end of a command regexp.
-      if (end !== undefined && (!commandRegexp || !/[\w'"`]/.test(content[end] ?? ''))) {
-        pattern.lastIndex = end;
-        tokens.push(content.slice(match.index, end));
-        continue;
-      }
-    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -42,94 +27,6 @@ export const gemfileTokens = (content: string): string[] => {
   }
   return tokens;
 };
-
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
-
-const startsCommandRegexp = (tokens: string[], assignedCommands: ReadonlySet<string>, nextCharacter?: string): boolean => {
-  if (!nextCharacter || /\s/.test(nextCharacter) || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
-  const name = bareCommandName(tokens);
-  return name !== undefined && !assignedCommands.has(name);
-};
-
-const bareCommandName = (tokens: string[]): string | undefined => {
-  const index = previousTokenIndex(tokens);
-  const name = tokens[index];
-  if (name !== 'warn' && name !== 'puts') return undefined;
-  const before = tokens[previousTokenIndex(tokens, index - 1)] ?? '\n';
-  return ['\n', ';', 'do'].includes(before) ? name : undefined;
-};
-
-const expectsExpression = (tokens: string[]): boolean => {
-  const index = previousTokenIndex(tokens);
-  const token = tokens[index] ?? '\n';
-  return /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
-    (/^(?:!|do|if|elsif|unless|and|or)$/.test(token) && tokens[previousTokenIndex(tokens, index - 1)] !== '.');
-};
-
-const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
-
-const literalFrame = (opening: string, interpolates: boolean) => ({
-  opening, closing: pairedDelimiters.get(opening) ?? opening, interpolates, depth: 1,
-});
-
-const literalEnd = (content: string, start: number): number | undefined => {
-  const percentLiteral = /%([qQrwWiIxs])?([^a-zA-Z0-9\u0080-\uffff])/y;
-  const slash = content[start] === '/';
-  percentLiteral.lastIndex = start;
-  const match = slash ? undefined : percentLiteral.exec(content);
-  if (!slash && !match) return undefined;
-  const isRegexp = slash || match?.[1] === 'r';
-  const frames: (ReturnType<typeof literalFrame> | { tokens: string[]; depth: number })[] = [
-    literalFrame(match?.[2] ?? '/', interpolatesPercentLiteral(match?.[1])),
-  ];
-  const expression = new RegExp(tokenPattern, 'y');
-  const options = /[imxounes]*/y;
-  let offset = slash ? start + 1 : percentLiteral.lastIndex;
-  while (offset < content.length && frames.length) {
-    const frame = frames.at(-1)!;
-    const character = content[offset];
-    if ('tokens' in frame) {
-      percentLiteral.lastIndex = offset;
-      const literal = expectsExpression(frame.tokens) && percentLiteral.exec(content);
-      if (literal) {
-        frames.push(literalFrame(literal[2], interpolatesPercentLiteral(literal[1])));
-        frame.tokens.push(literal[0]);
-        offset = percentLiteral.lastIndex;
-        continue;
-      }
-      if (character === '/' && expectsExpression(frame.tokens)) {
-        frames.push(literalFrame('/', true));
-      } else {
-        expression.lastIndex = offset;
-        const token = expression.exec(content)?.[0];
-        if (!token) return undefined;
-        if (token === '{') frame.depth++;
-        if (token === '}' && --frame.depth === 0) frames.pop();
-        if (!token.startsWith('#')) frame.tokens.push(token);
-        offset = expression.lastIndex;
-        continue;
-      }
-      frame.tokens.push('/');
-    } else if (character === frame.closing) {
-      if (--frame.depth === 0) frames.pop();
-    } else if (character === '\\') {
-      offset++;
-    } else if (frame.interpolates && content.startsWith('#{', offset)) {
-      frames.push({ tokens: ['{'], depth: 1 });
-      offset++;
-    } else if (character === frame.opening) {
-      frame.depth++;
-    }
-    offset++;
-  }
-  if (frames.length) return undefined;
-  if (!isRegexp) return offset;
-  options.lastIndex = offset;
-  options.exec(content);
-  return options.lastIndex;
-};
-
-const interpolatesPercentLiteral = (type?: string): boolean => !/^[qwis]$/.test(type ?? '');
 
 const followsClassKeyword = (tokens: string[]): boolean => {
   let index = previousTokenIndex(tokens);
