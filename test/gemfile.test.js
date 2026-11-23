@@ -244,7 +244,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-for (const division of ['12 /\n  3', '12/3', '12/input']) {
+for (const division of ['12 /\n  3', '12/3', '12/input', '12/ 3', '12/ input']) {
   test(`finds production gems between divisions ending with ${JSON.stringify(division)}`, () => {
     const gemfile = `def ratio(warn)
   warn /2
@@ -257,12 +257,12 @@ result = ${division}`;
   });
 }
 
-test('ignores scope keywords inside a multiline regexp passed as a command argument', () => {
+test('ignores scope keywords inside a multiline regexp passed as a parenthesized argument', () => {
   const gemfile = `group :test do
-  warn /start
+  warn(/start
 class RegexText
 gem 'fake'
-finish/
+finish/)
   gem 'rspec'
 end
 gem 'rack'`;
