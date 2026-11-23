@@ -308,6 +308,32 @@ ratio = 12 / 3`;
 });
 
 ['warn', 'puts'].forEach((command) => {
+  [`first, ${command}, last = 6, 12, 18`, `${command}, = 12, 18`].forEach((assignment) => {
+    test(`finds a production gem between divisions after ${assignment}`, () => {
+      const gemfile = `${assignment}
+${command} /2
+gem 'rack'
+ratio = 12 /
+  3`;
+
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
+  });
+
+  test(`keeps bare ${command} regexps opaque after the name appears on an assignment's right side`, () => {
+    const gemfile = `first, last = ${command}, nil
+group :test do
+  ${command} /prefix
+class RegexText
+/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+
   test(`finds a production gem between two divisions with a ${command} block parameter`, () => {
     const gemfile = `[10].each do |${command}|
   ${command} /2

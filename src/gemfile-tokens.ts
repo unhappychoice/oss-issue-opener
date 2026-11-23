@@ -22,7 +22,7 @@ export const gemfileTokens = (content: string): string[] => {
       }
     }
     if (!isTokenSpacing(token)) {
-      commandLocals.track(token, previous, pattern.lastIndex);
+      commandLocals.track(token, previous, match.index, pattern.lastIndex);
       regexpExpected = expectsRegexp(token, previous);
       previous = token;
     }
@@ -55,14 +55,20 @@ const commandLocalScopes = (content: string) => {
   const locals = new Set<string>();
   const scopes: Set<string>[] = [];
   const assignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;
+  const targetList = /(\*?\w+[^\S\n]*,(?:\s*\*?\w+[^\S\n]*,)*(?:\s*\*?\w+)?)[^\S\n]*=(?!=|>|~)/y;
   const parameters = /\s*\|([^|]*)\|/y;
   let loopHeader = false;
 
   return {
     has: (name: string) => locals.has(name) || scopes.some((scope) => scope.has(name)),
-    track(token: string, previous: string, offset: number) {
+    track(token: string, previous: string, start: number, offset: number) {
       const statementStart = previous === '\n' || previous === ';' || previous === 'do' || previous === '{';
-      if (statementStart) loopHeader = /^(?:while|until|for)$/.test(token);
+      if (statementStart) {
+        loopHeader = /^(?:while|until|for)$/.test(token);
+        targetList.lastIndex = start;
+        const targets = targetList.exec(content)?.[1].match(/\w+/g);
+        targets?.filter(isBareRegexpCommand).forEach((name) => locals.add(name));
+      }
       if (token === 'end' || token === '}') {
         scopes.pop();
       } else if (token === 'do' || token === '{') {
