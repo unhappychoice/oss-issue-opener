@@ -260,7 +260,22 @@ gem 'rack'`;
   });
 });
 
-['if', '!'].forEach((method) => {
+['warn', 'puts', 'print', 'p'].forEach((command) => {
+  test(`preserves group exclusions after a multiline regexp passed to Kernel.${command}`, () => {
+    const gemfile = `group :test do
+  Kernel.${command} /prefix
+class TestHelper
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['if', '!', 'puts'].forEach((method) => {
   test(`preserves production gems between divisions after receiver.${method}`, () => {
     const gemfile = `ratio = receiver.${method} / 2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);

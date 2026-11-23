@@ -35,7 +35,7 @@ export const gemfileTokens = (content: string): string[] => {
       continue;
     }
     if (!isSpacing(token)) {
-      regexpCommand = afterKernelDot && token === 'warn';
+      regexpCommand = afterKernelDot && regexpCommands.has(token);
       if (regexpCommands.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
         assignment.lastIndex = pattern.lastIndex;
         if (assignment.test(content)) assignedCommands.add(token);
