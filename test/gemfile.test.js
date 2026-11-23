@@ -263,6 +263,25 @@ gem 'rack', path: '/rack'`;
 });
 
 [
+  '[8].each do |count|\n  count /2\nend',
+  '[[1, 8]].each { |index, count| count /2 }',
+].forEach((block) => {
+  test(`detects a production gem after division in ${JSON.stringify(block)}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper
+    end
+  end
+  gem 'rspec'
+end
+${block}
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
+[
   String.raw`/start\/
 class TestHelper
 module TestHelpers

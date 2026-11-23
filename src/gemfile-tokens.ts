@@ -4,10 +4,15 @@ export const gemfileTokens = (content: string): string[] => {
   const tokens: string[] = [];
   const localNames = new Set<string>();
   const assignment = /[ \t]*(?:&&|\|\||\*\*|<<|>>|[+*/%&|^\-])?=(?!=|>|~)/y;
+  const blockParameters = /\s*\|\s*([*&]?[a-z_]\w*(?:\s*[,;]\s*[*&]?[a-z_]\w*)*)\s*\|/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === 'do' || token === '{') {
+      blockParameters.lastIndex = pattern.lastIndex;
+      blockParameters.exec(content)?.[1].match(/\w+/g)?.forEach((name) => localNames.add(name));
+    }
     if (token === '?' && content[pattern.lastIndex] === '/' && startsRegexp(tokens)) {
       tokens.push('?/');
       pattern.lastIndex++;
