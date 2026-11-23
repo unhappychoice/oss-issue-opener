@@ -254,6 +254,12 @@ suffix/`,
   `matcher = /prefix
 class RegexText
 suffix/`,
+  `enabled and /prefix
+class RegexText
+suffix/`,
+  `enabled or /prefix
+module RegexText
+suffix/`,
   String.raw`matcher = /prefix
 class RegexText
 end\/suffix/i`,

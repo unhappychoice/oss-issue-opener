@@ -51,7 +51,7 @@ const expectsExpression = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   const token = tokens[index] ?? '\n';
   return /^(?:\n|;|=|=>|~|\(|\[|\{|,|&&|\|\||\?|:)$/.test(token) ||
-    (/^(?:!|do|if|elsif|unless)$/.test(token) && tokens[previousTokenIndex(tokens, index - 1)] !== '.');
+    (/^(?:!|do|if|elsif|unless|and|or)$/.test(token) && tokens[previousTokenIndex(tokens, index - 1)] !== '.');
 };
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
