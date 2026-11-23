@@ -16,6 +16,7 @@ const sha = 'a'.repeat(40);
     const requests = [];
     const status = (index, result) => ({
       state: result,
+      creator: { id: 42 },
       context: `status-${index}`,
       target_url: `https://ci.example.com/builds/${index}`,
     });
@@ -24,27 +25,21 @@ const sha = 'a'.repeat(40);
       const secondPage = options.page === 2;
       return {
         status: 200,
-        url: `https://api.github.com/repos/owner/repo/commits/${sha}/status`,
-        headers: secondPage ? {} : {
-          link: `<https://api.github.com/repos/owner/repo/commits/${sha}/status?per_page=100&page=2>; rel="next"`,
-        },
-        data: {
-          state,
-          total_count: 101,
-          url: `https://api.github.com/repos/owner/repo/commits/${sha}/status`,
-          statuses: secondPage ? [status(101, state)]
-            : Array.from({ length: 100 }, (_, i) => status(i + 1, 'success')),
-        },
+        url: `https://api.github.com/repos/owner/repo/commits/${sha}/statuses`,
+        headers: {},
+        data: secondPage ? [
+          { ...status(1, 'failure'), context: 'STATUS-1' }, status(101, state),
+        ] : Array.from({ length: 100 }, (_, i) => status(i + 1, 'success')),
       };
     });
 
     assert.deepEqual(await checkCIStatus('owner', 'repo', undefined, true), {
       status: state,
       failedChecks: state === 'failure'
-        ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101', source: 'status' }]
+        ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101', source: 'status', publisherId: 42 }]
         : [],
       ...(state === 'success' ? { recovery: { sha, passedChecks: Array.from({ length: 101 }, (_, i) =>
-        ({ name: `status-${i + 1}`, source: 'status' })) } } : {}),
+        ({ name: `status-${i + 1}`, source: 'status', publisherId: 42 })) } } : {}),
     });
     assert.equal(requests.length, 2);
     assert.deepEqual(requests.map(({ page, per_page }) => ({ page, per_page })), [
@@ -52,7 +47,7 @@ const sha = 'a'.repeat(40);
       { page: 2, per_page: 100 },
     ]);
     requests.forEach(({ url, ref }) => {
-      assert.equal(url, '/repos/{owner}/{repo}/commits/{ref}/status');
+      assert.equal(url, '/repos/{owner}/{repo}/commits/{ref}/statuses');
       assert.equal(ref, sha);
     });
   });

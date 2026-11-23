@@ -118,13 +118,26 @@ export async function* getCommitStatus(
   repo: string,
   ref: string
 ): AsyncGenerator<CIResult[]> {
+  const seen = new Set<string>();
   for (let page = 1; ; page++) {
-    const { data } = await getOctokit().repos.getCombinedStatusForRef({ owner, repo, ref, per_page: 100, page });
-    yield data.statuses.map((s) => ({
-      state: ['success', 'failure', 'error'].includes(s.state) ? s.state : 'pending',
-      context: s.context, url: s.target_url ?? '', source: 'status', passed: s.state === 'success',
-    }));
-    if (data.statuses.length < 100) return;
+    const { data } = await getOctokit().repos.listCommitStatusesForRef({ owner, repo, ref, per_page: 100, page });
+    const results: CIResult[] = [];
+    // The API returns newest first. Keep the latest status per context across pages.
+    for (const status of data) {
+      const context = status.context;
+      if (typeof context === 'string') {
+        const key = context.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      results.push({
+        state: ['success', 'failure', 'error'].includes(status.state) ? status.state : 'pending',
+        context, url: status.target_url ?? '', source: 'status', passed: status.state === 'success',
+        publisherId: status.creator?.id,
+      });
+    }
+    yield results;
+    if (data.length < 100) return;
   }
 }
 
@@ -158,7 +171,15 @@ export async function* getCheckRuns(
   }
 }
 
-export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowSuiteId?: number | undefined };
+export type CIResult = {
+  state: string;
+  context: string;
+  url: string;
+  source: CISource;
+  passed: boolean;
+  workflowSuiteId?: number | undefined;
+  publisherId?: number | undefined;
+};
 
 export async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
   const workflows = new Map<number, number>();
@@ -313,14 +334,13 @@ export async function* getCommitFilePages(owner: string, repo: string, ref: stri
 }
 
 export type ComparedCommit = { sha: string; message: string };
-export type ComparedCommits = { commits: ComparedCommit[]; lookupErrors: unknown[] };
 
 export const compareCommits = async (
   owner: string,
   repo: string,
   base: string,
   head: BranchHead
-): Promise<{ baseSha: string; headSha: string; files: string[]; getCommits: () => Promise<ComparedCommits> }> => {
+): Promise<{ baseSha: string; headSha: string; files: string[]; getCommitPages: () => AsyncGenerator<ComparedCommit[]> }> => {
   const { repos } = getOctokit();
   const { data: resolvedBase } = await repos.getCommit({
     owner, repo, ref: base, headers: { accept: 'application/vnd.github.sha' },
@@ -330,7 +350,7 @@ export const compareCommits = async (
   }
   const endpoints = { owner, repo, base: resolvedBase, head: head.sha };
   const { base: baseSha, head: headSha } = endpoints;
-  if (baseSha === headSha) return { baseSha, headSha, files: [], getCommits: async () => ({ commits: [], lookupErrors: [] }) };
+  if (baseSha === headSha) return { baseSha, headSha, files: [], getCommitPages: async function* () { yield* []; } };
 
   const per_page = 100;
   const { data } = await repos.compareCommits({ ...endpoints, per_page, page: 1 });
@@ -338,21 +358,16 @@ export const compareCommits = async (
     ? await compareTrees(owner, repo, data.merge_base_commit?.commit.tree?.sha, head.treeSha)
     : [...new Set(changedPaths(data.files ?? []))];
 
-  const getCommits = async (): Promise<ComparedCommits> => {
+  async function* getCommitPages(): AsyncGenerator<ComparedCommit[]> {
     let pageCommits = data.commits;
-    const commits: ComparedCommit[] = [];
     for (let page = 2; ; page++) {
-      commits.push(...pageCommits.map(({ sha, commit }) => ({ sha, message: commit.message })));
-      if (pageCommits.length < per_page) return { commits, lookupErrors: [] };
-      try {
-        pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
-      } catch (error) {
-        return { commits, lookupErrors: [error] };
-      }
+      yield pageCommits.map(({ sha, commit }) => ({ sha, message: commit.message }));
+      if (pageCommits.length < per_page) return;
+      pageCommits = (await repos.compareCommits({ ...endpoints, per_page, page })).data.commits;
     }
-  };
+  }
 
-  return { baseSha, headSha, files, getCommits };
+  return { baseSha, headSha, files, getCommitPages };
 };
 
 export const listOpenIssues = async (
