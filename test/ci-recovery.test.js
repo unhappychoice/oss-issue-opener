@@ -56,7 +56,7 @@ const setup = (t, {
   t.mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   t.mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha } } } } }));
   t.mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses } }));
-  t.mock.method(client.actions, 'listWorkflowRunsForRepo', async (params) => {
+  const workflowRuns = t.mock.method(client.actions, 'listWorkflowRunsForRepo', async (params) => {
     assert.deepEqual(params, { owner: 'owner', repo: 'project', head_sha: sha, per_page: 100, page: 1 });
     if (workflowError) throw workflowError;
     return { data: { workflow_runs: workflows } };
@@ -104,7 +104,7 @@ const setup = (t, {
     checkPendingRelease: async () => ({ status: 'no-tag' }),
     createIssuesInBatch: async (issues) => { created.push(...issues); },
   };
-  return { run: (enabled) => runChecks(deps, enabled), events, created, getAuthenticated };
+  return { run: (enabled) => runChecks(deps, enabled), events, created, getAuthenticated, workflowRuns };
 };
 
 test('closes only a matching open alert and records the checked commit once', async (t) => {
@@ -178,10 +178,12 @@ test('closes only a matching open alert and records the checked commit once', as
 test('records the workflow identity of a failing job for recovery on a later suite', async (t) => {
   const runs = [{ ...passedBuild, conclusion: 'failure', check_suite: { id: 100 } }];
   const recordedAlert = { ...alert };
-  const { run, events } = setup(t, { runs, alerts: [recordedAlert], statuses: [] });
-  const result = await checkCIStatus('owner', 'project');
-  assert.deepEqual(result.failedChecks, [checks[0]]);
-  recordedAlert.body = buildCIFailureIssue(repo, result.failedChecks).body;
+  const { run, events, created, workflowRuns } = setup(t, { runs, alerts: [recordedAlert], statuses: [] });
+  await run(false);
+  assert.equal(workflowRuns.mock.callCount(), 1);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].body, buildCIFailureIssue(repo, [checks[0]]).body);
+  recordedAlert.body = created[0].body;
   runs[0] = passedBuild;
   await run(true);
   assert.deepEqual(events.map((event) => typeof event === 'string' ? event : event[0]), ['list', 'comment', 'close']);
@@ -236,10 +238,11 @@ test('reports an alert lookup failure without closing any alerts', async (t) => 
 
 test('skips alert lookups when automatic closure is disabled', async (t) => {
   setAutoClose(t, 'false');
-  const { run, events, getAuthenticated } = setup(t);
+  const { run, events, getAuthenticated, workflowRuns } = setup(t, { statuses: [] });
   await run();
   assert.deepEqual(events, []);
   assert.equal(getAuthenticated.mock.callCount(), 0);
+  assert.equal(workflowRuns.mock.callCount(), 0);
 });
 
 test('leaves alerts open when the authenticated account cannot be resolved', async (t) => {
@@ -280,4 +283,50 @@ test('leaves the issue open if the recovery comment fails', async (t) => {
   const { run, events } = setup(t, { commentError: new Error('Comment unavailable') });
   await assert.rejects(run(true), /Failed 1 maintenance operations/);
   assert.deepEqual(events, ['list']);
+});
+
+test('skips workflow lookup for Codecov-only pages even when the repository has an alert', async (t) => {
+  const { run, events, workflowRuns } = setup(t, {
+    runs: [{ ...passedBuild, name: 'Codecov/project', conclusion: 'failure' }],
+    statuses: [],
+  });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+  assert.equal(workflowRuns.mock.callCount(), 0);
+  assert.ok(console.log.mock.calls.some(({ arguments: [message] }) => message.includes('CI: no-ci')));
+});
+
+test('skips workflow lookup when the only alert is for another repository', async (t) => {
+  const { run, events, workflowRuns } = setup(t, {
+    alerts: [{ ...alert, body: buildCIFailureIssue('owner/another', checks).body }],
+  });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+  assert.equal(workflowRuns.mock.callCount(), 0);
+});
+
+test('reports a failure when workflow lookup fails and keeps the resulting alert open', async (t) => {
+  const runs = [{ ...passedBuild, conclusion: 'failure' }];
+  const { run, events, created, workflowRuns } = setup(t, {
+    alerts: [], runs, statuses: [], workflowError: new Error('Workflow runs unavailable'),
+  });
+  await run(false);
+  assert.equal(workflowRuns.mock.callCount(), 1);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].body, buildCIFailureIssue(repo, [{ name: 'build', source: 'check', url: '' }]).body);
+
+  const recovered = setup(t, { alerts: [{ ...alert, body: created[0].body }] });
+  await recovered.run(true);
+  assert.deepEqual(events, []);
+  assert.deepEqual(recovered.events, ['list']);
+  assert.equal(recovered.workflowRuns.mock.callCount(), 0);
+});
+
+test('skips workflow lookup for passing Actions jobs when only a commit status fails', async (t) => {
+  const failedLint = { ...passedLint, state: 'failure' };
+  const { run, created, workflowRuns } = setup(t, { statuses: [failedLint] });
+  await run(true);
+  assert.equal(workflowRuns.mock.callCount(), 0);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].body, buildCIFailureIssue(repo, [checks[1]]).body);
 });

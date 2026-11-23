@@ -145,11 +145,7 @@ export async function* getCheckRuns(
     startup_failure: 'failure',
   };
 
-  let workflows: Map<number, number> | undefined;
   for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
-    if (!workflows && checkRuns.some((check) => check.app?.slug === 'github-actions')) {
-      workflows = await listWorkflowIds(owner, repo, ref);
-    }
     yield checkRuns.map((c) => ({
       state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
         ? conclusionStates[c.conclusion] : 'pending',
@@ -157,14 +153,14 @@ export async function* getCheckRuns(
       passed: c.status === 'completed' && c.conclusion === 'success',
       context: c.name,
       url: c.html_url ?? '',
-      workflowId: c.app?.slug === 'github-actions' && c.check_suite ? workflows?.get(c.check_suite.id) : undefined,
+      workflowSuiteId: c.app?.slug === 'github-actions' ? c.check_suite?.id : undefined,
     }));
   }
 }
 
-export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowId?: number | undefined };
+export type CIResult = { state: string; context: string; url: string; source: CISource; passed: boolean; workflowSuiteId?: number | undefined };
 
-async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
+export async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
   const workflows = new Map<number, number>();
   try {
     // GitHub caps filtered workflow-run listings at 1,000 results.

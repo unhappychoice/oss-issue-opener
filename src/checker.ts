@@ -1,5 +1,5 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
-import { getCommitStatus, getCheckRuns, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
+import { getCommitStatus, getCheckRuns, listWorkflowIds, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommits } from './github.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
@@ -12,7 +12,8 @@ const limitCommitFileLookup = createConcurrencyLimiter(16);
 export const checkCIStatus = async (
   owner: string,
   repo: string,
-  getHead = () => getDefaultBranchHead(owner, repo)
+  getHead = () => getDefaultBranchHead(owner, repo),
+  verifyRecovery = false
 ): Promise<CIStatus> => {
   const result = await getHead();
   if (result.status === 'no-branch') return { status: 'no-branch', failedChecks: [] };
@@ -20,34 +21,47 @@ export const checkCIStatus = async (
 
   const { sha } = result.head;
   const results = await Promise.all([
-    collectCIResults(getCommitStatus(owner, repo, sha)),
-    collectCIResults(getCheckRuns(owner, repo, sha)),
+    collectCIResults(getCommitStatus(owner, repo, sha), verifyRecovery),
+    collectCIResults(getCheckRuns(owner, repo, sha), verifyRecovery),
   ]);
 
-  const failedChecks = results.flatMap(({ failedChecks }) => failedChecks);
+  const failures = results.flatMap(({ failures }) => failures);
   const endpointErrors = results.flatMap(({ errors }) => errors);
   if (endpointErrors.length > 0) {
+    const failedChecks = failures.map((result) => failedCheck(result));
     return { status: failedChecks.length > 0 ? 'failure' : 'incomplete', failedChecks, endpointErrors };
   }
-  if (failedChecks.length > 0) return { status: 'failure', failedChecks };
-  if (results.some(({ hasPending }) => hasPending)) return { status: 'pending', failedChecks };
-  if (!results.some(({ hasRelevant }) => hasRelevant)) return { status: 'no-ci', failedChecks };
+  if (failures.length > 0) {
+    const workflows = await loadWorkflows(owner, repo, sha, failures);
+    return { status: 'failure', failedChecks: failures.map((result) => failedCheck(result, workflows)) };
+  }
+  if (results.some(({ hasPending }) => hasPending)) return { status: 'pending', failedChecks: [] };
+  if (!results.some(({ hasRelevant }) => hasRelevant)) return { status: 'no-ci', failedChecks: [] };
+  if (!verifyRecovery) return { status: 'success', failedChecks: [] };
 
-  const passedChecks = results.flatMap(({ recovery }) => recovery.passedChecks());
-  return { status: 'success', failedChecks, recovery: { sha, passedChecks } };
+  const candidates = results.flatMap(({ recovery }) => recovery);
+  const workflows = await loadWorkflows(owner, repo, sha, candidates.filter(({ passed }) => passed));
+  return { status: 'success', failedChecks: [], recovery: { sha, passedChecks: collectPassedChecks(candidates, workflows) } };
 };
 
-const checkIdentity = ({ context, source, workflowId }: CIResult): CheckIdentity => ({
-  name: context, source, ...(workflowId === undefined ? {} : { workflowId }),
-});
+const loadWorkflows = (owner: string, repo: string, sha: string, results: CIResult[]) =>
+  results.some(({ workflowSuiteId }) => workflowSuiteId !== undefined) ? listWorkflowIds(owner, repo, sha) : undefined;
 
-const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
+const checkIdentity = ({ context, source, workflowSuiteId }: CIResult, workflows?: Map<number, number>): CheckIdentity => {
+  const workflowId = workflowSuiteId === undefined ? undefined : workflows?.get(workflowSuiteId);
+  return { name: context, source, ...(workflowId === undefined ? {} : { workflowId }) };
+};
+
+const failedCheck = (result: CIResult, workflows?: Map<number, number>): FailedCheck =>
+  ({ ...checkIdentity(result, workflows), url: result.url });
+
+const collectCIResults = async (pages: AsyncIterable<CIResult[]>, verifyRecovery: boolean) => {
   const summary = {
     hasRelevant: false,
     hasPending: false,
-    failedChecks: [] as FailedCheck[],
+    failures: [] as CIResult[],
     errors: [] as unknown[],
-    recovery: collectRecoveryChecks(),
+    recovery: [] as CIResult[],
   };
 
   try {
@@ -57,9 +71,9 @@ const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
         summary.hasRelevant = true;
         summary.hasPending ||= result.state === 'pending' || typeof result.context !== 'string' || result.context.length === 0;
         if (result.state === 'failure' || result.state === 'error') {
-          summary.failedChecks.push({ ...checkIdentity(result), url: result.url });
+          summary.failures.push(result);
         }
-        if (!summary.hasPending && summary.failedChecks.length === 0) summary.recovery.add(result);
+        if (verifyRecovery && !summary.hasPending && summary.failures.length === 0) summary.recovery.push(result);
       }
     }
   } catch (error) {
@@ -68,28 +82,26 @@ const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
   return summary;
 };
 
-const collectRecoveryChecks = () => {
+const collectPassedChecks = (results: CIResult[], workflows?: Map<number, number>): CheckIdentity[] => {
   const candidates: { identity: CheckIdentity; key: string }[] = [];
   const unpassed = new Set<string>();
   const unidentified = new Set<string>();
 
-  return {
-    add(result: CIResult) {
-      const identity = checkIdentity(result);
-      const key = recoveryCheckKey(identity);
-      if (result.passed) {
-        if (key) candidates.push({ identity, key });
-      } else if (key) {
-        unpassed.add(key);
-      } else {
-        unidentified.add(identity.name);
-      }
-    },
-    passedChecks: () => candidates
-      .filter(({ identity, key }) => !unpassed.has(key) &&
-        (identity.source === 'status' || !unidentified.has(identity.name)))
-      .map(({ identity }) => identity),
-  };
+  for (const result of results) {
+    const identity = checkIdentity(result, workflows);
+    const key = recoveryCheckKey(identity);
+    if (result.passed) {
+      if (key) candidates.push({ identity, key });
+    } else if (key) {
+      unpassed.add(key);
+    } else {
+      unidentified.add(identity.name);
+    }
+  }
+  return candidates
+    .filter(({ identity, key }) => !unpassed.has(key) &&
+      (identity.source === 'status' || !unidentified.has(identity.name)))
+    .map(({ identity }) => identity);
 };
 
 type GetContents = () => Promise<string[]>;

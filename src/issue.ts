@@ -41,6 +41,12 @@ export const buildPendingReleaseIssue = (
 
 export const listCIAlerts = async () => listOpenIssueDetails(issueOwner, issueRepo, 'ci-failure');
 
+export const getCIAlertRepositories = (alerts: Awaited<ReturnType<typeof listCIAlerts>>): Set<string> =>
+  new Set(alerts.flatMap((alert) => {
+    const recorded = recordedChecks(alert);
+    return recorded ? [recorded.repo] : [];
+  }));
+
 export const closeRecoveredCIAlerts = async (
   alerts: Awaited<ReturnType<typeof listCIAlerts>>,
   recoveries: ReadonlyMap<string, NonNullable<CIStatus['recovery']>>
@@ -75,10 +81,10 @@ export const closeRecoveredCIAlerts = async (
 };
 
 const recordedChecks = (
-  issue: Awaited<ReturnType<typeof listCIAlerts>>[number], author: string
+  issue: Awaited<ReturnType<typeof listCIAlerts>>[number], author?: string
 ): { repo: string; checks: string[] } | undefined => {
   const { state, user, labels, body, pull_request } = issue;
-  if (state !== 'open' || pull_request || user?.login !== author || !labels.some((label) =>
+  if (state !== 'open' || pull_request || (author !== undefined && user?.login !== author) || !labels.some((label) =>
     (typeof label === 'string' ? label : label.name) === 'ci-failure')) return undefined;
 
   const marker = body?.trimEnd().split('\n').at(-1)?.match(/^<!-- oss-issue-opener:ci:v1 ([\w.-]+\/[\w.-]+) ([\w-]+(?: [\w-]+)*) -->$/);

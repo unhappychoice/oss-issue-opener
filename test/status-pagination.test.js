@@ -38,7 +38,7 @@ const sha = 'a'.repeat(40);
       };
     });
 
-    assert.deepEqual(await checkCIStatus('owner', 'repo'), {
+    assert.deepEqual(await checkCIStatus('owner', 'repo', undefined, true), {
       status: state,
       failedChecks: state === 'failure'
         ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101', source: 'status' }]

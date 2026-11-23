@@ -130,7 +130,6 @@ test('shares four suite slots across repositories for the full pagination and yi
       failedChecks: conclusion !== 'success'
         ? [{ name: `check-${total}`, url: `https://github.com/owner/repo/actions/runs/${total}`, source: 'check' }]
         : [],
-      ...(conclusion === 'success' ? { recovery: { sha, passedChecks: [] } } : {}),
     });
     assert.deepEqual(requests, requestCount === 1 ? [firstUrl] : [firstUrl, nextUrl]);
   });
