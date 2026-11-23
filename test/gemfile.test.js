@@ -223,6 +223,10 @@ const namespaceDefinitions = [
 ];
 
 [
+  'description = %q{\nclass Decoy\n}',
+  'description = %q!\nmodule Decoy\nend\n!',
+  'description = %q{nested {braces} and escaped \\}\nclass Decoy\n}',
+  'description = %Q{#{ %q(}) }\nclass Decoy\n}',
   'pattern = /\nclass Decoy\nmodule Decoy\n/',
   'pattern = enabled && /\nclass Decoy\n/',
   'pattern = enabled || %r{\nmodule Decoy\n}',

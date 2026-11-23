@@ -6,8 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && canStartRegexp(tokens)) {
-      const end = regexpEnd(content, match.index);
+    if ((token === '/' || token === '%') && canStartLiteral(tokens)) {
+      const end = expressionLiteralEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
         pattern.lastIndex = end;
@@ -43,7 +43,7 @@ const followsClassKeyword = (tokens: string[]): boolean => {
   return index < 0 || ['\n', ';', 'do', '{', '=', '(', ','].includes(tokens[index]);
 };
 
-const canStartRegexp = (tokens: string[]): boolean => {
+const canStartLiteral = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   const previous = tokens[index] ?? '\n';
   if (/^(?:\n|;|=|=>|&&|\|\||!|~|\(|\[|\{|,|\?|:)$/.test(previous)) return true;
@@ -63,14 +63,20 @@ const percentLiteral = (type: string, open: string): Literal => ({
   interpolates: !/[qwis]/.test(type),
 });
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const percent = /%r([^\w\s])/y;
-  percent.lastIndex = start;
-  const match = percent.exec(content);
-  const literal = match ? percentLiteral('r', match[1]) : { open: '/', close: '/', interpolates: true };
-  if (!match && content[start] !== '/') return undefined;
-  const end = literalEnd(content, match ? percent.lastIndex : start + 1, literal);
-  if (end === undefined) return undefined;
+const percentLiteralStart = (content: string, index: number): RegExpExecArray | null => {
+  const pattern = /%([qQwWiIrxs])([^a-zA-Z0-9\s])/y;
+  pattern.lastIndex = index;
+  return pattern.exec(content);
+};
+
+const expressionLiteralEnd = (content: string, start: number): number | undefined => {
+  const percent = percentLiteralStart(content, start);
+  if (!percent && content[start] !== '/') return undefined;
+  const literal = percent
+    ? percentLiteral(percent[1], percent[2])
+    : { open: '/', close: '/', interpolates: true };
+  const end = literalEnd(content, start + (percent?.[0].length ?? 1), literal);
+  if (end === undefined || (percent && percent[1] !== 'r')) return end;
   const options = /[imxounes]*/y;
   options.lastIndex = end;
   options.exec(content);
@@ -105,12 +111,10 @@ const scanInterpolation = (content: string, index: number, frames: (Literal | un
     const newline = content.indexOf('\n', index);
     return newline < 0 ? content.length : newline;
   } else if (char === '%') {
-    const percent = /%([qQwWiIrxs])([^\w\s])/y;
-    percent.lastIndex = index;
-    const match = percent.exec(content);
+    const match = percentLiteralStart(content, index);
     if (match) {
       frames.push(percentLiteral(match[1], match[2]));
-      return percent.lastIndex - 1;
+      return index + match[0].length - 1;
     }
   }
   return index;
