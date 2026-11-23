@@ -248,6 +248,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   ['/', '/x'],
   ['%r{', '}x'],
   ['%r!', '!x'],
+  ['! /', '/x'],
   ['enabled ? /', '/x : nil'],
 ].forEach(([opening, closing]) => {
   test(`keeps multiline regexp contents out of Gemfile scopes (${opening})`, () => {
@@ -265,15 +266,36 @@ gem 'rack'`;
   });
 });
 
-test('detects a production gem after division of a destructured local variable', () => {
-  const gemfile = `group :test do
+[
+  ['a quoted slash', '/#{"/"}/'],
+  ['division', '/#{8 / 2}/'],
+  ['a percent string and division', '/#{ %q!}!.ord / 2 }/'],
+  ['a nested regexp in a string', '/#{"#{/}/}"}/'],
+].forEach(([description, regexp]) => {
+  test(`preserves Gemfile group exclusions across regexp interpolation with ${description}`, () => {
+    const gemfile = `group :test do
+  matcher = ${regexp}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
+[
+  ['a destructured local variable', '(warn, divisor) = [8, 2]\nwarn /divisor'],
+  ['a keyword-shaped method name', 'receiver.if / 2'],
+].forEach(([description, expression]) => {
+  test(`detects a production gem after division involving ${description}`, () => {
+    const gemfile = `group :test do
   class TestHelper
   end
   gem 'rspec'
 end
-(warn, divisor) = [8, 2]
-warn /divisor
+${expression}
 gem 'rack', path: '/rack'`;
 
-  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
 });
