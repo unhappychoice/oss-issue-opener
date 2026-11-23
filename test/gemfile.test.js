@@ -251,3 +251,25 @@ gem 'rack', path: '/'`;
   assert.equal(isProductionGem(gemfile, 'rspec'), false);
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  '/start\\/\nclass Pattern\nend\nfinish/x',
+  '%r{start{nested}\nclass Pattern\nend\nfinish}x',
+  '/start\nclass Pattern\nfinish/',
+  '/start\nend\nfinish/',
+  '/start#{"/"}\nclass Pattern\nfinish/',
+  '/start#{%q(}/)}\nclass Pattern\nfinish/',
+  '/start#{/nested/}\nclass Pattern\nfinish/',
+  'enabled ? /start\nclass Pattern\nfinish/ : /start\nend\nfinish/',
+].forEach((literal) => {
+  test(`ignores Gemfile scope keywords in regexp ${JSON.stringify(literal)}`, () => {
+    const gemfile = `group :test do
+  pattern = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
