@@ -259,6 +259,9 @@ gem 'rack', path: './'`;
   `warn /prefix
 class RegexText
 suffix/`,
+  `puts /prefix
+class RegexText
+suffix/`,
   `matcher = /prefix
 class RegexText
 suffix/`,
