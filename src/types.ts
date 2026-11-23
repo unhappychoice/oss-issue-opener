@@ -13,12 +13,13 @@ export interface CheckIdentity {
   name: string;
   source: CISource;
   workflowId?: number;
+  publisherId?: number;
 }
 
-export const recoveryCheckKey = ({ name, source, workflowId }: CheckIdentity): string | undefined => {
-  if (source === 'check' && workflowId === undefined) return undefined;
-  const identity = source === 'check' ? [source, name, workflowId] : [source, name];
-  return Buffer.from(JSON.stringify(identity)).toString('base64url');
+export const recoveryCheckKey = ({ name, source, workflowId, publisherId }: CheckIdentity): string | undefined => {
+  const id = source === 'check' ? workflowId : publisherId;
+  if (id === undefined || !Number.isSafeInteger(id) || id <= 0) return undefined;
+  return Buffer.from(JSON.stringify([source, name, id])).toString('base64url');
 };
 
 export interface FailedCheck extends CheckIdentity {

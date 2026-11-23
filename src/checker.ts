@@ -37,8 +37,10 @@ export const checkCIStatus = async (
   return { status: 'success', failedChecks, recovery: { sha, passedChecks } };
 };
 
-const checkIdentity = ({ context, source, workflowId }: CIResult): CheckIdentity => ({
-  name: context, source, ...(workflowId === undefined ? {} : { workflowId }),
+const checkIdentity = ({ context, source, workflowId, publisherId }: CIResult): CheckIdentity => ({
+  name: context, source,
+  ...(publisherId === undefined ? {} : { publisherId }),
+  ...(workflowId === undefined ? {} : { workflowId }),
 });
 
 const collectCIResults = async (pages: AsyncIterable<CIResult[]>) => {
