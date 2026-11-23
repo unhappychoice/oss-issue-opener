@@ -11,7 +11,7 @@ export const gemfileTokens = (content: string): string[] => {
     const previousIndex = previousTokenIndex(tokens);
     const literalEnd = expressionLiteralEnd(
       content, match.index, token, tokens[previousIndex], tokens[previousTokenIndex(tokens, previousIndex)],
-      () => hasLocalWarn(tokens),
+      (name) => hasLocalBinding(tokens, name),
     );
     if (literalEnd !== undefined) {
       tokens.push(content.slice(match.index, literalEnd));
@@ -46,8 +46,8 @@ const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
   previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\|)$/.test(previous) ||
   (beforePrevious !== '.' && beforePrevious !== '::' && /^(?:do|if|elsif|unless|return)$/.test(previous));
 
-const hasLocalWarn = (tokens: string[]): boolean => {
-  let local = { hasWarn: false };
+const hasLocalBinding = (tokens: string[], name: string): boolean => {
+  let local = { bound: false };
   const scopes: typeof local[] = [];
   gemfileStatements(tokens).forEach((statement, index, statements) => {
     if (statement[0] === 'end') {
@@ -56,27 +56,27 @@ const hasLocalWarn = (tokens: string[]): boolean => {
     }
     if (opensBlock(statement)) scopes.push(local);
     if (statement[0] === 'def') {
-      local = { hasWarn: hasWarnParameter(statement) };
+      local = { bound: hasParameter(statement, name) };
     } else if (opensNamespace(statement)) {
-      local = { hasWarn: false };
-    } else if (statement.at(-1) === 'do' && hasBlockWarnParameter(statements[index + 1])) {
-      local = { hasWarn: true };
-    } else if (assignsLocalWarn(statement)) {
-      local.hasWarn = true;
+      local = { bound: false };
+    } else if (statement.at(-1) === 'do' && hasBlockParameter(statements[index + 1] ?? [], name)) {
+      local = { bound: true };
+    } else if (assignsLocal(statement, name)) {
+      local.bound = true;
     }
   });
-  return local.hasWarn;
+  return local.bound;
 };
 
-const assignsLocalWarn = (statement: string[]): boolean => {
+const assignsLocal = (statement: string[], name: string): boolean => {
   if (statement[0] === 'for') {
     const targets = statement.slice(1, statement.indexOf('in'));
-    if (targets.some((token, index) => token === 'warn' &&
+    if (targets.some((token, index) => token === name &&
       (index === 0 || [',', '*'].includes(targets[index - 1])) &&
       (index === targets.length - 1 || targets[index + 1] === ','))) return true;
   }
   if (statement.some((token, index) => {
-    if (token !== 'warn' || isQualifiedName(statement[index - 1])) return false;
+    if (token !== name || isQualifiedName(statement[index - 1])) return false;
     const operator = statement[index + 1];
     const next = statement[index + 2];
     return operator === '=' ? !['=', '~'].includes(next) : ['||', '&&'].includes(operator) && next === '=';
@@ -84,27 +84,27 @@ const assignsLocalWarn = (statement: string[]): boolean => {
 
   const equals = statement.indexOf('=');
   const targets = statement.slice(0, equals);
-  return equals >= 3 && targets.includes('warn') &&
+  return equals >= 3 && targets.includes(name) &&
     targets.every((token, index) => index % 2 === 1 ? token === ',' : /^(?:@@?|\$)?[A-Za-z_]\w*$/.test(token));
 };
 
-const hasWarnParameter = (statement: string[]): boolean => {
+const hasParameter = (statement: string[], name: string): boolean => {
   const parameters = statement.slice(isQualifiedName(statement[2]) ? 4 : 2);
-  return bindsWarn(parameters[0] === '(' ? parameters.slice(1) : parameters);
+  return bindsParameter(parameters[0] === '(' ? parameters.slice(1) : parameters, name);
 };
 
-const hasBlockWarnParameter = (statement: string[] = []): boolean => {
+const hasBlockParameter = (statement: string[], name: string): boolean => {
   const end = statement.indexOf('|', 1);
-  return statement[0] === '|' && end !== -1 && bindsWarn(statement.slice(1, end));
+  return statement[0] === '|' && end !== -1 && bindsParameter(statement.slice(1, end), name);
 };
 
-const bindsWarn = (parameters: string[]): boolean => {
+const bindsParameter = (parameters: string[], name: string): boolean => {
   const bindingContexts = [true];
   return parameters.some((token, index) => {
     const atBinding = bindingContexts.at(-1) && startsParameter(parameters, index);
     if (['(', '[', '{'].includes(token)) bindingContexts.push(token === '(' && Boolean(atBinding));
     if ([')', ']', '}'].includes(token)) bindingContexts.pop();
-    return atBinding === true && token === 'warn';
+    return atBinding === true && token === name;
   });
 };
 
@@ -118,14 +118,14 @@ const isQualifiedName = (previous?: string): boolean =>
   previous === '.' || previous === ':' || previous === '::';
 
 const expressionLiteralEnd = (
-  content: string, start: number, token: string, previous?: string, beforePrevious?: string, localWarn?: () => boolean,
+  content: string, start: number, token: string, previous?: string, beforePrevious?: string, hasLocal?: (name: string) => boolean,
 ): number | undefined => {
   if (token === '?' && content[start + 1] === '/' && expectsRegexp(previous, beforePrevious)) return start + 2;
   if (token !== '/' && token !== '%') return undefined;
-  const warnArgument = previous === 'warn' && token === '/' &&
+  const commandArgument = (previous === 'warn' || previous === 'puts') && token === '/' &&
     /[^\S\n]/.test(content[start - 1] ?? '') && /^[^\s=]$/.test(content[start + 1] ?? '') &&
-    (isQualifiedName(beforePrevious) || !localWarn?.());
-  if (!warnArgument && !expectsRegexp(previous, beforePrevious)) return undefined;
+    (isQualifiedName(beforePrevious) || !hasLocal?.(previous));
+  if (!commandArgument && !expectsRegexp(previous, beforePrevious)) return undefined;
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);

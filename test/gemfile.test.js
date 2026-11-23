@@ -278,6 +278,15 @@ warn /
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('detects a production gem after division of a local variable named puts', () => {
+  const gemfile = `puts = 8
+divisor = 2
+puts /divisor
+gem 'rack', path: '/rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 test('detects division of a local warn assigned inside a conditional', () => {
   const gemfile = `if enabled
   warn = 8
@@ -420,6 +429,8 @@ gem 'rack', path: '/rack'`;
   '/first#{%q(/}) + /nested/.source}\nclass TestHelper\nlast/',
   '/first#{receiver.if / 2}\nclass TestHelper\ngem "ignored"\nlast/',
 ].map((literal) => `pattern = ${literal}`).concat([
+  'puts /first\nclass RegexText\ngem "ignored"\nlast/',
+  'puts = 8\n  Kernel.puts /first\nclass RegexText\nlast/',
   'warn /first\nclass TestHelper\ngem "ignored"\nlast/',
   'Kernel.warn /first\nend\ngem "ignored"\nlast/',
   'warn = 8\n  Kernel.warn /first\nend\ngem "ignored"\nlast/',
