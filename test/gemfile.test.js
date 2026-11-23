@@ -228,6 +228,8 @@ const namespaceDefinitions = [
   'pattern = enabled || %r{\nmodule Decoy\n}',
   '! /\nclass Decoy\n/',
   '!%r{\nclass Decoy\n}',
+  'not /prefix\nclass Decoy\nsuffix/',
+  'not %r{prefix\nmodule Decoy\nsuffix}',
   'pattern = enabled ? /\nclass Decoy\n/ : nil',
   'pattern = enabled ? nil : /\nclass Decoy\n/',
   'pattern = /escaped \\/\nclass Decoy\nend\n/i',
@@ -251,7 +253,7 @@ gem 'rack'`;
   });
 });
 
-['metrics.if', 'metrics.return', 'metrics::return'].forEach((method) => {
+['metrics.if', 'metrics.return', 'metrics::return', 'metrics.not', 'metrics::not'].forEach((method) => {
   test(`keeps namespace scopes visible after division of ${method}`, () => {
     const gemfile = `group :test do
   result = ${method} / 2
