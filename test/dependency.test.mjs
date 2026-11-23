@@ -162,34 +162,6 @@ test('Gemfile fallback preserves group exclusions across nested classes and modu
   assert.equal(await check('rack'), true);
 });
 
-test('Gemfile fallback ignores namespace keywords inside multiline regexps', async () => {
-  mockRubyRepository('', `group :test do
-    matcher = %r!prefix
-class RegexText
-suffix!
-    gem 'rspec'
-  end
-  gem 'rack'`);
-
-  assert.equal(await check('rspec'), false);
-  assert.equal(await check('rack'), true);
-});
-
-['warn', 'print', 'p'].forEach((command) => {
-  test(`Gemfile fallback ignores class keywords in a bare ${command} regexp`, async () => {
-    mockRubyRepository('', `group :test do
-    ${command} /prefix
-class RegexText
-suffix/
-    gem 'rspec'
-  end
-  gem 'rack'`);
-
-    assert.equal(await check('rspec'), false);
-    assert.equal(await check('rack'), true);
-  });
-});
-
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';

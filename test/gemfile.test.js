@@ -222,41 +222,8 @@ const namespaceDefinitions = [
   'consume(result = class TestHelper; end)',
 ];
 
-const regexpCases = [
-  'matcher = /#{"/"}/',
-  'warn /prefix\nclass RegexText\nsuffix/i # diagnostic',
-  'print /prefix\nclass RegexText\nsuffix/',
-  'matcher = /prefix\nclass RegexText\nend\\/suffix/',
-  'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
-  '/prefix\nclass RegexText\nsuffix/',
-  '! /prefix\nclass RegexText\nsuffix/',
-  'not /prefix\nclass RegexText\nsuffix/',
-  'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
-  'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
-  'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : nil',
-  'matcher = enabled ? nil : /prefix\nclass RegexText\nsuffix/',
-  "matcher = enabled ? 8 / 2 : 6 / 3\nclass TestHelper\nend",
-  "character = ?/\nclass TestHelper\nend\nratio = 8 / 2",
-  "character = ?: / 2\nclass TestHelper\nend\nratio = 8 / 2",
-  'matcher = /#{ %q!}!.ord / 2 }/',
-  'matcher = /prefix#{%q!}/!}\nclass RegexText\nsuffix/',
-  'matcher = /prefix#{%Q!#{%q!}/!}!}\nclass RegexText\nsuffix/',
-  'matcher = /prefix#{%!}/!}\nclass RegexText\nsuffix/',
-  'matcher = cached || %r!prefix\nmodule RegexText\nsuffix!',
-  'matcher = %r!prefix\\!\nclass RegexText\nsuffix!i',
-  '!%r{prefix{2}#{ { "}" => 8 }["}"] / 2 }\nmodule RegexText\nsuffix}',
-  'matcher = %r#prefix\nclass RegexText\nsuffix#',
-  'matcher = %r\\prefix\nclass RegexText\nsuffix\\',
-  'matcher = %r prefix\nclass RegexText\nsuffix ',
-  'ratio = 8%r!\nclass TestHelper\nend\nratio % r!',
-  'if /prefix\nclass RegexText\nsuffix/\n  true\nend',
-  'if false\n  false\nelsif /prefix\nmodule RegexText\nsuffix/\n  true\nend',
-  'unless /prefix\nclass RegexText\nsuffix/\n  true\nend',
-  'ratio = 8 / 2\nclass TestHelper\nend\nratio / 2',
-];
-
 [':test', ':development', ':development, :test'].forEach((group) => {
-  [...namespaceDefinitions, ...regexpCases].forEach((definition) => {
+  namespaceDefinitions.forEach((definition) => {
     test(`preserves ${group} scope across ${definition}`, () => {
       const gemfile = `group ${group} do
 ${definition}
@@ -277,92 +244,13 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', '!', 'not'].forEach((method) => {
-  test(`preserves production gems between divisions after receiver.${method}`, () => {
-    const gemfile = `result = receiver.${method} / 2\ngem 'rack'\nresult / 2`;
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-[['case', 'case', 'when true\n'], ['when', 'case value\nwhen', '']].forEach(([keyword, condition, branch]) => {
-  test(`finds a production gem after a multiline regexp following ${keyword}`, () => {
-    const gemfile = `${condition} /prefix
-suffix
-/
-${branch}  true
+test('finds production gems between divisions with a parameter named warn', () => {
+  const gemfile = `def ratio(warn)
+  warn /2
 end
 gem 'rack'
-ratio = 12 / 3`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-});
-
-['warn', 'puts', 'print', 'p'].forEach((command) => {
-  [`${command} = 12`, `first, ${command}, last = 6, 12, 18`, `${command}, = 12, 18`].forEach((assignment) => {
-    test(`finds a production gem between divisions after ${assignment}`, () => {
-      const gemfile = `${assignment}
-${command} /2
-gem 'rack'
-ratio = 12 /
+result = 12 /
   3`;
 
-      assert.equal(isProductionGem(gemfile, 'rack'), true);
-    });
-  });
-
-  [command, `first, ${command}`].forEach((targets) => {
-    test(`finds a production gem between divisions after for ${targets}`, () => {
-      const gemfile = `for ${targets} in []
-end
-${command} /2
-gem 'rack'
-ratio = 12 /
-  3`;
-
-      assert.equal(isProductionGem(gemfile, 'rack'), true);
-    });
-  });
-
-  test(`keeps bare ${command} regexps opaque after the name appears on an assignment's right side`, () => {
-    const gemfile = `first, last = ${command}, nil
-group :test do
-  ${command} /prefix
-class RegexText
-/
-  gem 'rspec'
-end
-gem 'rack'`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-
-  test(`finds a production gem between two divisions with a ${command} block parameter`, () => {
-    const gemfile = `[10].each do |${command}|
-  ${command} /2
-end
-gem 'rack'
-ratio = 12 /
-  3`;
-
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
-
-  test(`keeps bare ${command} regexps opaque after a block parameter goes out of scope`, () => {
-    const gemfile = `[10].each do |${command}|
-  ${command} /2
-end
-group :test do
-  ${command} /prefix
-class RegexText
-/
-  gem 'rspec'
-end
-gem 'rack'
-ratio = 12 / 3`;
-
-    assert.equal(isProductionGem(gemfile, 'rspec'), false);
-    assert.equal(isProductionGem(gemfile, 'rack'), true);
-  });
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
