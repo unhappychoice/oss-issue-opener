@@ -228,6 +228,7 @@ const regexpCases = [
   'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
   '/prefix\nclass RegexText\nsuffix/',
   '! /prefix\nclass RegexText\nsuffix/',
+  'not /prefix\nclass RegexText\nsuffix/',
   'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
   'matcher = enabled && /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
   'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : nil',
@@ -284,7 +285,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['if', '!'].forEach((method) => {
+['if', '!', 'not'].forEach((method) => {
   test(`preserves production gems between divisions after receiver.${method}`, () => {
     const gemfile = `result = receiver.${method} / 2\ngem 'rack'\nresult / 2`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
