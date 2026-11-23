@@ -130,9 +130,9 @@ lookup error and exits with a nonzero status after processing the batch.
 Source changes alone qualify: for example, a change to `src/index.ts` with the commit
 `fix: handle empty input` triggers a pending release notification without any dependency updates.
 
-Comparisons returning 300 files may omit additional changes. In that case, complete recursive
-Git trees at the merge base and comparison head are compared instead. Tree retrieval failures
-or truncated trees fail the release investigation rather than reporting the repository up to date.
+Comparisons returning 300 files may omit additional changes. In that case, the scanner compares
+Git trees at the merge base and comparison head, skipping subtrees with matching SHAs.
+Tree retrieval failures and incomplete tree responses fail the release investigation.
 
 CI and release investigations run concurrently and independently for each repository. Investigation failures are
 logged with their target and cause, and scanning continues with the remaining repositories.
