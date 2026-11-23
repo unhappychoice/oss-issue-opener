@@ -163,6 +163,7 @@ test('closes only a matching open alert and records the checked commit once', as
   ], [passedLint]],
   ['pending check', [{ ...passedBuild, status: 'in_progress' }], [passedLint]],
   ['skipped check', [{ ...passedBuild, conclusion: 'skipped' }], [passedLint]],
+  ['neutral check', [{ ...passedBuild, conclusion: 'neutral' }], [passedLint]],
   ['skipped check sharing a passing name', [passedBuild, { ...passedBuild, conclusion: 'skipped' }], [passedLint]],
   ['same name from a different API', [], [passedLint, { ...passedLint, context: 'build' }]],
   ['unreadable check name', [passedBuild, { ...passedBuild, name: null }], [passedLint]],
