@@ -311,6 +311,19 @@ ratio = 12 /
     });
   });
 
+  [command, `first, ${command}`].forEach((targets) => {
+    test(`finds a production gem between divisions after for ${targets}`, () => {
+      const gemfile = `for ${targets} in []
+end
+${command} /2
+gem 'rack'
+ratio = 12 /
+  3`;
+
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+    });
+  });
+
   test(`keeps bare ${command} regexps opaque after the name appears on an assignment's right side`, () => {
     const gemfile = `first, last = ${command}, nil
 group :test do

@@ -56,6 +56,7 @@ const commandLocalScopes = (content: string) => {
   const scopes: Set<string>[] = [];
   const assignment = /[^\S\n]*(?:\|\||&&|[+*/%&|^-])?=(?!=|>|~)/y;
   const targetList = /(\*?\w+[^\S\n]*,(?:\s*\*?\w+[^\S\n]*,)*(?:\s*\*?\w+)?)[^\S\n]*=(?!=|>|~)/y;
+  const forTargets = /\s+([a-z_]\w*(?:\s*,\s*\*?[a-z_]\w*)*)[ \t]+in\b/y;
   const parameters = /\s*\|([^|]*)\|/y;
   let loopHeader = false;
 
@@ -65,8 +66,9 @@ const commandLocalScopes = (content: string) => {
       const statementStart = previous === '\n' || previous === ';' || previous === 'do' || previous === '{';
       if (statementStart) {
         loopHeader = /^(?:while|until|for)$/.test(token);
-        targetList.lastIndex = start;
-        const targets = targetList.exec(content)?.[1].match(/\w+/g);
+        const pattern = token === 'for' ? forTargets : targetList;
+        pattern.lastIndex = token === 'for' ? offset : start;
+        const targets = pattern.exec(content)?.[1].match(/\w+/g);
         targets?.filter(isBareRegexpCommand).forEach((name) => locals.add(name));
       }
       if (token === 'end' || token === '}') {
