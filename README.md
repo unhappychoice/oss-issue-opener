@@ -86,6 +86,10 @@ output for new notifications and `[skip]` for matching open issues. Open the
 destination repository's Issues tab to see the failed checks or pending release
 details. For a complete walkthrough, see the [getting started guide](docs/getting-started.md).
 
+This excerpt shows a sample scan with mocked GitHub responses that creates one CI failure notification.
+
+![Terminal output showing a created CI failure issue and a summary with one scanned repository, one CI failure, and zero pending releases](docs/images/scan-demo.png)
+
 ## Manual Run
 
 ```bash

@@ -359,6 +359,24 @@ test('merges subsequent failures and closes only after every recorded check pass
   assert.equal(events.filter((event) => event[0] === 'close').length, 1);
 });
 
+test('requires the recorded publisher to recover from a subsequent status failure', async (t) => {
+  const alerts = [{ ...alert, body: buildCIFailureIssue(repo, [checks[0]]).body }];
+  const statuses = [{ ...passedLint, state: 'failure' }];
+  const { run, events } = setup(t, { alerts, statuses, persistIssues: true });
+
+  await run(true);
+  assert.equal(alerts.length, 1);
+  assert.equal(events.filter((event) => event[0] === 'update').length, 1);
+
+  statuses[0] = { ...passedLint, creator: { login: 'other-bot', id: 43 } };
+  await run(true);
+  assert.equal(events.some((event) => event[0] === 'close'), false);
+
+  statuses[0] = passedLint;
+  await run(true);
+  assert.equal(events.filter((event) => event[0] === 'close').length, 1);
+});
+
 for (const partial of [true, false]) {
   test(`requires manual closure after a subsequent ${partial ? 'incomplete scan' : 'unidentified failure'}`, async (t) => {
     const alerts = [{ ...alert, title: `[CI Failure] ${repo}` }];
