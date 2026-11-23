@@ -247,3 +247,25 @@ halve(4)`;
 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+[
+  '/first\nclass FakeScope\nlast/',
+  '%r{first\nclass FakeScope\nlast}',
+  'flag ? /first\nclass FakeScope\nlast/ : /other/',
+  'flag ? /other/ : /first\nclass FakeScope\nlast/',
+  '/first\n#{%q(}/)}\nclass FakeScope\nlast/i',
+  '/first\n#{flag ? /}/ : /other/}\nclass FakeScope\nlast/',
+  '/first\\/\nclass FakeScope\nlast/',
+  '%r{first{nested}\nclass FakeScope\nlast}',
+].forEach((expression) => {
+  test(`preserves Gemfile groups around ${JSON.stringify(expression)}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
