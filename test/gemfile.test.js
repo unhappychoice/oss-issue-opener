@@ -288,6 +288,26 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+['for warn in [8]', 'for divisor, warn in [[2, 8]] do'].forEach((loop) => {
+  test(`detects division involving a warn variable bound by ${loop}`, () => {
+    const gemfile = `divisor = 2
+group :test do
+  module TestHelpers
+    class Helper; end
+  end
+  gem 'rspec'
+end
+${loop}
+  warn /divisor
+  gem 'rack', path: '/rack'
+end
+warn /divisor
+gem 'zeitwerk', path: '/zeitwerk'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack', 'zeitwerk']);
+  });
+});
+
 ['warn, divisor = 8, 2', 'divisor, warn = 2, 8'].forEach((assignment) => {
   test(`detects division after parallel assignment ${assignment}`, () => {
     const gemfile = `group :test do
