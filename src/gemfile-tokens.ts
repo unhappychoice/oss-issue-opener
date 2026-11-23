@@ -2,6 +2,7 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let putsIsLocal = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -11,7 +12,13 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex++;
       continue;
     }
-    if ((token === '/' || token === '%') && startsRegexp(tokens)) {
+    if (/^puts=?$/.test(token) && !putsIsLocal) {
+      const assignmentStart = match.index + 'puts'.length;
+      putsIsLocal = tokens[previousTokenIndex(tokens)] !== '.' &&
+        /^[ \t]*=(?!=|>|~)/.test(content.slice(assignmentStart));
+    }
+    const slashArgument = token === '/' && startsPutsRegexp(content, match.index, tokens, putsIsLocal);
+    if ((token === '/' || token === '%') && (slashArgument || startsRegexp(tokens))) {
       const literal = readRegexp(content, match.index);
       if (literal) {
         tokens.push(literal);
@@ -46,6 +53,12 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 const startsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   return expectsRegexp(tokens[index] ?? '\n', tokens[previousTokenIndex(tokens, index)]);
+};
+
+const startsPutsRegexp = (content: string, slash: number, tokens: string[], putsIsLocal: boolean): boolean => {
+  if (!/[ \t]/.test(content[slash - 1] ?? '') || /[\s=]/.test(content[slash + 1] ?? '')) return false;
+  const index = previousTokenIndex(tokens);
+  return tokens[index] === 'puts' && (!putsIsLocal || tokens[previousTokenIndex(tokens, index)] === '.');
 };
 
 const expectsRegexp = (token: string, previous?: string): boolean =>

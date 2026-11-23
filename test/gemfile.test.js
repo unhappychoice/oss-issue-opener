@@ -318,3 +318,16 @@ gem 'rack'`;
 
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
+
+test('ignores namespace keywords in a multiline regexp passed to puts', () => {
+  const gemfile = `group :test do
+  puts /prefix
+class RegexText
+module RegexText
+suffix/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
