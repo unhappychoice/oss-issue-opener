@@ -82,15 +82,15 @@ const characterEnd = (content: string, start: number): number | undefined => {
 const closingDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const literalFrame = (content: string, start: number) => {
-  const opening = /\/|%([rqQ])([^\w\s\u0080-\uffff])/y;
+  const opening = /\/|%([iIqQrswWx]?)([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
-  const regexp = match[1] !== 'q' && match[1] !== 'Q';
+  const type = match[1] ?? 'r';
   const delimiter = match[2] ?? '/';
   return {
     start: opening.lastIndex, delimiter, closing: closingDelimiters.get(delimiter) ?? delimiter,
-    regexp, interpolates: match[1] !== 'q', nesting: 1, braces: 0,
+    regexp: type === 'r', interpolates: !['i', 'q', 's', 'w'].includes(type), nesting: 1, braces: 0,
     previous: '{', expressionExpected: true,
   };
 };
