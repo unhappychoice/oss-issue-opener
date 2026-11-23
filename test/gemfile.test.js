@@ -244,19 +244,22 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('detects a production gem after dividing a local variable without operand spacing', () => {
-  const gemfile = `group :test do
+['puts = 8', 'warn ||= 8', 'calculate /= 2'].forEach((assignment) => {
+  test(`detects a production gem after division following ${assignment}`, () => {
+    const local = assignment.split(' ')[0];
+    const gemfile = `group :test do
   class TestHelper
   end
   gem 'rspec'
 end
-puts = 8
-puts /2
+${assignment}
+${local} /2
 ratio = receiver.if / 2
 marker = ?/
 gem 'rack', path: '/rack'`;
 
-  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
 });
 
 [
@@ -319,9 +322,10 @@ gem 'rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
-test('ignores namespace keywords in a multiline regexp passed to puts', () => {
-  const gemfile = `group :test do
-  puts /prefix
+['puts', 'warn', 'logger.warn'].forEach((command) => {
+  test(`ignores namespace keywords in a multiline regexp passed to ${command}`, () => {
+    const gemfile = `group :test do
+  ${command} /prefix
 class RegexText
 module RegexText
 suffix/
@@ -329,5 +333,6 @@ suffix/
 end
 gem 'rack'`;
 
-  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
 });

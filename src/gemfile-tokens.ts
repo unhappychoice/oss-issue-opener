@@ -2,7 +2,8 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  let putsIsLocal = false;
+  const localNames = new Set<string>();
+  const assignment = /[ \t]*(?:&&|\|\||\*\*|<<|>>|[+*/%&|^\-])?=(?!=|>|~)/y;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
@@ -12,12 +13,13 @@ export const gemfileTokens = (content: string): string[] => {
       pattern.lastIndex++;
       continue;
     }
-    if (/^puts=?$/.test(token) && !putsIsLocal) {
-      const assignmentStart = match.index + 'puts'.length;
-      putsIsLocal = tokens[previousTokenIndex(tokens)] !== '.' &&
-        /^[ \t]*=(?!=|>|~)/.test(content.slice(assignmentStart));
+    if (nameToken.test(token)) {
+      const name = token.replace(/=$/, '');
+      assignment.lastIndex = match.index + name.length;
+      const previous = tokens[previousTokenIndex(tokens)];
+      if (!isQualifiedName(previous) && assignment.test(content)) localNames.add(name);
     }
-    const slashArgument = token === '/' && startsPutsRegexp(content, match.index, tokens, putsIsLocal);
+    const slashArgument = token === '/' && startsCommandRegexp(content, match.index, tokens, localNames);
     if ((token === '/' || token === '%') && (slashArgument || startsRegexp(tokens))) {
       const literal = readRegexp(content, match.index);
       if (literal) {
@@ -55,10 +57,19 @@ const startsRegexp = (tokens: string[]): boolean => {
   return expectsRegexp(tokens[index] ?? '\n', tokens[previousTokenIndex(tokens, index)]);
 };
 
-const startsPutsRegexp = (content: string, slash: number, tokens: string[], putsIsLocal: boolean): boolean => {
+const nameToken = /^[A-Za-z_]\w*[!?=]?$/;
+
+const isQualifiedName = (previous?: string): boolean => ['.', ':', '@', '$'].includes(previous ?? '');
+
+const startsCommandRegexp = (content: string, slash: number, tokens: string[], localNames: ReadonlySet<string>): boolean => {
   if (!/[ \t]/.test(content[slash - 1] ?? '') || /[\s=]/.test(content[slash + 1] ?? '')) return false;
   const index = previousTokenIndex(tokens);
-  return tokens[index] === 'puts' && (!putsIsLocal || tokens[previousTokenIndex(tokens, index)] === '.');
+  const name = tokens[index] ?? '';
+  if (!nameToken.test(name) || name.endsWith('=')) return false;
+  const previous = tokens[previousTokenIndex(tokens, index)];
+  if (previous === '.') return true;
+  return !isQualifiedName(previous) && !localNames.has(name) &&
+    !/^(?:end|false|nil|self|true|__ENCODING__|__FILE__|__LINE__)$/.test(name);
 };
 
 const expectsRegexp = (token: string, previous?: string): boolean =>
