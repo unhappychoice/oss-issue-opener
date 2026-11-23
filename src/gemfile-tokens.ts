@@ -15,19 +15,19 @@ export const gemfileTokens = (content: string): string[] => {
       previous = '<<';
       continue;
     }
-    if ((token === '/' || token === '%') && expectsRegexp(previous)) {
-      const end = regexpEnd(content, match.index);
+    if ((token === '/' || token === '%' || token === '?') && expectsLiteral(previous)) {
+      const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
-        tokens.push('/regexp/');
-        previous = '/regexp/';
+        tokens.push(literalToken);
+        previous = literalToken;
         classHeader = false;
         continue;
       }
     }
     if (!isSpacing(token)) {
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
-      previous = regexpContext(previous, token);
+      previous = literalContext(previous, token);
     }
     if (token.startsWith('<<')) {
       const indented = /^<<[-~]/.test(token);
@@ -50,10 +50,12 @@ const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \
 
 const isSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test(token);
 
-const regexpContext = (previous: string, token: string): string =>
+const literalToken = '/literal/';
+
+const literalContext = (previous: string, token: string): string =>
   (previous === '.' || previous === '::') && /^[a-z]/.test(token) ? `${previous}${token}` : token;
 
-const expectsRegexp = (previous: string): boolean =>
+const expectsLiteral = (previous: string): boolean =>
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&|\||if|elsif|unless|do|then|else)$/.test(previous);
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
@@ -68,18 +70,18 @@ const literalFrame = (type: string, opener: string) => ({
   previous: '{',
 });
 
-const regexpEnd = (content: string, start: number): number | undefined => {
-  const regexpOpening = /\/|%r([^\p{L}\p{N}])/uy;
-  regexpOpening.lastIndex = start;
-  const initial = regexpOpening.exec(content);
+const literalEnd = (content: string, start: number): number | undefined => {
+  const opening = /\/|%([qQrwWiIxs]?)([^\p{L}\p{N}])|\?(?:\\(?:u\{[\da-fA-F]+\}|[\s\S])|[^\s\\])/uy;
+  opening.lastIndex = start;
+  const initial = opening.exec(content);
   if (!initial) return undefined;
+  if (initial[0].startsWith('?')) return opening.lastIndex;
 
-  const frames = [literalFrame('r', initial[1] ?? '/')];
+  const frames = [literalFrame(initial[1] ?? 'r', initial[2] ?? '/')];
   const literalPart = /\\[\s\S]|[\s\S]/y;
   const expressionPart = new RegExp(tokenPattern, 'y');
-  const percentOpening = /%([qQrwWiIxs]?)([^\p{L}\p{N}])/uy;
   const options = /[imxounes]*/y;
-  let offset = regexpOpening.lastIndex;
+  let offset = opening.lastIndex;
 
   while (offset < content.length) {
     const frame = frames.at(-1)!;
@@ -110,19 +112,19 @@ const regexpEnd = (content: string, start: number): number | undefined => {
     }
 
     if (token.startsWith('#') || isSpacing(token)) continue;
-    if (expectsRegexp(frame.previous)) {
-      percentOpening.lastIndex = offset - token.length;
-      const percent = token === '%' ? percentOpening.exec(content) : null;
-      if (percent || token === '/') {
-        frames.push(literalFrame(percent?.[1] ?? 'r', percent?.[2] ?? '/'));
-        if (percent) offset = percentOpening.lastIndex;
-        frame.previous = '/literal/';
+    if (expectsLiteral(frame.previous) && (token === '%' || token === '/' || token === '?')) {
+      opening.lastIndex = offset - token.length;
+      const nested = opening.exec(content);
+      if (nested) {
+        if (token !== '?') frames.push(literalFrame(nested[1] ?? 'r', nested[2] ?? '/'));
+        offset = opening.lastIndex;
+        frame.previous = literalToken;
         continue;
       }
     }
     if (token === '{') frame.braces++;
     if (token === '}') frame.braces--;
-    frame.previous = regexpContext(frame.previous, token);
+    frame.previous = literalContext(frame.previous, token);
   }
   return undefined;
 };

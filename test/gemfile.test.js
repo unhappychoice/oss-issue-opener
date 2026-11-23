@@ -266,6 +266,7 @@ halve(4)`;
   '/first\n#{receiver.if / 2}\nclass FakeScope\nlast/',
   '/first\\/\nclass FakeScope\nlast/',
   '%r{first{nested}\nclass FakeScope\nlast}',
+  '%q{first{nested}\nclass FakeScope\nlast}',
 ].forEach((expression) => {
   test(`preserves Gemfile groups around ${JSON.stringify(expression)}`, () => {
     const gemfile = `group :test do
@@ -277,4 +278,17 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'rspec'), false);
     assert.equal(isProductionGem(gemfile, 'rack'), true);
   });
+});
+
+test('preserves Gemfile groups around character literals', () => {
+  const gemfile = `group :test do
+  slash = ?/
+  brace = ?}
+  gem 'rspec'
+end
+ratio = 4 / 2
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
 });
