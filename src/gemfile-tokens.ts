@@ -58,7 +58,7 @@ const isTokenSpacing = (token: string): boolean => /^(?:[^\S\n]+|\\\r?\n)$/.test
 
 const expectsLiteral = (token = '\n', before?: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
-  (before !== '.' && /^(?:!|if|elsif|unless|when|and|or)$/.test(token));
+  (before !== '.' && /^(?:!|if|elsif|unless|when|and|or|return)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
