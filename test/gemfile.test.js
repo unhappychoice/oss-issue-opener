@@ -248,11 +248,26 @@ halve(4)`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['receiver.if', 'receiver&.unless', 'receiver::if', 'receiver:: if'].forEach((call) => {
+['receiver.if', 'receiver&.unless', 'receiver::if', 'receiver:: if', 'receiver.and', 'receiver.or'].forEach((call) => {
   test(`detects production gems after division of ${call}`, () => {
     const gemfile = `${call} / 2\ngem 'rack', path: '/'`;
 
     assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+['and', 'or'].forEach((operator) => {
+  test(`detects production gems after a multiline regexp following ${operator}`, () => {
+    const gemfile = `group :test do
+  flag ${operator} /first
+class FakeScope
+last/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
   });
 });
 
