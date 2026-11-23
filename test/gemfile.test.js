@@ -272,3 +272,48 @@ gem 'rack'`;
     assert.equal(isProductionGem(gemfile, 'fake'), false);
   });
 }
+
+for (const [opening, closing, expression] of [
+  ['/', '/', '12 / 3'],
+  ['/', '/', '{path: "/}"}.fetch(:path)'],
+  ['%r{', '}', '%q!}!'],
+  ['%r(', ')', '%Q!#{")"}!'],
+  ['/', '/', '(/inner\\//).source'],
+  ['/', '/', '12 / 3 # } /\n  '],
+  ['/', '/', '%!}/!'],
+  ['/', '/', '12 % 5 / 2'],
+]) {
+  test(`preserves Gemfile groups around regexp interpolation containing ${JSON.stringify(expression)}`, () => {
+    const gemfile = `group :test do
+  pattern = ${opening}#{${expression}}
+end
+gem 'fake'
+${closing}x
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'fake'), false);
+  });
+}
+
+test('ignores scope keywords inside regexps in both ternary branches', () => {
+  const gemfile = `group :test do
+  pattern = condition ? /
+end
+gem 'fake_first'
+/ : /
+end
+gem 'fake_second'
+/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'fake_first'), false);
+  assert.equal(isProductionGem(gemfile, 'fake_second'), false);
+});

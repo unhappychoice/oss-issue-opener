@@ -44,26 +44,72 @@ const expectsRegexp = (tokens: string[]): boolean => {
     (/^(?:do|if|elsif|unless)$/.test(previous) && tokens[previousTokenIndex(tokens, index - 1)] !== '.');
 };
 
-const regexpDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
+const literalDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const regexpEnd = (content: string, start: number): number | undefined => {
   const opening = /\/|%r([^\p{L}\p{N}\s])/uy;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
-  const delimiter = match[1] ?? '/';
-  const closing = regexpDelimiters.get(delimiter) ?? delimiter;
-  const part = /\\[\s\S]|[\s\S]/g;
-  part.lastIndex = opening.lastIndex;
+  const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
+  if (end === undefined) return undefined;
+  const options = /[imxounes]*/y;
+  options.lastIndex = end;
+  options.exec(content);
+  return options.lastIndex;
+};
+
+const literalEnd = (
+  content: string, start: number, delimiter: string, interpolates: boolean,
+): number | undefined => {
+  const closing = literalDelimiters.get(delimiter) ?? delimiter;
+  const part = /\\[\s\S]|[\s\S]/gu;
+  part.lastIndex = start;
   let depth = 1;
   for (let token = part.exec(content); token; token = part.exec(content)) {
-    if (token[0] === closing && --depth === 0) {
-      const options = /[imxounes]*/y;
-      options.lastIndex = part.lastIndex;
-      options.exec(content);
-      return options.lastIndex;
+    if (interpolates && token[0] === '#' && content[part.lastIndex] === '{') {
+      const end = interpolationEnd(content, part.lastIndex + 1);
+      if (end === undefined) return undefined;
+      part.lastIndex = end;
+      continue;
     }
-    if (delimiter !== closing && token[0] === delimiter) depth++;
+    if (token[0] === closing && --depth === 0) return part.lastIndex;
+    if (token[0] === delimiter && delimiter !== closing) depth++;
+  }
+  return undefined;
+};
+
+const interpolationEnd = (content: string, start: number): number | undefined => {
+  const part = /#[^\n]*|%([qQwWiIrxs])([^\p{L}\p{N}\s])|\\[\s\S]|\w+[!?]?|&&|\|\||=>|[\s\S]/gu;
+  part.lastIndex = start;
+  const tokens: string[] = [];
+  let depth = 1;
+  for (let match = part.exec(content); match; match = part.exec(content)) {
+    const [token, percentType, delimiter] = match;
+    if (token.startsWith('#')) continue;
+    if (token === '}' && --depth === 0) return part.lastIndex;
+    if (token === '{') depth++;
+    const end = delimiter
+      ? literalEnd(content, part.lastIndex, delimiter, 'QWIrx'.includes(percentType))
+      : interpolationLiteralEnd(content, token, match.index, tokens);
+    if (end !== undefined) part.lastIndex = end;
+    tokens.push(end === undefined ? token : '""');
+  }
+  return undefined;
+};
+
+const interpolationLiteralEnd = (
+  content: string, token: string, start: number, tokens: string[],
+): number | undefined => {
+  if (token === '/' && expectsRegexp(tokens)) return regexpEnd(content, start);
+  if (token === '%' && expectsRegexp(tokens)) {
+    const opening = /%([^\p{L}\p{N}\s])/uy;
+    opening.lastIndex = start;
+    const match = opening.exec(content);
+    if (match) return literalEnd(content, opening.lastIndex, match[1], true);
+  }
+  if (token === "'" || token === '"' || token === '`') {
+    return literalEnd(content, start + 1, token, token !== "'");
   }
   return undefined;
 };
