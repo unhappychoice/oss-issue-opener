@@ -60,7 +60,7 @@ const expectsRegexpAfter = (tokens: string[]): boolean => {
 
 const expectsRegexp = (token: string, previous: string): boolean =>
   /^(?:\n|;|=|=>|~|\(|\[|\{|,|\?|:|&&|\|\|)$/.test(token) ||
-  (previous !== '.' && /^(?:!|do|if|elsif|unless)$/.test(token));
+  (previous !== '.' && /^(?:!|do|if|elsif|unless|not)$/.test(token));
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 

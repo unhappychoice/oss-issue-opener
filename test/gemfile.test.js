@@ -244,11 +244,13 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('preserves group exclusions after division of a block parameter', () => {
+test('preserves group exclusions after division of a block parameter or method result', () => {
   const gemfile = `group :test do |puts|
   class TestHelper
   end
   puts /2
+  receiver.if / 2
+  receiver.not / 2
   gem 'rspec'
 end
 gem 'rack', path: '/rack'`;
@@ -261,9 +263,15 @@ gem 'rack', path: '/rack'`;
   'matcher = /prefix\nend\ngem "ignored"\nsuffix/',
   'matcher = /prefix\\/\nmodule RegexText\nsuffix/i',
   'matcher = enabled && /prefix\nclass RegexText\nsuffix/',
+  'matcher = !/prefix\nclass RegexText\nsuffix/',
+  'matcher = %r!prefix\nclass RegexText\nsuffix!',
   'matcher = cached || %r{prefix{2}\nmodule RegexText\nsuffix}',
   'matcher = enabled ? /prefix\nclass RegexText\nsuffix/ : /prefix\nend\nsuffix/',
+  'not /prefix\nclass RegexText\nsuffix/',
+  'matcher = /prefix#{ not /[}]/ }\nclass RegexText\nsuffix/',
   'matcher = /prefix#{ %q!} /! }\nclass RegexText\nsuffix/',
+  'matcher = /#{ %q!}!.ord / 2 }/',
+  'matcher = /#{"/"}/',
   'matcher = /prefix#{ %q{#{x} /} }\nclass RegexText\nsuffix/',
   'matcher = /prefix#{ /[{]/ }\nclass RegexText\nsuffix/',
   'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/',
