@@ -281,6 +281,16 @@ value / 2`;
   });
 });
 
+['@if / 2', '@@elsif / 2', '$unless / 2', '@warn /divisor'].forEach((division) => {
+  test(`detects a production gem after ${division}`, () => {
+    const gemfile = `divisor = 2
+${division}
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 [
   '/first\\/line\nclass TestHelper\ngem "ignored"\nlast/im',
   '/first\nend\ngem "ignored"\nlast/',

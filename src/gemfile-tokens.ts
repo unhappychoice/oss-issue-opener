@@ -43,7 +43,7 @@ export const gemfileTokens = (content: string): string[] => {
   return tokens;
 };
 
-const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|(?:@@?|\$)[A-Za-z_]\w*|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
 const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
   previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\|)$/.test(previous) ||
@@ -52,7 +52,7 @@ const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
 const warnAssignment = /[^\S\n]*=(?![=>~])/y;
 
 const isQualifiedName = (previous?: string): boolean =>
-  previous === '.' || previous === ':' || previous === '@' || previous === '$';
+  previous === '.' || previous === ':';
 
 const regexpEnd = (
   content: string, start: number, token: string, previous?: string, beforePrevious?: string, hasLocalWarn = false,
