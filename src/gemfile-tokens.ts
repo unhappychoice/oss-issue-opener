@@ -46,7 +46,10 @@ const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
 const regexpEnd = (
   content: string, start: number, token: string, previous?: string, beforePrevious?: string,
 ): number | undefined => {
-  if ((token !== '/' && token !== '%') || !expectsRegexp(previous, beforePrevious)) return undefined;
+  if (token !== '/' && token !== '%') return undefined;
+  const warnArgument = previous === 'warn' && token === '/' &&
+    /[^\S\n]/.test(content[start - 1] ?? '') && /^[^\s=]$/.test(content[start + 1] ?? '');
+  if (!warnArgument && !expectsRegexp(previous, beforePrevious)) return undefined;
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
