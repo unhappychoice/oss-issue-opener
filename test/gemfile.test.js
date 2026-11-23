@@ -266,6 +266,28 @@ pattern = /end/`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+for (const definition of [
+  'def ratio(warn)\n  if warn\n    warn /2\n  end\nend',
+  'def ratio(warn) = warn /2',
+  'def ratio(\n  warn\n)\n  warn /2\nend',
+  'class Helper\n  warn = 12\n  warn /2\nend',
+  'module Helper\n  warn = 12\n  warn /2\nend',
+]) {
+  test(`recognizes a command regexp outside ${JSON.stringify(definition)}`, () => {
+    const gemfile = `${definition}
+group :test do
+  warn /start
+class RegexText
+gem 'fake'
+finish/
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+}
+
 for (const [opening, closing] of [
   ['warn(/', '/)'],
   ['warn /', '/'],

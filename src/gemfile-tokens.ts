@@ -2,15 +2,13 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  const localNames = new Set<string>();
-  const assignment = /[ \t]*=(?!=|[>~])/y;
-  let methodHeader = false;
+  const locals = new LocalScopes();
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '%' || (token === '/' &&
-      (expectsRegexp(tokens) || followsCommand(tokens, content[pattern.lastIndex], localNames)))) {
+      (expectsRegexp(tokens) || followsCommand(tokens, content[pattern.lastIndex], locals.names)))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -31,12 +29,7 @@ export const gemfileTokens = (content: string): string[] => {
       tokens.push('""');
       continue;
     }
-    if (token === 'def') methodHeader = true;
-    if (token === '\n' || token === ';' || token === '=') methodHeader = false;
-    assignment.lastIndex = pattern.lastIndex;
-    if (isLocalName(token) && (methodHeader || assignment.test(content))) {
-      localNames.add(token);
-    }
+    locals.read(token, tokens, content, pattern.lastIndex);
     tokens.push(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
@@ -46,6 +39,84 @@ export const gemfileTokens = (content: string): string[] => {
   }
   return tokens;
 };
+
+export const isEndlessMethod = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (token === '(') depth++;
+    if (token === ')') depth--;
+    const nameEnd = tokens[2] === '.' ? 4 : 2;
+    return token === '=' && depth === 0 && (index === nameEnd || tokens[index - 1] === ')');
+  });
+};
+
+type LocalScope = { closing: 'end' | '}' | 'line'; names: Set<string>; loopHeader?: boolean };
+
+class LocalScopes {
+  get names(): Set<string> {
+    return this.scopes.at(-1)?.names ?? this.root;
+  }
+
+  read(token: string, tokens: string[], content: string, offset: number): void {
+    if (isTokenSpacing(token)) return;
+    const previous = tokens[previousTokenIndex(tokens)];
+    const startsStatement = previous === undefined || /^(?:\n|;|do|then|else|\{)$/.test(previous);
+    const lineEnd = (token === '\n' || token === ';') && this.depth === 0;
+    if (token === '(' || token === '[') this.depth++;
+    if (token === ')' || token === ']') this.depth--;
+    if (this.depth === 0) this.updateScope(token, previous, startsStatement, lineEnd, tokens);
+    if (lineEnd) this.methodStart = undefined;
+    this.assignment.lastIndex = offset;
+    if (isLocalName(token) && previous !== '.' && previous !== 'def' &&
+      (this.methodStart !== undefined || this.assignment.test(content))) {
+      this.names.add(token);
+    }
+  }
+
+  private readonly root = new Set<string>();
+  private readonly scopes: LocalScope[] = [];
+  private readonly assignment = /[ \t]*=(?!=|[>~])/y;
+  private methodStart: number | undefined;
+  private depth = 0;
+
+  private updateScope(
+    token: string, previous: string | undefined, startsStatement: boolean, lineEnd: boolean, tokens: string[],
+  ): void {
+    const scope = this.scopes.at(-1);
+    if ((token === 'end' && scope?.closing === 'end' && previous !== '.') ||
+      (token === '}' && scope?.closing === '}') || (lineEnd && scope?.closing === 'line')) {
+      this.scopes.pop();
+      this.methodStart = undefined;
+    } else if (startsStatement && token === 'def') {
+      this.scopes.push({ closing: 'end', names: new Set() });
+      this.methodStart = tokens.length;
+    } else if ((startsStatement || previous === '=') && /^(?:class|module)$/.test(token)) {
+      this.scopes.push({ closing: 'end', names: new Set() });
+    } else if (token === '=' && this.methodStart !== undefined &&
+      isEndlessMethod([...tokens.slice(this.methodStart).filter((part) => !isTokenSpacing(part)), token])) {
+      if (scope) scope.closing = 'line';
+      this.methodStart = undefined;
+    } else {
+      this.updateBlock(token, previous, startsStatement, lineEnd, scope);
+    }
+  }
+
+  private updateBlock(
+    token: string, previous: string | undefined, startsStatement: boolean, lineEnd: boolean,
+    scope: LocalScope | undefined,
+  ): void {
+    if (token === 'do' && scope?.loopHeader) {
+      scope.loopHeader = false;
+    } else if ((token === 'do' && previous !== '.') ||
+      (startsStatement && /^(?:if|unless|case|begin|while|until|for)$/.test(token))) {
+      this.scopes.push({ closing: 'end', names: this.names, loopHeader: /^(?:while|until|for)$/.test(token) });
+    } else if (token === '{') {
+      this.scopes.push({ closing: '}', names: this.names });
+    } else if (lineEnd && scope?.loopHeader) {
+      scope.loopHeader = false;
+    }
+  }
+}
 
 const isLocalName = (token: string): boolean => /^[a-z_]\w*$/.test(token);
 
