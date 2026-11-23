@@ -374,6 +374,15 @@ gem 'rack', path: '/'`;
   });
 });
 
+test('preserves production gems after dividing a local assigned inside parentheses', () => {
+  const gemfile = `(number = 4)
+number /2
+gem 'rack', path: '/'
+`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('detects production gems after division of self inside a class', () => {
   const gemfile = `group :test do
   class TestHelper

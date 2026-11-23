@@ -39,14 +39,14 @@ export const gemfileTokens = (content: string): string[] => {
       if (isMethodName(token)) {
         if (previous === '.') {
           regexpCommand = true;
-        } else if (!rubyKeywords.has(token) && /^(?:\n|;|do|then|else)$/.test(previous)) {
+        } else if (!rubyKeywords.has(token)) {
           assignment.lastIndex = pattern.lastIndex;
           const targets = assignment.exec(content);
           if (targets) {
             assignedNames.add(token);
             targets[1]?.split(',').slice(1).forEach((name) => assignedNames.add(name.trim()));
           }
-          regexpCommand = !assignedNames.has(token);
+          regexpCommand = /^(?:\n|;|do|then|else)$/.test(previous) && !assignedNames.has(token);
         }
       }
       classHeader = token === 'class' && /^(?:\n|;|do|\{|then|else|end|=|\(|,)$/.test(previous);
