@@ -7,12 +7,14 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if (token === '/' && startsRegexp(tokens)) {
+    if ((token === '/' || token === '%') && startsRegexp(tokens)) {
       regexp.lastIndex = match.index;
-      const literal = regexp.exec(content)?.[0];
+      const literal = token === '/'
+        ? regexp.exec(content)?.[0]
+        : percentRegexp(content, match.index);
       if (literal?.includes('\n')) {
         tokens.push(literal);
-        pattern.lastIndex = regexp.lastIndex;
+        pattern.lastIndex = match.index + literal.length;
         continue;
       }
     }
@@ -40,7 +42,27 @@ export const gemfileTokens = (content: string): string[] => {
 
 const startsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
-  return index < 0 || /^(?:\n|;|=|=>|~|\(|\[|,|\?|:)$/.test(tokens[index]);
+  return index < 0 || /^(?:\n|;|=|=>|~|!|\(|\[|,|\?|:)$/.test(tokens[index]);
+};
+
+const percentRegexp = (content: string, start: number): string | undefined => {
+  const opener = content[start + 2];
+  if (content[start + 1] !== 'r' || !opener || /[\w\s]/.test(opener)) return;
+  const pairedDelimiters: Record<string, string> = { '(': ')', '[': ']', '{': '}', '<': '>' };
+  const closer = pairedDelimiters[opener] ?? opener;
+  let depth = 1;
+  for (let index = start + 3; index < content.length; index++) {
+    const character = content[index];
+    if (character === '\\') {
+      index++;
+    } else if (character === closer && --depth === 0) {
+      const options = content.slice(index + 1).match(/^[imxounes]*/)?.[0] ?? '';
+      return content.slice(start, index + 1 + options.length);
+    } else if (opener !== closer && character === opener) {
+      depth++;
+    }
+  }
+  return undefined;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {

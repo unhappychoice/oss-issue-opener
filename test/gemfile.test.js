@@ -257,16 +257,34 @@ gem 'rack', path: '/rack'`;
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
-test('ignores class and module keywords inside a multiline regexp in a test group', () => {
-  const gemfile = String.raw`group :test do
-  pattern = /start\/
+[
+  String.raw`/start\/
 class TestHelper
 module TestHelpers
 gem 'fake'
-finish/im
+finish/im`,
+  `!/start
+class TestHelper
+finish/`,
+  `%r!start
+class TestHelper
+finish!`,
+  String.raw`%r{start{nested\}
+class TestHelper
+}
+module TestHelpers
+finish}im`,
+  `true ? /start
+class TestHelper
+finish/ : nil`,
+].forEach((expression) => {
+  test(`ignores class and module keywords in regexp expression ${JSON.stringify(expression)}`, () => {
+    const gemfile = `group :test do
+  pattern = ${expression}
   gem 'rspec'
 end
 gem 'rack'`;
 
-  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
 });
