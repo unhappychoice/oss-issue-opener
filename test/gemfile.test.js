@@ -271,6 +271,37 @@ warn /
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('detects division of a local warn assigned inside a conditional', () => {
+  const gemfile = `if enabled
+  warn = 8
+end
+warn /divisor
+gem 'rack', path: '/rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
+['(warn, divisor)', ' warn, divisor', '(divisor, warn: 8)'].forEach((parameters) => {
+  test(`detects production gems after division involving a warn parameter ${parameters}`, () => {
+    const gemfile = `group :test do
+  def helper${parameters}
+    if divisor
+      warn /divisor
+    end
+  end
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'
+warn /first
+class Ignored
+gem "ignored"
+last/
+gem 'zeitwerk'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack', 'zeitwerk']);
+  });
+});
+
 ['receiver.if', 'receiver&.elsif', 'receiver::unless', 'warn'].forEach((call) => {
   test(`detects a production gem after division of ${call}`, () => {
     const gemfile = `${call} / 2

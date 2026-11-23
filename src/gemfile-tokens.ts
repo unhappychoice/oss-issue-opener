@@ -1,20 +1,17 @@
+import { gemfileStatements, opensBlock, opensNamespace } from './gemfile-scopes.js';
+
 export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
-  let hasLocalWarn = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const previousIndex = previousTokenIndex(tokens);
-    if (token === 'warn' && !isQualifiedName(tokens[previousIndex])) {
-      warnAssignment.lastIndex = pattern.lastIndex;
-      hasLocalWarn ||= warnAssignment.test(content);
-    }
     const literalEnd = regexpEnd(
       content, match.index, token, tokens[previousIndex], tokens[previousTokenIndex(tokens, previousIndex)],
-      hasLocalWarn,
+      () => hasLocalWarn(tokens),
     );
     if (literalEnd !== undefined) {
       tokens.push(content.slice(match.index, literalEnd));
@@ -49,17 +46,51 @@ const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
   previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\|)$/.test(previous) ||
   (beforePrevious !== '.' && /^(?:do|if|elsif|unless)$/.test(previous));
 
-const warnAssignment = /[^\S\n]*=(?![=>~])/y;
+const hasLocalWarn = (tokens: string[]): boolean => {
+  let local = { hasWarn: false };
+  const scopes: typeof local[] = [];
+  gemfileStatements(tokens).forEach((statement) => {
+    if (statement[0] === 'end') {
+      local = scopes.pop() ?? local;
+      return;
+    }
+    if (opensBlock(statement)) scopes.push(local);
+    if (statement[0] === 'def') {
+      local = { hasWarn: hasWarnParameter(statement) };
+    } else if (opensNamespace(statement)) {
+      local = { hasWarn: false };
+    } else if (statement.some((token, index) => token === 'warn' && !isQualifiedName(statement[index - 1]) &&
+      statement[index + 1] === '=' && !['=', '~'].includes(statement[index + 2]))) {
+      local.hasWarn = true;
+    }
+  });
+  return local.hasWarn;
+};
+
+const hasWarnParameter = (statement: string[]): boolean => {
+  const parameters = statement.slice(isQualifiedName(statement[2]) ? 4 : 2);
+  const start = parameters[0] === '(' ? 1 : 0;
+  let depth = 0;
+  return parameters.slice(start).some((token, index, tokens) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    if (depth !== 0 || token !== 'warn') return false;
+    let previous = index - 1;
+    while (['*', '&'].includes(tokens[previous])) previous--;
+    return previous < 0 || tokens[previous] === ',';
+  });
+};
 
 const isQualifiedName = (previous?: string): boolean =>
   previous === '.' || previous === ':';
 
 const regexpEnd = (
-  content: string, start: number, token: string, previous?: string, beforePrevious?: string, hasLocalWarn = false,
+  content: string, start: number, token: string, previous?: string, beforePrevious?: string, localWarn?: () => boolean,
 ): number | undefined => {
   if (token !== '/' && token !== '%') return undefined;
-  const warnArgument = previous === 'warn' && (!hasLocalWarn || isQualifiedName(beforePrevious)) && token === '/' &&
-    /[^\S\n]/.test(content[start - 1] ?? '') && /^[^\s=]$/.test(content[start + 1] ?? '');
+  const warnArgument = previous === 'warn' && token === '/' &&
+    /[^\S\n]/.test(content[start - 1] ?? '') && /^[^\s=]$/.test(content[start + 1] ?? '') &&
+    (isQualifiedName(beforePrevious) || !localWarn?.());
   if (!warnArgument && !expectsRegexp(previous, beforePrevious)) return undefined;
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
