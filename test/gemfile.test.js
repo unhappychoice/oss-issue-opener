@@ -341,7 +341,10 @@ gem 'rack', path: '/rack'`;
   });
 });
 
-['(warn, divisor)', ' warn, divisor', '(divisor, warn: 8)'].forEach((parameters) => {
+[
+  '(warn, divisor)', ' warn, divisor', '(divisor, warn: 8)',
+  '((warn, divisor))', '((divisor, (offset, warn)))',
+].forEach((parameters) => {
   test(`detects production gems after division involving a warn parameter ${parameters}`, () => {
     const gemfile = `group :test do
   def helper${parameters}
@@ -422,6 +425,8 @@ gem 'rack', path: '/rack'`;
   'warn = 8\n  Kernel.warn /first\nend\ngem "ignored"\nlast/',
   'def matcher\n    return /first\nclass TestHelper\ngem "ignored"\nlast/\n  end',
   'def matcher\n    return %r{first\nclass TestHelper\ngem "ignored"\nlast}\n  end',
+  'def matcher(value = [warn])\n    warn /first\nclass TestHelper\ngem "ignored"\nlast/\n  end',
+  'def matcher(value = (warn))\n    warn /first\nclass TestHelper\ngem "ignored"\nlast/\n  end',
 ]).forEach((statement) => {
   test(`ignores scope keywords inside ${statement}`, () => {
     const gemfile = `group :test do

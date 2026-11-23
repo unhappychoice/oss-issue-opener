@@ -99,15 +99,19 @@ const hasBlockWarnParameter = (statement: string[] = []): boolean => {
 };
 
 const bindsWarn = (parameters: string[]): boolean => {
-  let depth = 0;
+  const bindingContexts = [true];
   return parameters.some((token, index) => {
-    if (['(', '[', '{'].includes(token)) depth++;
-    if ([')', ']', '}'].includes(token)) depth--;
-    if (depth !== 0 || token !== 'warn') return false;
-    let previous = index - 1;
-    while (['*', '&'].includes(parameters[previous])) previous--;
-    return previous < 0 || parameters[previous] === ',';
+    const atBinding = bindingContexts.at(-1) && startsParameter(parameters, index);
+    if (['(', '[', '{'].includes(token)) bindingContexts.push(token === '(' && Boolean(atBinding));
+    if ([')', ']', '}'].includes(token)) bindingContexts.pop();
+    return atBinding === true && token === 'warn';
   });
+};
+
+const startsParameter = (parameters: string[], index: number): boolean => {
+  let previous = index - 1;
+  while (['*', '&'].includes(parameters[previous])) previous--;
+  return previous < 0 || [',', '('].includes(parameters[previous]);
 };
 
 const isQualifiedName = (previous?: string): boolean =>
