@@ -224,6 +224,7 @@ const namespaceDefinitions = [
 
 const regexpCases = [
   'matcher = /#{"/"}/',
+  'warn /prefix\nclass RegexText\nsuffix/i # diagnostic',
   'matcher = /prefix\nclass RegexText\nend\\/suffix/',
   'matcher = /prefix#{ { "}" => 8 }["}"] / 2 }\nend\nsuffix/i',
   '/prefix\nclass RegexText\nsuffix/',

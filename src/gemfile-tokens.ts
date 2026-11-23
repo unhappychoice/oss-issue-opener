@@ -8,9 +8,10 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = readToken(pattern, match, content, regexpExpected);
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && regexpExpected) {
+    const warnRegexp = token === '/' && previous === 'warn' && startsWarnRegexp(content, match.index);
+    if (((token === '/' || token === '%') && regexpExpected) || warnRegexp) {
       const literal = readRegexp(content, match.index);
-      if (literal) {
+      if (literal && (!warnRegexp || endsWarnRegexp(content, match.index + literal.length))) {
         pattern.lastIndex = match.index + literal.length;
         tokens.push(literal);
         previous = literal;
@@ -42,6 +43,18 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const startsWarnRegexp = (content: string, start: number): boolean => {
+  const lineStart = Math.max(content.lastIndexOf('\n', start), content.lastIndexOf(';', start)) + 1;
+  return /^[\t ]*warn[\t ]+$/.test(content.slice(lineStart, start)) && /^\S/.test(content.slice(start + 1, start + 2));
+};
+
+const endsWarnRegexp = (content: string, end: number): boolean => {
+  // A later division slash can look like the closing delimiter of a bare argument.
+  const boundary = /[^\S\n]*(?:[\n#,;)]|$)/y;
+  boundary.lastIndex = end;
+  return boundary.test(content);
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {
