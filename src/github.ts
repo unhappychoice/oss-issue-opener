@@ -195,13 +195,13 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
 
   for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
     const lookups = suites.map(({ id }) => loadCheckSuite(client, owner, repo, id));
-    // Deliver the same ordered groups, including partial results before a group error.
+    let failure: { error: unknown } | undefined;
     for (let start = 0; start < lookups.length; start += CHECK_SUITE_CONCURRENCY) {
       const results = await Promise.all(lookups.slice(start, start + CHECK_SUITE_CONCURRENCY));
       for (const { pages } of results) yield* pages;
-      const failure = results.find((result) => result.failure)?.failure;
-      if (failure) throw failure.error;
+      failure ??= results.find((result) => result.failure)?.failure;
     }
+    if (failure) throw failure.error;
   }
 }
 
@@ -243,20 +243,53 @@ const getRootTreeContents = async (owner: string, repo: string, tree_sha?: strin
   });
 };
 
+type TreeEntry = { sha: string; mode: string; type: string };
+
+const readComparisonTree = async (owner: string, repo: string, tree_sha: string): Promise<Map<string, TreeEntry>> => {
+  const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha });
+  if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
+  return new Map(data.tree.map(({ path, sha, mode, type }) => {
+    if (!path || !sha || !mode || !type) {
+      throw new Error('Cannot establish complete comparison: incomplete tree entry');
+    }
+    return [path, { sha, mode, type }];
+  }));
+};
+
 const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {
   if (!base || !head) throw new Error('Cannot establish complete comparison: missing tree SHA');
-  const trees = await Promise.all([base, head].map(async (tree_sha) => {
-    const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha, recursive: '1' });
-    if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
-    return new Map(data.tree.filter((entry) => entry.type !== 'tree').map((entry) => {
-      if (!entry.path || !entry.sha || !entry.mode || !entry.type) {
-        throw new Error('Cannot establish complete comparison: incomplete tree entry');
+  if (base === head) return [];
+  const cache = new Map<string, Promise<Map<string, TreeEntry>>>();
+  const empty = new Map<string, TreeEntry>();
+  const read = (sha?: string) => {
+    if (!sha) return empty;
+    const cached = cache.get(sha);
+    if (cached) return cached;
+    const pending = readComparisonTree(owner, repo, sha);
+    cache.set(sha, pending);
+    return pending;
+  };
+
+  const files: string[] = [];
+  const walk = async (prefix: string, before?: string, after?: string): Promise<void> => {
+    const [left, right] = await Promise.all([read(before), read(after)]);
+    for (const name of new Set([...left.keys(), ...right.keys()])) {
+      const oldEntry = left.get(name);
+      const newEntry = right.get(name);
+      const path = prefix + name;
+      const oldTree = oldEntry?.type === 'tree' ? oldEntry.sha : undefined;
+      const newTree = newEntry?.type === 'tree' ? newEntry.sha : undefined;
+      const oldFile = oldTree ? undefined : oldEntry;
+      const newFile = newTree ? undefined : newEntry;
+      if (oldFile?.sha !== newFile?.sha || oldFile?.mode !== newFile?.mode || oldFile?.type !== newFile?.type) {
+        files.push(path);
       }
-      return [entry.path, `${entry.sha}:${entry.mode}:${entry.type}`];
-    }));
-  }));
-  return [...new Set([...trees[0].keys(), ...trees[1].keys()])]
-    .filter((path) => trees[0].get(path) !== trees[1].get(path));
+      if (oldTree !== newTree) await walk(`${path}/`, oldTree, newTree);
+    }
+  };
+
+  await walk('', base, head);
+  return files;
 };
 
 export const getCommitFiles = async (owner: string, repo: string, ref: string): Promise<string[]> => {
@@ -365,6 +398,18 @@ export const completeIssue = async (
   }
   if (!isEligible((await client.issues.get(params)).data)) return false;
   await client.issues.update({ ...params, state: 'closed', state_reason: 'completed' });
+  return true;
+};
+
+export const updateIssueBody = async (
+  owner: string, repo: string, issue_number: number,
+  revise: (issue: Awaited<ReturnType<Octokit['issues']['get']>>['data']) => string | undefined
+): Promise<boolean> => {
+  const client = getOctokit();
+  const params = { owner, repo, issue_number };
+  const body = revise((await client.issues.get(params)).data);
+  if (body === undefined) return false;
+  await client.issues.update({ ...params, body });
   return true;
 };
 

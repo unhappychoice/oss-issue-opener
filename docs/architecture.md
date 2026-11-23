@@ -74,7 +74,7 @@ When both reads succeed and no results remain after filtering, the checker
 reports `no-ci`.
 
 Errors reading releases, tags, or comparisons propagate to the runner as
-investigation failures. This includes incomplete recursive trees during a
+investigation failures. This includes incomplete tree responses during a
 comparison. Successful release and tag reads without a baseline yield `no-tag`.
 
 Root listing request errors propagate, including HTTP 404. Required file reads
