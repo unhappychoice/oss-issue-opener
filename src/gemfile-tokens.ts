@@ -6,7 +6,10 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const literalEnd = regexpEnd(content, match.index, token, tokens[previousTokenIndex(tokens)]);
+    const previousIndex = previousTokenIndex(tokens);
+    const literalEnd = regexpEnd(
+      content, match.index, token, tokens[previousIndex], tokens[previousTokenIndex(tokens, previousIndex)],
+    );
     if (literalEnd !== undefined) {
       tokens.push(content.slice(match.index, literalEnd));
       pattern.lastIndex = literalEnd;
@@ -36,13 +39,14 @@ export const gemfileTokens = (content: string): string[] => {
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
 
-const expectsRegexp = (previous?: string): boolean =>
-  previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\||do|if|elsif|unless)$/.test(previous);
+const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
+  previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\|)$/.test(previous) ||
+  (beforePrevious !== '.' && /^(?:do|if|elsif|unless)$/.test(previous));
 
 const regexpEnd = (
-  content: string, start: number, token: string, previous?: string,
+  content: string, start: number, token: string, previous?: string, beforePrevious?: string,
 ): number | undefined => {
-  if ((token !== '/' && token !== '%') || !expectsRegexp(previous)) return undefined;
+  if ((token !== '/' && token !== '%') || !expectsRegexp(previous, beforePrevious)) return undefined;
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
@@ -84,12 +88,14 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   pattern.lastIndex = start;
   let depth = 1;
   let previous = '{';
+  let beforePrevious: string | undefined;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin') || isTokenSpacing(token)) continue;
-    const end = regexpEnd(content, match.index, token, previous) ??
-      (token === '%' && expectsRegexp(previous) ? percentStringEnd(content, match.index) : undefined);
+    const end = regexpEnd(content, match.index, token, previous, beforePrevious) ??
+      (token === '%' && expectsRegexp(previous, beforePrevious) ? percentStringEnd(content, match.index) : undefined);
+    beforePrevious = previous;
     if (end !== undefined) {
       pattern.lastIndex = end;
       previous = 'literal';

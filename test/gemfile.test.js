@@ -260,12 +260,23 @@ value /
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+['receiver.if', 'receiver&.elsif', 'receiver::unless'].forEach((call) => {
+  test(`detects a production gem after division of ${call}`, () => {
+    const gemfile = `${call} / 2
+gem 'rack'
+value / 2`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 [
   '/first\\/line\nclass TestHelper\ngem "ignored"\nlast/im',
   '/first\nend\ngem "ignored"\nlast/',
   '%r{first{nested}\nclass TestHelper\ngem "ignored"\nlast}x',
   'enabled ? /first\nclass TestHelper\nlast/ : /other\nmodule TestHelpers\nlast/',
   '/first#{%q(/}) + /nested/.source}\nclass TestHelper\nlast/',
+  '/first#{receiver.if / 2}\nclass TestHelper\ngem "ignored"\nlast/',
 ].forEach((literal) => {
   test(`ignores scope keywords inside ${literal}`, () => {
     const gemfile = `group :test do
