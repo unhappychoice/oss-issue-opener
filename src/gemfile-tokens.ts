@@ -15,7 +15,7 @@ export const gemfileTokens = (content: string): string[] => {
       previous = '<<';
       continue;
     }
-    if ((token === '/' || token === '%' || token === '?') && expectsLiteral(previous)) {
+    if (startsLiteral(previous, token, content, match.index)) {
       const end = literalEnd(content, match.index);
       if (end !== undefined) {
         pattern.lastIndex = end;
@@ -57,6 +57,13 @@ const literalContext = (previous: string, token: string): string =>
 
 const expectsLiteral = (previous: string): boolean =>
   /^(?:\n|;|=|=>|~|!|\(|\[|\{|,|\?|:|&|\||and|or|return|if|elsif|unless|do|then|else)$/.test(previous);
+
+const startsLiteral = (previous: string, token: string, content: string, offset: number): boolean => {
+  if (token !== '/' && token !== '%' && token !== '?') return false;
+  return expectsLiteral(previous) || (
+    previous === 'puts' && token === '/' && /[^\S\r\n]\/[^\s=]/.test(content.slice(offset - 1, offset + 2))
+  );
+};
 
 const pairedDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
@@ -112,7 +119,7 @@ const literalEnd = (content: string, start: number): number | undefined => {
     }
 
     if (token.startsWith('#') || isSpacing(token)) continue;
-    if (expectsLiteral(frame.previous) && (token === '%' || token === '/' || token === '?')) {
+    if (startsLiteral(frame.previous, token, content, offset - token.length)) {
       opening.lastIndex = offset - token.length;
       const nested = opening.exec(content);
       if (nested) {

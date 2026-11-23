@@ -286,6 +286,23 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('preserves Gemfile groups around a multiline regexp passed to puts', () => {
+  const gemfile = `group :test do
+  puts /first\nclass FakeScope\nlast/i
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+test('preserves division after puts when the slash is followed by whitespace', () => {
+  const gemfile = `puts / 2\ngem 'rack', path: '/'`;
+
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 [
   '/first\nclass FakeScope\nlast/',
   '%r{first\nclass FakeScope\nlast}',
