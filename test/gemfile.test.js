@@ -380,3 +380,29 @@ gem 'rack'`;
     assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
   });
 });
+
+[
+  '%q{first{nested}\nclass Text\ngem "ignored"\nlast}',
+  '%q!first\\!\nmodule Text\nend\ngem "ignored"\nlast!',
+  '%Q{first#{%q!}!}\nclass Text\nlast}',
+  '%{first\nclass Text\nlast}',
+].forEach((literal) => {
+  test(`ignores scope keywords inside the percent string ${literal}`, () => {
+    const gemfile = `group :test do
+  description = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
+test('detects production gems after modulo with a parenthesized operand', () => {
+  const gemfile = `value = 8
+divisor = 3
+remainder = value %(divisor)
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});

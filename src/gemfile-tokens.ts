@@ -106,7 +106,7 @@ const expressionLiteralEnd = (
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
-  if (!match) return undefined;
+  if (!match) return percentStringEnd(content, start);
   const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
   if (end === undefined) return undefined;
   const options = /[imxounes]*/y;
@@ -149,8 +149,7 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin') || isTokenSpacing(token)) continue;
-    const end = expressionLiteralEnd(content, match.index, token, previous, beforePrevious) ??
-      (token === '%' && expectsRegexp(previous, beforePrevious) ? percentStringEnd(content, match.index) : undefined);
+    const end = expressionLiteralEnd(content, match.index, token, previous, beforePrevious);
     beforePrevious = previous;
     if (end !== undefined) {
       pattern.lastIndex = end;
