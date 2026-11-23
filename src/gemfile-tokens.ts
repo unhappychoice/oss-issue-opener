@@ -6,9 +6,10 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsExpression(tokens)) {
+    const commandRegexp = token === '/' && startsWarnRegexp(tokens, content[pattern.lastIndex]);
+    if ((token === '/' || token === '%') && (commandRegexp || expectsExpression(tokens))) {
       const end = literalEnd(content, match.index);
-      if (end !== undefined) {
+      if (end !== undefined && (!commandRegexp || !/\w/.test(content[end] ?? ''))) {
         pattern.lastIndex = end;
         tokens.push(content.slice(match.index, end));
         continue;
@@ -37,6 +38,14 @@ export const gemfileTokens = (content: string): string[] => {
 };
 
 const tokenPattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./;
+
+const startsWarnRegexp = (tokens: string[], nextCharacter?: string): boolean => {
+  if (!nextCharacter || /\s/.test(nextCharacter) || !/^[ \t]+$/.test(tokens.at(-1) ?? '')) return false;
+  const index = previousTokenIndex(tokens);
+  if (tokens[index] !== 'warn') return false;
+  const before = tokens[previousTokenIndex(tokens, index - 1)] ?? '\n';
+  return ['\n', ';', 'do'].includes(before);
+};
 
 const expectsExpression = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);

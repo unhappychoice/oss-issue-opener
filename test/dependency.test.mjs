@@ -154,7 +154,7 @@ test('Gemfile fallback preserves group exclusions across namespaces and a multil
       class TestHelper
       end
     end
-    matcher = /prefix
+    warn /prefix
 class RegexText
 suffix/
     gem 'rspec'

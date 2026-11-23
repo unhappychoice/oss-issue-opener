@@ -248,6 +248,9 @@ gem 'rack', path: '/rack'`;
 });
 
 [
+  `warn /prefix
+class RegexText
+suffix/`,
   `matcher = /prefix
 class RegexText
 suffix/`,
