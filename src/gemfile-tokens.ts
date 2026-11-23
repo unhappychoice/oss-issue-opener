@@ -2,13 +2,19 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = new RegExp(tokenPattern, 'g');
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let hasLocalWarn = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const previousIndex = previousTokenIndex(tokens);
+    if (token === 'warn' && !isQualifiedName(tokens[previousIndex])) {
+      warnAssignment.lastIndex = pattern.lastIndex;
+      hasLocalWarn ||= warnAssignment.test(content);
+    }
     const literalEnd = regexpEnd(
       content, match.index, token, tokens[previousIndex], tokens[previousTokenIndex(tokens, previousIndex)],
+      hasLocalWarn,
     );
     if (literalEnd !== undefined) {
       tokens.push(content.slice(match.index, literalEnd));
@@ -43,11 +49,16 @@ const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
   previous === undefined || /^(?:\n|;|=|=>|~|[([{,:?+!]|&&|\|\|)$/.test(previous) ||
   (beforePrevious !== '.' && /^(?:do|if|elsif|unless)$/.test(previous));
 
+const warnAssignment = /[^\S\n]*=(?![=>~])/y;
+
+const isQualifiedName = (previous?: string): boolean =>
+  previous === '.' || previous === ':' || previous === '@' || previous === '$';
+
 const regexpEnd = (
-  content: string, start: number, token: string, previous?: string, beforePrevious?: string,
+  content: string, start: number, token: string, previous?: string, beforePrevious?: string, hasLocalWarn = false,
 ): number | undefined => {
   if (token !== '/' && token !== '%') return undefined;
-  const warnArgument = previous === 'warn' && token === '/' &&
+  const warnArgument = previous === 'warn' && (!hasLocalWarn || isQualifiedName(beforePrevious)) && token === '/' &&
     /[^\S\n]/.test(content[start - 1] ?? '') && /^[^\s=]$/.test(content[start + 1] ?? '');
   if (!warnArgument && !expectsRegexp(previous, beforePrevious)) return undefined;
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;

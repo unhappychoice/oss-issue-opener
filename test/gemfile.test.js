@@ -260,6 +260,17 @@ value /
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
 
+test('detects a production gem between divisions of a local variable named warn', () => {
+  const gemfile = `warn = 8
+divisor = 2
+warn /divisor
+gem 'rack'
+warn /
+  divisor`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
+
 ['receiver.if', 'receiver&.elsif', 'receiver::unless', 'warn'].forEach((call) => {
   test(`detects a production gem after division of ${call}`, () => {
     const gemfile = `${call} / 2
@@ -280,6 +291,7 @@ value / 2`;
 ].map((literal) => `pattern = ${literal}`).concat([
   'warn /first\nclass TestHelper\ngem "ignored"\nlast/',
   'Kernel.warn /first\nend\ngem "ignored"\nlast/',
+  'warn = 8\n  Kernel.warn /first\nend\ngem "ignored"\nlast/',
 ]).forEach((statement) => {
   test(`ignores scope keywords inside ${statement}`, () => {
     const gemfile = `group :test do
