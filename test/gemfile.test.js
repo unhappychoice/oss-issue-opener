@@ -254,3 +254,21 @@ result = 12 /
 
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
+
+for (const [opening, closing] of [['/', '/x'], ['%r{', 'nested{pattern}}x']]) {
+  test(`ignores scope keywords inside a multiline ${opening} regexp`, () => {
+    const gemfile = String.raw`group :test do
+  pattern = ${opening}
+class RegexText
+gem 'fake'
+escaped \/ delimiter
+${closing}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'fake'), false);
+  });
+}
