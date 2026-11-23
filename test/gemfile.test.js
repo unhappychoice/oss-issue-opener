@@ -309,6 +309,22 @@ gem 'rack'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('ignores scope keywords in a multiline regexp after else', () => {
+  const gemfile = `group :test do
+  if enabled
+    nil
+  else /prefix
+class TestHelper
+suffix/
+  end
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('preserves production gems after modulo expressions', () => {
   const gemfile = `count = 7 % 3\ngem 'rack', path: '%q!path!'`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
@@ -329,7 +345,7 @@ gem 'rack'`;
   });
 });
 
-['if', '!', 'puts', 'then', 'return'].forEach((method) => {
+['if', '!', 'puts', 'then', 'else', 'return'].forEach((method) => {
   test(`preserves production gems between divisions after receiver.${method}`, () => {
     const gemfile = `ratio = receiver.${method} / 2\ngem 'rack', path: '/rack'`;
     assert.equal(isProductionGem(gemfile, 'rack'), true);
