@@ -1,11 +1,21 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
+  const characterLiteral = /\?(?:\\(?:[CM]-\\|[CM]-|c\\|c)*(?:u\{[\da-fA-F]+\}|u[\da-fA-F]{4}|x[\da-fA-F]{1,2}|[0-7]{1,3}|[^\r\n])|[^\s\\])/uy;
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === '?' && canStartLiteral(tokens)) {
+      characterLiteral.lastIndex = match.index;
+      const character = characterLiteral.exec(content);
+      if (character) {
+        tokens.push(character[0]);
+        pattern.lastIndex = characterLiteral.lastIndex;
+        continue;
+      }
+    }
     if ((token === '/' || token === '%') && canStartLiteral(tokens)) {
       const end = expressionLiteralEnd(content, match.index);
       if (end !== undefined) {

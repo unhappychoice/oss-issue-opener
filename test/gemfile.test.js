@@ -223,6 +223,27 @@ const namespaceDefinitions = [
 ];
 
 [
+  'separator = ?/',
+  'separator = ?\\/',
+  'separator = ?\\C-/',
+  'separator = ?\\u{2f}',
+  'separator = true ? ?/ : nil',
+  'pattern = true ?/\nclass Decoy\n/ : nil',
+  'pattern = true ? nil :/\nmodule Decoy\n/',
+].forEach((expression) => {
+  test(`preserves Gemfile groups and paths after ${expression}`, () => {
+    const gemfile = `group :test do
+${expression}
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+[
   'description = %q{\nclass Decoy\n}',
   'description = %q!\nmodule Decoy\nend\n!',
   'description = %q{nested {braces} and escaped \\}\nclass Decoy\n}',
