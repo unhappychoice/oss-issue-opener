@@ -319,6 +319,28 @@ value / 2`;
   });
 });
 
+['[8].each do |warn|', '[8, 2].each { |value, warn|'].forEach((block) => {
+  test(`detects production gems after division involving a block parameter in ${block}`, () => {
+    const close = block.includes('{') ? '}' : 'end';
+    const gemfile = `divisor = 2
+group :test do
+  class TestHelper
+  end
+  ${block}
+    warn /divisor
+  ${close}
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'
+warn /first
+gem "ignored"
+last/
+gem 'zeitwerk'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack', 'zeitwerk']);
+  });
+});
+
 ['@if / 2', '@@elsif / 2', '$unless / 2', '@warn /divisor'].forEach((division) => {
   test(`detects a production gem after ${division}`, () => {
     const gemfile = `divisor = 2

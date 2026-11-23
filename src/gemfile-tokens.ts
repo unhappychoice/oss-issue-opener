@@ -49,7 +49,7 @@ const expectsRegexp = (previous?: string, beforePrevious?: string): boolean =>
 const hasLocalWarn = (tokens: string[]): boolean => {
   let local = { hasWarn: false };
   const scopes: typeof local[] = [];
-  gemfileStatements(tokens).forEach((statement) => {
+  gemfileStatements(tokens).forEach((statement, index, statements) => {
     if (statement[0] === 'end') {
       local = scopes.pop() ?? local;
       return;
@@ -59,6 +59,8 @@ const hasLocalWarn = (tokens: string[]): boolean => {
       local = { hasWarn: hasWarnParameter(statement) };
     } else if (opensNamespace(statement)) {
       local = { hasWarn: false };
+    } else if (statement.at(-1) === 'do' && hasBlockWarnParameter(statements[index + 1])) {
+      local = { hasWarn: true };
     } else if (statement.some((token, index) => token === 'warn' && !isQualifiedName(statement[index - 1]) &&
       statement[index + 1] === '=' && !['=', '~'].includes(statement[index + 2]))) {
       local.hasWarn = true;
@@ -69,15 +71,23 @@ const hasLocalWarn = (tokens: string[]): boolean => {
 
 const hasWarnParameter = (statement: string[]): boolean => {
   const parameters = statement.slice(isQualifiedName(statement[2]) ? 4 : 2);
-  const start = parameters[0] === '(' ? 1 : 0;
+  return bindsWarn(parameters[0] === '(' ? parameters.slice(1) : parameters);
+};
+
+const hasBlockWarnParameter = (statement: string[] = []): boolean => {
+  const end = statement.indexOf('|', 1);
+  return statement[0] === '|' && end !== -1 && bindsWarn(statement.slice(1, end));
+};
+
+const bindsWarn = (parameters: string[]): boolean => {
   let depth = 0;
-  return parameters.slice(start).some((token, index, tokens) => {
+  return parameters.some((token, index) => {
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
     if (depth !== 0 || token !== 'warn') return false;
     let previous = index - 1;
-    while (['*', '&'].includes(tokens[previous])) previous--;
-    return previous < 0 || tokens[previous] === ',';
+    while (['*', '&'].includes(parameters[previous])) previous--;
+    return previous < 0 || parameters[previous] === ',';
   });
 };
 
