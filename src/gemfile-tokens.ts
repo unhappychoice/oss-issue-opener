@@ -41,7 +41,7 @@ export const gemfileTokens = (content: string): string[] => {
       tokens.push('""');
       continue;
     }
-    trackParameterScope(content, pattern.lastIndex, token, tokens, scopes);
+    trackParameterScope(content, pattern.lastIndex, token, tokens, scopes, localNames);
     tokens.push(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
@@ -110,6 +110,7 @@ const methodParameterScope = (content: string, offset: number): ParameterScope =
 
 const trackParameterScope = (
   content: string, offset: number, token: string, tokens: string[], scopes: ParameterScope[],
+  localNames: Set<string>,
 ): void => {
   if (!/^(?:end|\}|do|\{|class|module|def|if|unless|case|begin|while|until|for|\n|;)$/.test(token)) return;
   const previous = tokens[previousTokenIndex(tokens)];
@@ -131,6 +132,13 @@ const trackParameterScope = (
     scopes.push({ closing: token === 'do' ? 'end' : '}', names });
   } else if (/^(?:class|module|def|if|unless|case|begin|while|until|for)$/.test(token) &&
     (previous === undefined || /^(?:\n|;|=|do|\{|\(|\|)$/.test(previous))) {
+    if (token === 'for') {
+      const targets = /[ \t]+((?:[a-z_]\w*\b(?<!\bin)|[ \t(),*])+)[ \t]+in\b/y;
+      targets.lastIndex = offset;
+      targets.exec(content)?.[1].match(/\w+/g)?.forEach((name) => {
+        if (!hasParameter(scopes, name)) localNames.add(name);
+      });
+    }
     scopes.push(token === 'def' ? methodParameterScope(content, offset) :
       { closing: 'end', loopHeader: /^(?:while|until|for)$/.test(token) });
   }

@@ -261,6 +261,26 @@ gem 'rack', path: '/rack'`;
   });
 });
 
+[
+  'for count in [8]\n  count /2\nend',
+  'for (index, (count, scale)) in [[1, [8, 2]]] do\n  count /2\nend',
+  'for *items, count in [[1, 8]]; end; count /2',
+].forEach((loop) => {
+  test(`detects a production gem after division with a for loop target in ${JSON.stringify(loop)}`, () => {
+    const gemfile = `group :test do
+  module TestHelpers
+    class TestHelper
+    end
+  end
+  gem 'rspec'
+end
+${loop}
+gem 'rack', path: '/rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 test('keeps method parameters local to the method body', () => {
   const gemfile = `group :test do
   def ratio(warn)
