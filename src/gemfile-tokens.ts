@@ -1,11 +1,21 @@
 export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const regexp = /\/(?:\\[\s\S]|[^/\\])*\/[imxounes]*/y;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
+    if (token === '/' && startsRegexp(tokens)) {
+      regexp.lastIndex = match.index;
+      const literal = regexp.exec(content)?.[0];
+      if (literal?.includes('\n')) {
+        tokens.push(literal);
+        pattern.lastIndex = regexp.lastIndex;
+        continue;
+      }
+    }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
         tokens.push('<<');
@@ -26,6 +36,11 @@ export const gemfileTokens = (content: string): string[] => {
     }
   }
   return tokens;
+};
+
+const startsRegexp = (tokens: string[]): boolean => {
+  const index = previousTokenIndex(tokens);
+  return index < 0 || /^(?:\n|;|=|=>|~|\(|\[|,|\?|:)$/.test(tokens[index]);
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {

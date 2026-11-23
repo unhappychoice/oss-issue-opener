@@ -256,3 +256,17 @@ gem 'rack', path: '/rack'`;
 
   assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
 });
+
+test('ignores class and module keywords inside a multiline regexp in a test group', () => {
+  const gemfile = String.raw`group :test do
+  pattern = /start\/
+class TestHelper
+module TestHelpers
+gem 'fake'
+finish/im
+  gem 'rspec'
+end
+gem 'rack'`;
+
+  assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+});
