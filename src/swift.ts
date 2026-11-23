@@ -47,7 +47,7 @@ const stringFrame = (opening: number, start: number, hashes: string, quotes: str
 });
 
 const swiftTokenReader = (content: string): ((index: number) => string) => {
-  const code = /\s+|\/\/[^\r\n]*|\/\*|(#*)("""|")|(#+)\/|[A-Za-z_]\w*|[^\s]/gy;
+  const code = /\s+|\/\/[^\r\n]*|\/\*|(#+)(?:("""|")|(\/))?|("""|")|[A-Za-z_]\w*|[^\s]/gy;
   const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
   const multilineRegexStart = /[ \t]*[\r\n]/y;
   const regex = /\\[^\r\n]|\/(#+)|[\r\n]/g;
@@ -56,12 +56,13 @@ const swiftTokenReader = (content: string): ((index: number) => string) => {
 
   const readToken = (index: number): string => {
     code.lastIndex = index;
-    const [token, hashes, quotes, regexHashes] = code.exec(content)!;
+    const [token, hashes, extendedQuotes, regexSlash, plainQuotes] = code.exec(content)!;
     const start = code.lastIndex;
     if (token === '/*') return content.slice(index, blockCommentEnd(start));
-    if (regexHashes !== undefined) return content.slice(index, regexEnd(start, regexHashes.length));
+    if (regexSlash !== undefined) return content.slice(index, regexEnd(start, hashes.length));
+    const quotes = extendedQuotes ?? plainQuotes;
     if (quotes === undefined || unterminated.has(index)) return token;
-    const end = stringEnd(stringFrame(index, start, hashes, quotes));
+    const end = stringEnd(stringFrame(index, start, hashes ?? '', quotes));
     return end === undefined ? token : content.slice(index, end);
   };
 
@@ -101,17 +102,18 @@ const swiftTokenReader = (content: string): ((index: number) => string) => {
       } else if (typeof frame === 'number') {
         const tokenStart = index;
         code.lastIndex = tokenStart;
-        const [token, hashes, quotes, regexHashes] = code.exec(content)!;
+        const [token, hashes, extendedQuotes, regexSlash, plainQuotes] = code.exec(content)!;
         index = code.lastIndex;
         if (token === '/*') index = blockCommentEnd(index);
-        if (regexHashes !== undefined) index = regexEnd(index, regexHashes.length);
+        if (regexSlash !== undefined) index = regexEnd(index, hashes.length);
         if (token === '(') stack[top] = frame + 1;
         if (token === ')') {
           if (frame === 1) stack.pop();
           else stack[top] = frame - 1;
         }
+        const quotes = extendedQuotes ?? plainQuotes;
         if (quotes !== undefined && !unterminated.has(tokenStart)) {
-          stack.push(stringFrame(tokenStart, index, hashes, quotes));
+          stack.push(stringFrame(tokenStart, index, hashes ?? '', quotes));
         }
       } else if (content.startsWith(frame.closing, index)) {
         index += frame.closing.length;

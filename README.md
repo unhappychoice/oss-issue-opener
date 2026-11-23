@@ -64,8 +64,8 @@ Supported Languages. There is no override for an unrecognized ecosystem; its
 `unknown` fallback checks `src/` changes only and ignores dependency bump commits.
 
 Both `npm run start` and `npm run check` run the scan and create issues;
-`npm run check` builds first. There is no dry-run mode. Existing open issues with
-the same title and matching `ci-failure` or `pending-release` label are skipped.
+`npm run check` builds first. There is no dry-run mode. Matching open issues prevent duplicates. Subsequent failures update eligible CI alerts with
+additional checks to verify before closure.
 
 ## Quick Start
 
@@ -101,8 +101,10 @@ the [architecture guide](docs/architecture.md).
 Combines commit statuses and check runs for the default branch, excluding results whose names
 contain `codecov` (case-insensitive). If any remaining result has a failure or error state,
 creates an issue, even when other results succeeded or are pending. Otherwise, the CI status
-is pending if any result is pending, successful if all results succeeded, or `no-ci` if no
-results remain. The decision does not depend on workflow execution order.
+is pending if any result is pending or `no-ci` if no results remain. Otherwise, the scan logs
+`CI: success`. Completed check runs with a `skipped` or `neutral` conclusion count as successful
+for this aggregation, so a scan with only those checks and no commit statuses can log `CI: success`.
+The decision does not depend on workflow execution order.
 
 If either GitHub API lookup fails, the scanner still queues a notification for
 failures found on any successfully retrieved page. When the available results contain no
@@ -130,9 +132,9 @@ lookup error and exits with a nonzero status after processing the batch.
 Source changes alone qualify: for example, a change to `src/index.ts` with the commit
 `fix: handle empty input` triggers a pending release notification without any dependency updates.
 
-Comparisons returning 300 files may omit additional changes. In that case, complete recursive
-Git trees at the merge base and comparison head are compared instead. Tree retrieval failures
-or truncated trees fail the release investigation rather than reporting the repository up to date.
+Comparisons returning 300 files may omit additional changes. In that case, the scanner compares
+Git trees at the merge base and comparison head, skipping subtrees with matching SHAs.
+Tree retrieval failures and incomplete tree responses fail the release investigation.
 
 CI and release investigations run concurrently and independently for each repository. Investigation failures are
 logged with their target and cause, and scanning continues with the remaining repositories.
@@ -144,7 +146,7 @@ All detected issues are collected, sorted by:
 1. Issue type (`ci-failure` first, then `pending-release`)
 2. Repository name (alphabetically)
 
-Then created in batch, skipping any that already exist.
+Then processed in batch, creating missing issues and updating recovery metadata on existing CI alerts.
 Creation failures are logged per issue, and remaining issues are still attempted.
 After the batch, any failures are reported together and the process exits with a nonzero status.
 
@@ -158,12 +160,14 @@ with `GH_TOKEN` that carry scanner-generated recovery metadata for the scanned r
 The existing alert must be present when the scan starts. Its recorded check runs and
 commit statuses must each explicitly pass on the checked default-branch commit,
 and the overall CI scan must succeed. GitHub Actions jobs must match both the
-recorded job name and workflow ID. Commit statuses must match both the recorded
-context and the publisher's GitHub account ID. A missing, pending, skipped, neutral, or
-unreadable recorded check leaves the issue open. The scanner comments with a link
-to the verified commit and closes the issue as completed.
+recorded job name and workflow ID, and a recorded check run must complete with the
+`success` conclusion to satisfy recovery. Commit statuses must match both the
+recorded context and the publisher's GitHub account ID. A missing, pending, skipped,
+neutral, or unreadable recorded check leaves the issue open even if the scan logs
+`CI: success`. The scanner comments with a link to the verified commit and closes
+the issue as completed.
 
-Alerts require manual closure when the initial CI scan could not retrieve all
+Alerts require manual closure when any failing CI scan could not retrieve all
 results, when the recovery metadata is missing, when a check run has no verified
 GitHub Actions workflow ID, when a commit status has no verified publisher ID
 (including older alerts that recorded only the context), or when the complete

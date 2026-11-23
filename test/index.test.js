@@ -64,6 +64,7 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
   const sha = 'a'.repeat(40);
   const preload = `
     const endpoint = ${JSON.stringify(endpoint)};
+    const fifthSuiteFetched = Promise.withResolvers();
     globalThis.fetch = async (url, options) => {
       const { origin, pathname, searchParams } = new URL(url);
       const respond = (data, init) => {
@@ -113,6 +114,11 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
             const checkSuites = [{ id: 1 }, { id: 2 }].slice(0, Number(searchParams.get('per_page')));
             return respond({ total_count: 1001, check_suites: checkSuites });
           }
+          if (endpoint === 'check-suite-groups') {
+            const checkSuites = Array.from({ length: 5 }, (_, index) => ({ id: index + 1 }))
+              .slice(0, Number(searchParams.get('per_page')));
+            return respond({ total_count: 1001, check_suites: checkSuites });
+          }
           return Response.json({ total_count: 0, check_suites: [] });
         }
         if (endpoint === 'check-suite' && pathname.endsWith('/example/check-suites/1/check-runs')) {
@@ -122,6 +128,18 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
           return respond({
             total_count: 1, check_runs: [{ name: 'tests', status: 'completed', conclusion: 'failure' }],
           });
+        }
+        if (endpoint === 'check-suite-groups' && pathname.includes('/example/check-suites/')) {
+          const suite = pathname.split('/').at(-2);
+          if (suite === '1') return respond({ message: 'CI page unavailable' }, { status: 503 });
+          if (suite === '4') await fifthSuiteFetched.promise;
+          if (suite === '5') {
+            fifthSuiteFetched.resolve();
+            return respond({
+              total_count: 1, check_runs: [{ name: 'build', status: 'completed', conclusion: 'failure' }],
+            });
+          }
+          return respond({ total_count: 0, check_runs: [] });
         }
         if (pathname.endsWith('/example/commits/${sha}/check-runs')) {
           if (endpoint === 'first-check-page' || searchParams.get('page') === '2') {
@@ -158,6 +176,7 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
   ['check-runs', true],
   ['check-runs', false],
   ['check-suite', true],
+  ['check-suite-groups', true],
 ].forEach(([endpoint, hasFailure]) => {
   test(`CLI exits with status 1 after a ${endpoint} error with ${hasFailure ? 'a confirmed failure' : 'no confirmed failures'}`, () => {
     const result = runCLIWithCIFailures(endpoint, hasFailure);

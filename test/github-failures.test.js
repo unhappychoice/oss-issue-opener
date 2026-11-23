@@ -49,6 +49,7 @@ test('reports a missing branch when repository metadata has no default branch na
 
 for (const [listedBranch, defaultBranch, expectedBranches] of [
   ['old', 'main', ['old', 'main']],
+  ['old', 'old', ['old']],
   ['old', null, ['old']],
   [undefined, 'main', ['main']],
 ]) {
@@ -62,6 +63,23 @@ for (const [listedBranch, defaultBranch, expectedBranches] of [
     assert.deepEqual(await getDefaultBranchHead('owner', 'repo', listedBranch), { status: 'no-head' });
     assert.equal(metadata.mock.callCount(), 1);
     assert.deepEqual(branches.mock.calls.map(({ arguments: [{ branch }] }) => branch), expectedBranches);
+  });
+}
+
+for (const status of [404, 503]) {
+  test(`handles HTTP ${status} when refreshing metadata after a listed branch disappears`, async () => {
+    const { repos } = getOctokit();
+    const failure = Object.assign(new Error(`HTTP ${status}`), { status });
+    const metadata = mock.method(repos, 'get', async () => { throw failure; });
+    const branches = mock.method(repos, 'getBranch', async () => {
+      throw Object.assign(new Error('HTTP 404'), { status: 404 });
+    });
+
+    const lookup = getDefaultBranchHead('owner', 'repo', 'old');
+    if (status === 404) assert.deepEqual(await lookup, { status: 'no-head' });
+    else await assert.rejects(lookup, (error) => error === failure);
+    assert.equal(metadata.mock.callCount(), 1);
+    assert.equal(branches.mock.callCount(), 1);
   });
 }
 
