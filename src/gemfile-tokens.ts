@@ -8,7 +8,7 @@ export const gemfileTokens = (content: string): string[] => {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     if (token === '%' || (token === '/' &&
-      (expectsRegexp(tokens) || followsCommand(tokens, content[pattern.lastIndex], locals.names)))) {
+      (expectsRegexp(tokens) || followsCommand(tokens, content[pattern.lastIndex], locals)))) {
       const end = regexpEnd(content, match.index);
       if (end !== undefined) {
         tokens.push(content.slice(match.index, end));
@@ -50,11 +50,23 @@ export const isEndlessMethod = (tokens: string[]): boolean => {
   });
 };
 
-type LocalScope = { closing: 'end' | '}' | 'line'; names: Set<string>; loopHeader?: boolean };
+type LocalScope = {
+  closing: 'end' | '}' | 'line';
+  names: Set<string>;
+  parameters?: Set<string>;
+  loopHeader?: boolean;
+};
 
 class LocalScopes {
-  get names(): Set<string> {
-    return this.scopes.at(-1)?.names ?? this.root;
+  has(name: string): boolean {
+    const names = this.names;
+    if (names.has(name)) return true;
+    for (let index = this.scopes.length - 1; index >= 0; index--) {
+      const scope = this.scopes[index];
+      if (scope.names !== names) break;
+      if (scope.parameters?.has(name)) return true;
+    }
+    return false;
   }
 
   read(token: string, tokens: string[], content: string, offset: number): void {
@@ -64,12 +76,18 @@ class LocalScopes {
     const lineEnd = (token === '\n' || token === ';') && this.depth === 0;
     if (token === '(' || token === '[') this.depth++;
     if (token === ')' || token === ']') this.depth--;
-    if (this.depth === 0) this.updateScope(token, previous, startsStatement, lineEnd, tokens);
+    if (this.depth === 0) {
+      const size = this.scopes.length;
+      this.updateScope(token, previous, startsStatement, lineEnd, tokens);
+      if ((token === 'do' || token === '{') && this.scopes.length > size) {
+        this.readBlockParameters(this.scopes[size], content, offset);
+      }
+    }
     if (lineEnd) this.methodStart = undefined;
     this.assignment.lastIndex = offset;
     if (isLocalName(token) && previous !== '.' && previous !== 'def' &&
       (this.methodStart !== undefined || this.assignment.test(content))) {
-      this.names.add(token);
+      if (!this.has(token)) this.names.add(token);
     }
     if (startsStatement && this.depth === 0 && isLocalName(token)) {
       this.readMultipleAssignment(content, offset - token.length);
@@ -80,13 +98,26 @@ class LocalScopes {
   private readonly scopes: LocalScope[] = [];
   private readonly assignment = /[ \t]*(?:\|\||&&|<<|>>|\*\*|[-+*/%&|^])?=(?!=|[>~])/y;
   private readonly multipleAssignment = /[a-z_]\w*(?:[ \t]*,[ \t\r\n]*[a-z_]\w*)+[ \t]*=(?!=|[>~])/y;
+  private readonly blockParameters = /\s*\|([\s,;()*&:a-zA-Z_0-9]*)\|/y;
   private methodStart: number | undefined;
   private depth = 0;
+
+  private get names(): Set<string> {
+    return this.scopes.at(-1)?.names ?? this.root;
+  }
+
+  private readBlockParameters(scope: LocalScope, content: string, offset: number): void {
+    this.blockParameters.lastIndex = offset;
+    const names = this.blockParameters.exec(content)?.[1].match(/\b[a-z_]\w*/g);
+    if (names) scope.parameters = new Set(names);
+  }
 
   private readMultipleAssignment(content: string, offset: number): void {
     this.multipleAssignment.lastIndex = offset;
     const targets = this.multipleAssignment.exec(content)?.[0];
-    targets?.match(/[a-z_]\w*/g)?.forEach((name) => this.names.add(name));
+    targets?.match(/[a-z_]\w*/g)?.forEach((name) => {
+      if (!this.has(name)) this.names.add(name);
+    });
   }
 
   private updateScope(
@@ -130,14 +161,14 @@ class LocalScopes {
 
 const isLocalName = (token: string): boolean => /^[a-z_]\w*$/.test(token);
 
-const followsCommand = (tokens: string[], next: string | undefined, localNames: Set<string>): boolean => {
+const followsCommand = (tokens: string[], next: string | undefined, locals: LocalScopes): boolean => {
   if (!next || /[\s=]/.test(next) || !/^[^\S\n]+$/.test(tokens.at(-1) ?? '')) return false;
   const index = previousTokenIndex(tokens);
   const name = tokens[index] ?? '';
   if (!/^[a-z_]\w*[!?]?$/.test(name)) return false;
   const before = tokens[previousTokenIndex(tokens, index - 1)];
   if (before === '.') return true;
-  return !localNames.has(name) && !/^(?:true|false|nil|self|end|super)$/.test(name) &&
+  return !locals.has(name) && !/^(?:true|false|nil|self|end|super)$/.test(name) &&
     (before === undefined || /^(?:\n|;|=|do|then|else|return|yield)$/.test(before));
 };
 

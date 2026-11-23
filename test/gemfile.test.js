@@ -266,6 +266,29 @@ pattern = /end/`;
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+for (const [opening, closing] of [
+  ['do |amount|', 'end'],
+  ['{ |amount|', '}'],
+  ['do |first, (amount, last); scratch|', 'end'],
+]) {
+  test(`preserves Gemfile groups and declarations after block parameter division in ${opening}`, () => {
+    const gemfile = `group :test do
+  values.each ${opening}
+    values.each do
+      amount /2
+    end
+  ${closing}
+  gem 'rspec'
+end
+gem 'rack', path: '/rack'
+amount /start
+gem 'fake'
+finish/`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+}
+
 for (const operator of ['||=', '&&=', '+=', '**=', '<<=', '/=']) {
   test(`finds a production gem with a path after division of a local assigned with ${operator}`, () => {
     const gemfile = `input ${operator} 12
