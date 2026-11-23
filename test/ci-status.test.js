@@ -17,7 +17,7 @@ afterEach(() => mock.restoreAll());
 
 const checkStatus = async (status, conclusion) => {
   const client = getOctokit();
-  mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [] } }));
+  mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: [] }));
   mock.method(client.paginate, 'iterator', async function* (method, params) {
     assert.equal(method, client.checks.listForRef);
     assert.deepEqual(params, { owner: 'owner', repo: 'repo', ref: sha, per_page: 100 });
@@ -76,11 +76,11 @@ test('action_required includes the failed check name and URL in the notification
 ['failure', 'error', 'success'].forEach((state) => {
   test(`aggregates ${state} commit status with successful and Codecov checks`, async () => {
     const client = getOctokit();
-    mock.method(client.repos, 'getCombinedStatusForRef', async () => ({
-      data: { statuses: [
-        { state, context: 'lint', target_url: checkUrl },
+    mock.method(client.repos, 'listCommitStatusesForRef', async () => ({
+      data: [
+        { state, context: 'lint', target_url: checkUrl, creator: { id: 42 } },
         { state: 'error', context: 'Codecov/patch', target_url: checkUrl },
-      ] },
+      ],
     }));
     mock.method(client.paginate, 'iterator', async function* () { yield { data: [
       { status: 'completed', conclusion: 'success', name: 'build', html_url: checkUrl },
@@ -89,9 +89,9 @@ test('action_required includes the failed check name and URL in the notification
 
     assert.deepEqual(await checkCIStatus('owner', 'repo'), {
       status: state === 'success' ? 'success' : 'failure',
-      failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl, source: 'status' }],
+      failedChecks: state === 'success' ? [] : [{ name: 'lint', url: checkUrl, source: 'status', publisherId: 42 }],
       ...(state === 'success' ? { recovery: { sha, passedChecks: [
-        { name: 'lint', source: 'status' },
+        { name: 'lint', source: 'status', publisherId: 42 },
       ] } } : {}),
     });
   });
@@ -101,7 +101,7 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
   const client = getOctokit();
   const statusesError = new Error('Commit statuses HTTP 503');
   const checksError = new Error('Check runs HTTP 503');
-  mock.method(client.repos, 'getCombinedStatusForRef', async () => { throw statusesError; });
+  mock.method(client.repos, 'listCommitStatusesForRef', async () => { throw statusesError; });
   mock.method(client.paginate, 'iterator', () => { throw checksError; });
 
   assert.deepEqual(await checkCIStatus('owner', 'repo'), {
@@ -122,7 +122,7 @@ test('reports incomplete CI and preserves both errors when neither endpoint resp
     const client = getOctokit();
     const pageError = new Error('Later check run page unavailable');
     const statuses = expected === 'failure' ? [{ state: 'error', context: 'lint' }] : [];
-    mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses } }));
+    mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: statuses }));
     mock.method(client.paginate, 'iterator', async function* () {
       yield { data: [
         { name: 'CodeCov/project', status: 'completed', conclusion: 'failure' },
@@ -152,10 +152,10 @@ test('evaluates the same commit when the default branch advances between CI look
     data: { commit: { sha: branchHead, commit: { tree: { sha: 'head-tree' } } } },
   }));
   const resolve = (ref) => ref === 'main' ? branchHead : ref;
-  const statuses = mock.method(client.repos, 'getCombinedStatusForRef', async ({ ref }) => {
+  const statuses = mock.method(client.repos, 'listCommitStatusesForRef', async ({ ref }) => {
     const status = resolve(ref) === sha ? 'success' : 'failure';
     branchHead = nextSha;
-    return { data: { statuses: [{ state: status, context: 'lint' }] } };
+    return { data: [{ state: status, context: 'lint' }] };
   });
   const checks = mock.method(client.paginate, 'iterator', async function* (_method, { ref }) { yield { data: [
     { status: 'completed', conclusion: resolve(ref) === sha ? 'success' : 'failure', name: 'build' },
@@ -164,7 +164,7 @@ test('evaluates the same commit when the default branch advances between CI look
   assert.deepEqual(await checkCIStatus('owner', 'repo'), {
     status: 'success',
     failedChecks: [],
-    recovery: { sha, passedChecks: [{ name: 'lint', source: 'status' }] },
+    recovery: { sha, passedChecks: [] },
   });
   assert.deepEqual(branch.mock.calls.map(({ arguments: args }) => args), [
     [{ owner: 'owner', repo: 'repo', branch: 'main' }],
@@ -178,7 +178,7 @@ test('skips CI lookups when the default branch has no head', async () => {
   mock.method(client.repos, 'getBranch', async () => {
     throw Object.assign(new Error('Branch not found'), { status: 404 });
   });
-  const statuses = mock.method(client.repos, 'getCombinedStatusForRef', async () => ({}));
+  const statuses = mock.method(client.repos, 'listCommitStatusesForRef', async () => ({}));
   const checks = mock.method(client.paginate, 'iterator', async function* () { yield { data: [] }; });
 
   assert.deepEqual(await checkCIStatus('owner', 'repo'), {

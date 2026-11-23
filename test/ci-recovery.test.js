@@ -11,7 +11,7 @@ const author = 'alert-maintainer';
 const sha = 'a'.repeat(40);
 const checks = [
   { name: 'build', source: 'check', url: '', workflowId: 10 },
-  { name: 'lint', source: 'status', url: '' },
+  { name: 'lint', source: 'status', url: '', publisherId: 42 },
 ];
 const body = buildCIFailureIssue(repo, checks).body;
 const recoveryComment = `CI recovery verified on the default branch at [\`${sha}\`](https://github.com/${repo}/commit/${sha}). All checks recorded in this alert passed.`;
@@ -34,7 +34,7 @@ const workflows = [
   { check_suite_id: 200, workflow_id: 10 },
   { check_suite_id: 300, workflow_id: 20 },
 ];
-const passedLint = { context: 'lint', state: 'success' };
+const passedLint = { context: 'lint', state: 'success', creator: { login: 'ci-bot', id: 42 } };
 
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
@@ -55,7 +55,7 @@ const setup = (t, {
   });
   t.mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
   t.mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha } } } } }));
-  t.mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses } }));
+  t.mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: statuses }));
   t.mock.method(client.actions, 'listWorkflowRunsForRepo', async (params) => {
     assert.deepEqual(params, { owner: 'owner', repo: 'project', head_sha: sha, per_page: 100, page: 1 });
     if (workflowError) throw workflowError;
@@ -166,6 +166,9 @@ test('closes only a matching open alert and records the checked commit once', as
   ['skipped check sharing a passing name', [passedBuild, { ...passedBuild, conclusion: 'skipped' }], [passedLint]],
   ['same name from a different API', [], [passedLint, { ...passedLint, context: 'build' }]],
   ['unreadable check name', [passedBuild, { ...passedBuild, name: null }], [passedLint]],
+  ['status without a publisher', [passedBuild], [{ ...passedLint, creator: null }]],
+  ['status with an invalid publisher ID', [passedBuild], [{ ...passedLint, creator: { id: 0 } }]],
+  ['unreadable status context', [passedBuild], [passedLint, { ...passedLint, context: null }]],
   ['unreadable status state', [passedBuild], [passedLint, { context: 'other' }]],
 ].forEach(([name, runs, statuses]) => {
   test(`leaves an alert open with a ${name}`, async (t) => {
@@ -185,6 +188,41 @@ test('records the workflow identity of a failing job for recovery on a later sui
   runs[0] = passedBuild;
   await run(true);
   assert.deepEqual(events.map((event) => typeof event === 'string' ? event : event[0]), ['list', 'comment', 'close']);
+});
+
+test('closes after the original status publisher reports success under a new login', async (t) => {
+  const statuses = [{ ...passedLint, state: 'failure' }];
+  const recordedAlert = { ...alert };
+  const { run, events } = setup(t, { statuses, alerts: [recordedAlert] });
+  const result = await checkCIStatus('owner', 'project');
+  assert.deepEqual(result.failedChecks, [checks[1]]);
+  recordedAlert.body = buildCIFailureIssue(repo, result.failedChecks).body;
+
+  statuses[0] = { ...passedLint, creator: { ...passedLint.creator, id: 43 } };
+  statuses.push(passedLint);
+  await run(true);
+  assert.deepEqual(events, ['list']);
+
+  statuses.unshift({ ...passedLint, creator: { ...passedLint.creator, login: 'renamed-bot' } });
+  await run(true);
+  assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+    ['list', 'list', 'comment', 'close']);
+});
+
+test('leaves context-only alerts and failures without a valid publisher open', async (t) => {
+  const contextOnlyKey = Buffer.from(JSON.stringify(['status', 'lint'])).toString('base64url');
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} ${contextOnlyKey} -->` };
+  const statuses = [{ ...passedLint, state: 'failure', creator: null }];
+  const recordedAlert = { ...alert, number: 2 };
+  const { run, events } = setup(t, { statuses, alerts: [legacy, recordedAlert] });
+  const result = await checkCIStatus('owner', 'project');
+  assert.equal(result.status, 'failure');
+  recordedAlert.body = buildCIFailureIssue(repo, result.failedChecks).body;
+  assert.match(recordedAlert.body, /- lint/);
+
+  statuses[0] = passedLint;
+  await run(true);
+  assert.deepEqual(events, ['list']);
 });
 
 test('leaves an alert open when workflow identity lookup fails', async (t) => {

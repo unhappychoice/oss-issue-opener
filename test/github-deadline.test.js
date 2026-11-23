@@ -72,8 +72,8 @@ test('CLI reports a stalled CI page and submits findings from another repository
       }
       if (pathname.endsWith('/check-suites')) return Response.json({ total_count: 0, check_suites: [] });
       if (pathname.endsWith('/check-runs')) return json({ total_count: 0, check_runs: [] });
-      if (pathname.endsWith('/status')) {
-        return Response.json({ statuses: pathname.includes('/completed/') ? [{ state: 'failure', context: 'build' }] : [] });
+      if (pathname.endsWith('/statuses')) {
+        return Response.json(pathname.includes('/completed/') ? [{ state: 'failure', context: 'build' }] : []);
       }
       throw new Error('Unexpected GitHub request: ' + method + ' ' + pathname);
     };

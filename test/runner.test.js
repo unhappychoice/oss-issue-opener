@@ -103,9 +103,9 @@ test('preserves GitHub read failures and waits for the remaining notifications',
   const client = getOctokit();
   mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo), commit: { tree: { sha: 'head-tree' } } } } }));
   mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  mock.method(client.repos, 'getCombinedStatusForRef', async ({ repo }) => {
+  mock.method(client.repos, 'listCommitStatusesForRef', async ({ repo }) => {
     if (repo === 'last') throw statusesFailure;
-    return { data: { statuses: [{ state: 'failure', context: 'build' }] } };
+    return { data: [{ state: 'failure', context: 'build' }] };
   });
   mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(client.paginate, 'iterator', async function* (_route, { repo }) {
@@ -332,9 +332,9 @@ const stubInvestigations = (releases = [{ tag_name: 'v1' }]) => {
   const client = getOctokit();
   mock.method(client.repos, 'listReleases', async () => ({ data: releases }));
   mock.method(client.repos, 'getBranch', async ({ repo }) => ({ data: { commit: { sha: headSha(repo), commit: { tree: { sha: 'head-tree' } } } } }));
-  mock.method(client.repos, 'getCombinedStatusForRef', async () => ({ data: { statuses: [
+  mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: [
     { state: 'failure', context: 'build', target_url: 'https://example.com/build' },
-  ] } }));
+  ] }));
   mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   mock.method(client.paginate, 'iterator', async function* () { yield { data: [] }; });
   return client.repos;
@@ -425,7 +425,7 @@ test('shares the replacement branch head after the listed branch disappears', as
 
   assert.equal(metadata.mock.callCount(), 1);
   assert.deepEqual(branches.mock.calls.map(({ arguments: [{ branch }] }) => branch), ['old', 'main']);
-  assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), [head]);
+  assert.deepEqual(repos.listCommitStatusesForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), [head]);
   assert.deepEqual(getOctokit().paginate.iterator.mock.calls.map(({ arguments: [_, { ref }] }) => ref), [head]);
   assert.deepEqual(comparison.mock.calls.map(({ arguments: [params] }) => params.head), [head]);
 });
@@ -458,7 +458,7 @@ test('shares default branch heads per repository and refreshes them on each scan
   const expectedHeads = ['main', 'next'].flatMap((branch) => ['first', 'broken', 'last'].map((repo) => commitSha(`${repo}/${branch}`)));
   assert.equal(getBranch.mock.callCount(), expectedHeads.length);
   assert.deepEqual(repos.getCommit.mock.calls.map(({ arguments: [{ ref }] }) => ref), Array(6).fill('refs/tags/v1'));
-  assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
+  assert.deepEqual(repos.listCommitStatusesForRef.mock.calls.map(({ arguments: [{ ref }] }) => ref), expectedHeads);
   assert.deepEqual(getOctokit().paginate.iterator.mock.calls.map(({ arguments: [_, { ref }] }) => ref), expectedHeads);
   const pages = compared.mock.calls.map(({ arguments: [{ head, page }] }) => [head, page]);
   assert.deepEqual(pages, expectedHeads.map((head) => [head, 1]));
@@ -923,7 +923,7 @@ const kotlinBuild = 'dependencies { implementation("org.example:kotlin:1.1") }';
     const heads = repos.getBranch.mock.calls.map(({ arguments: [params] }) => params);
     assert.deepEqual(heads.map(({ branch }) => branch), branches);
     const shas = heads.map(({ repo }) => headSha(repo));
-    assert.deepEqual(repos.getCombinedStatusForRef.mock.calls.map(({ arguments: [params] }) => params.ref), shas);
+    assert.deepEqual(repos.listCommitStatusesForRef.mock.calls.map(({ arguments: [params] }) => params.ref), shas);
     assert.deepEqual(iterator.mock.calls.filter(({ arguments: [route] }) => route === client.checks.listForRef).map(({ arguments: [_, params] }) => params.ref), shas);
     assert.deepEqual(compared.mock.calls.map(({ arguments: [params] }) => params.head),
       shas);
