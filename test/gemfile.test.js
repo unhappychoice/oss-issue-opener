@@ -434,6 +434,23 @@ gem 'rack'`;
   });
 });
 
+[
+  '%w!first\\!\nclass Helper\nlast!',
+  '%W{first#{%q!}!}\nmodule Helpers\nlast}',
+  '%i!first\nend\nlast!',
+  '%I(first#{%w[)]}\nclass Helper\nlast)',
+].forEach((literal) => {
+  test(`ignores scope keywords inside the percent array ${literal}`, () => {
+    const gemfile = `group :test do
+  values = ${literal}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.deepEqual([...productionGemNames(gemfile)], ['rack']);
+  });
+});
+
 test('detects production gems after modulo with a parenthesized operand', () => {
   const gemfile = `value = 8
 divisor = 3

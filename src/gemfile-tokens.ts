@@ -121,7 +121,7 @@ const expressionLiteralEnd = (
   const opening = /\/|%r([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
-  if (!match) return percentStringEnd(content, start);
+  if (!match) return percentLiteralEnd(content, start);
   const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
   if (end === undefined) return undefined;
   const options = /[imxounes]*/y;
@@ -178,11 +178,11 @@ const interpolationEnd = (content: string, start: number): number | undefined =>
   return undefined;
 };
 
-const percentStringEnd = (content: string, start: number): number | undefined => {
-  const opening = /%([qQ]?)([^\w\s\u0080-\uffff])/y;
+const percentLiteralEnd = (content: string, start: number): number | undefined => {
+  const opening = /%([qQwWiI]?)([^\w\s\u0080-\uffff])/y;
   opening.lastIndex = start;
   const match = opening.exec(content);
-  return match ? literalEnd(content, opening.lastIndex, match[2], match[1] !== 'q') : undefined;
+  return match ? literalEnd(content, opening.lastIndex, match[2], !['q', 'w', 'i'].includes(match[1])) : undefined;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {
