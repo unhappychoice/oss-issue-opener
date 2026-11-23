@@ -303,6 +303,7 @@ gem 'rack'`;
   'Regexp.union(/first\nclass RegexText\nlast/)',
   'enabled ? /first\nclass RegexText\nlast/ : nil',
   'enabled ? nil : /first\nclass RegexText\nlast/',
+  'enabled or /first\nclass RegexText\ngem "ignored"\nlast/',
   '/#{%q!}/!}\\/first\nclass RegexText\nlast/',
   '/#{%q{#{inner}}}first\nclass RegexText\nlast/',
   '/#{ "/" }/',
