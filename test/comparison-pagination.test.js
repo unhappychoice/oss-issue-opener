@@ -334,6 +334,103 @@ test('skips fetching identical root trees', async (t) => {
   assert.equal(getTree.mock.callCount(), 0);
 });
 
+test(`starts a later sibling's tree requests while an earlier sibling is still blocked`, async (t) => {
+  const repos = stubRelease(t);
+  t.mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: numberedFiles(300, 'docs', 'md'),
+    merge_base_commit: { commit: { tree: { sha: 'merge-base-tree' } } },
+    commits: [],
+  } }));
+
+  const blocked = Promise.withResolvers();
+  const trees = {
+    'merge-base-tree': [tree('src', 'old-a'), tree('lib', 'old-b')],
+    'head-tree': [tree('src', 'new-a'), tree('lib', 'new-b')],
+    'old-a': [blob('file.ts', 'old')],
+    'new-a': [blob('file.ts', 'new')],
+    'old-b': [blob('file.ts', 'old')],
+    'new-b': [blob('file.ts', 'new')],
+  };
+  const getTree = t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
+    assert.ok(tree_sha in trees, `Unexpected tree request: ${tree_sha}`);
+    if (tree_sha === 'old-a') await blocked.promise;
+    return { data: { truncated: false, tree: trees[tree_sha] } };
+  });
+
+  const comparison = checkPendingRelease('owner', 'repo', 'node');
+  await setImmediate();
+  const requested = getTree.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha);
+  assert.ok(requested.includes('old-a'), 'sibling "src" should have started its blocked request');
+  assert.ok(requested.includes('old-b') && requested.includes('new-b'),
+    'sibling "lib" should start its own requests instead of waiting for "src" to finish');
+
+  blocked.resolve();
+  const result = await comparison;
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(result.changedSources.toSorted(), ['lib/file.ts', 'src/file.ts']);
+});
+
+const TREE_FETCH_CONCURRENCY = 8;
+
+test('shares a tree-fetch concurrency limit across concurrent comparisons and returns changed paths in a stable order', async (t) => {
+  const fanOut = (label, count) => {
+    const mergeBaseTree = Array.from({ length: count }, (_, i) => tree(`dir${i}`, `${label}-old-${i}`));
+    const headTree = Array.from({ length: count }, (_, i) => tree(`dir${i}`, `${label}-new-${i}`));
+    const subtrees = {};
+    for (let i = 0; i < count; i++) {
+      subtrees[`${label}-old-${i}`] = [blob('file.ts', `${label}-old-${i}`)];
+      subtrees[`${label}-new-${i}`] = [blob('file.ts', `${label}-new-${i}`)];
+    }
+    return {
+      mergeBaseTree, headTree, subtrees,
+      expectedFiles: Array.from({ length: count }, (_, i) => `dir${i}/file.ts`),
+    };
+  };
+
+  const labels = ['cmp1', 'cmp2'];
+  const comparisons = labels.map((label) => fanOut(label, 10));
+  const roots = Object.assign({}, ...labels.map((label, i) => ({
+    [`${label}-merge-base`]: comparisons[i].mergeBaseTree,
+    [`${label}-head`]: comparisons[i].headTree,
+  })));
+  const subtrees = Object.assign({}, ...comparisons.map((c) => c.subtrees));
+
+  const gate = Promise.withResolvers();
+  let active = 0;
+  let maxActive = 0;
+  const getTree = t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
+    const isRoot = tree_sha in roots;
+    active++;
+    maxActive = Math.max(maxActive, active);
+    try {
+      if (!isRoot) await gate.promise;
+      const data = isRoot ? roots[tree_sha] : subtrees[tree_sha];
+      assert.ok(data, `Unexpected tree request: ${tree_sha}`);
+      return { data: { truncated: false, tree: data } };
+    } finally {
+      active--;
+    }
+  });
+
+  const repos = getOctokit().repos;
+  t.mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
+    files: numberedFiles(300, 'docs', 'md'),
+    merge_base_commit: { commit: { tree: { sha: `${repo}-merge-base` } } },
+    commits: [],
+  } }));
+
+  const started = labels.map((label) =>
+    compareCommits('owner', label, 'v1', { sha: commitSha(label), treeSha: `${label}-head` }));
+  await setImmediate();
+  // 10 changed directories per comparison need 2 tree reads each (old and new side), so 40
+  // requests compete for the shared limiter; only TREE_FETCH_CONCURRENCY may run at once.
+  assert.equal(maxActive, TREE_FETCH_CONCURRENCY);
+
+  gate.resolve();
+  const results = await Promise.all(started);
+  results.forEach(({ files }, i) => assert.deepEqual(files, comparisons[i].expectedFiles));
+});
+
 test('propagates tree fallback API failures instead of declaring up to date', async (t) => {
   const getTree = stubCappedComparison(t);
   const failure = new Error('Tree request failed');
