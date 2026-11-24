@@ -146,6 +146,10 @@ Source changes alone qualify: for example, a change to `src/index.ts` with the c
 Comparisons returning 300 files may omit additional changes. In that case, the scanner compares
 Git trees at the merge base and comparison head, skipping subtrees with matching SHAs.
 Tree retrieval failures and incomplete tree responses fail the release investigation.
+The walk also caps the number of expanded tree entries at 50,000 and the number of retained
+changed paths at 10,000 per comparison, since a shared subtree reached under multiple directory
+names can expand far beyond the trees actually downloaded; exceeding either cap fails the release
+investigation the same way.
 
 CI and release investigations run concurrently and independently for each repository. Investigation failures are
 logged with their target and cause, and scanning continues with the remaining repositories.

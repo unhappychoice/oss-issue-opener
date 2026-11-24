@@ -273,6 +273,12 @@ const readComparisonTree = async (owner: string, repo: string, tree_sha: string)
   }));
 };
 
+// A shared subtree can be reached under many directory names, so even cache-deduplicated
+// downloads can expand into far more walked entries and changed paths than files actually
+// changed. Cap both to bound memory for a single comparison.
+const MAX_TREE_EXPANSIONS = 50_000;
+const MAX_CHANGED_PATHS = 10_000;
+
 const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {
   if (!base || !head) throw new Error('Cannot establish complete comparison: missing tree SHA');
   if (base === head) return [];
@@ -288,9 +294,13 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
   };
 
   const files: string[] = [];
+  let expansions = 0;
   const walk = async (prefix: string, before?: string, after?: string): Promise<void> => {
     const [left, right] = await Promise.all([read(before), read(after)]);
     for (const name of new Set([...left.keys(), ...right.keys()])) {
+      if (++expansions > MAX_TREE_EXPANSIONS) {
+        throw new Error(`Cannot establish complete comparison: exceeded the ${MAX_TREE_EXPANSIONS}-entry expansion limit`);
+      }
       const oldEntry = left.get(name);
       const newEntry = right.get(name);
       const path = prefix + name;
@@ -300,6 +310,9 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
       const newFile = newTree ? undefined : newEntry;
       if (oldFile?.sha !== newFile?.sha || oldFile?.mode !== newFile?.mode || oldFile?.type !== newFile?.type) {
         files.push(path);
+        if (files.length > MAX_CHANGED_PATHS) {
+          throw new Error(`Cannot establish complete comparison: exceeded the ${MAX_CHANGED_PATHS}-path retention limit`);
+        }
       }
       if (oldTree !== newTree) await walk(`${path}/`, oldTree, newTree);
     }

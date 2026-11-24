@@ -299,6 +299,34 @@ test('detects added and removed subtree paths, file mode changes, and file-to-di
   assert.equal(calls.filter((sha) => sha === 'nested').length, 1);
 });
 
+test('stops at the tree expansion limit when a subtree is shared across directory names, even though every tree read is cached', async (t) => {
+  const depth = 14;
+  // Both sides mirror each other down to identical leaf blobs, so no path is ever reported
+  // as changed; only the directory SHAs differ, which forces recursion at every level.
+  const trees = {
+    'old-level-0': [blob('a', 'leaf'), blob('b', 'leaf')],
+    'new-level-0': [blob('a', 'leaf'), blob('b', 'leaf')],
+  };
+  for (let level = 1; level <= depth; level++) {
+    trees[`old-level-${level}`] = [tree('a', `old-level-${level - 1}`), tree('b', `old-level-${level - 1}`)];
+    trees[`new-level-${level}`] = [tree('a', `new-level-${level - 1}`), tree('b', `new-level-${level - 1}`)];
+  }
+  const getTree = stubCappedComparison(t, { 'merge-base-tree': trees[`old-level-${depth}`], 'head-tree': trees[`new-level-${depth}`], ...trees });
+
+  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /exceeded the 50000-entry expansion limit/);
+  // The "old-level-N"/"new-level-N" subtrees are expanded under both the "a/" and "b/"
+  // prefixes at every level, so total walked entries grow exponentially even though each
+  // distinct subtree SHA is only ever downloaded once.
+  assert.equal(getTree.mock.callCount(), depth * 2 + 2);
+});
+
+test('stops at the retained-path limit when a single directory holds more changed files than the cap allows', async (t) => {
+  const files = Array.from({ length: 10_001 }, (_, i) => blob(`${i}.md`, `new-${i}`));
+  stubCappedComparison(t, { 'head-tree': files });
+
+  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /exceeded the 10000-path retention limit/);
+});
+
 test('skips fetching identical root trees', async (t) => {
   const getTree = stubCappedComparison(t);
   const { files } = await compareCommits('owner', 'repo', 'v1', { sha: commitSha('main'), treeSha: 'merge-base-tree' });
