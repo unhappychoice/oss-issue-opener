@@ -43,17 +43,17 @@ export const buildPendingReleaseIssue = (
 
 export const listCIAlerts = async () => listOpenIssueDetails(issueOwner, issueRepo, 'ci-failure');
 
-export const getCIAlertRepositories = (alerts: Awaited<ReturnType<typeof listCIAlerts>>): Set<string> =>
+export const getCIAlertRepositories = (alerts: Awaited<ReturnType<typeof listCIAlerts>>, author: string): Set<string> =>
   new Set(alerts.flatMap((alert) => {
-    const recorded = recordedChecks(alert);
+    const recorded = recordedChecks(alert, author);
     return recorded ? [recorded.repo] : [];
   }));
 
 export const closeRecoveredCIAlerts = async (
   alerts: Awaited<ReturnType<typeof listCIAlerts>>,
-  recoveries: ReadonlyMap<string, NonNullable<CIStatus['recovery']>>
+  recoveries: ReadonlyMap<string, NonNullable<CIStatus['recovery']>>,
+  author: string
 ): Promise<void> => {
-  const author = await getAuthenticatedLogin();
   const failures: Error[] = [];
   for (const alert of alerts) {
     const { number } = alert;
@@ -84,10 +84,10 @@ export const closeRecoveredCIAlerts = async (
 };
 
 const recordedChecks = (
-  issue: Awaited<ReturnType<typeof listCIAlerts>>[number], author?: string
+  issue: Awaited<ReturnType<typeof listCIAlerts>>[number], author: string
 ): { repo: string; checks: string[] } | undefined => {
   const { state, user, labels, body, pull_request } = issue;
-  if (state !== 'open' || pull_request || (author !== undefined && user?.login !== author) || !labels.some((label) =>
+  if (state !== 'open' || pull_request || user?.login !== author || !labels.some((label) =>
     (typeof label === 'string' ? label : label.name) === 'ci-failure')) return undefined;
 
   const recorded = readRecoveryMarker(body);
