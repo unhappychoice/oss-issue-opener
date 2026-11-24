@@ -104,6 +104,24 @@ cases.forEach(([name, manifest, pkg, expected]) => {
   });
 });
 
+test('ignores a reverted production bump in package-lock.json when an unrelated yarn.lock change is also present', async (t) => {
+  const { repos } = getOctokit();
+  t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+  t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  mockCommitFiles(t.mock, ['package-lock.json', 'yarn.lock']);
+  t.mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: [{ filename: 'package-lock.json' }, { filename: 'yarn.lock' }],
+    commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 2.0.0' } }],
+  } }));
+  t.mock.method(repos, 'getContent', async ({ path }) => {
+    if (path === 'package.json') return { data: JSON.stringify({ dependencies: { runtime: '^1.0.0' } }) };
+    assert.equal(path, 'package-lock.json');
+    return { data: npmLock({ runtime: '1.0.0' }) };
+  });
+
+  assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
+});
+
 for (const [lockfile, lockVersion, survivingProduction] of [
   ['package-lock.json', 3, false],
   ['package-lock.json', 3, true],

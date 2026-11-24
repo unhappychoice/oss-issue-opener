@@ -8,8 +8,11 @@ export const createNpmDependencyChangeChecker = (
   const comparisons = new Map<string, Promise<(bump: DependencyUpdate) => boolean>>();
   return async (bump: DependencyUpdate, bumpPaths: string[]): Promise<{ changed: boolean; errors: unknown[] }> => {
     const relevant = paths.filter((path) => bumpPaths.includes(path));
-    if (relevant.some((path) => otherNodeLockfile.test(path))) return { changed: true, errors: [] };
-    const checks = relevant.filter((path) => npmFiles.has(path)).map((path) => {
+    const npmPaths = relevant.filter((path) => npmFiles.has(path));
+    if (npmPaths.length === 0) {
+      return { changed: relevant.some((path) => otherNodeLockfile.test(path)), errors: [] };
+    }
+    const checks = npmPaths.map((path) => {
       if (!comparisons.has(path)) {
         const load = (ref: string) => limitDownload(() => getFileContent(owner, repo, path, ref, true))
           .then(parseSnapshot);
