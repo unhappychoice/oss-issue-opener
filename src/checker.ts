@@ -179,11 +179,11 @@ const findDependencyUpdates = async (
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
   }));
   const checkBump = async (sha: string, bump: DependencyUpdate) => {
-    const results = await Promise.allSettled(checkers.map(async ({ type, check }) =>
+    const checkResults = await Promise.allSettled(checkers.map(async ({ type, check }) =>
       await check(bump.pkg) ? [type] : []
     ));
-    const productionTypes = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
-    const productionErrors = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
+    const productionTypes = checkResults.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+    const productionErrors = checkResults.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
     try {
       const attribution = productionTypes.length > 0
         ? await attributeBump(owner, repo, sha, productionTypes)
@@ -197,31 +197,39 @@ const findDependencyUpdates = async (
     }
   };
 
-  const pending: ReturnType<typeof checkBump>[] = [];
-  const dependencyUpdates: DependencyUpdate[] = [];
-  const productionErrors = new Set<unknown>();
-  const fileErrors: unknown[] = [];
+  const results: Awaited<ReturnType<typeof checkBump>>[] = [];
+  const active = new Map<number, Promise<void>>();
+  let nextIndex = 0;
   const lookupErrors: unknown[] = [];
-  const drain = async () => {
-    for (const result of await Promise.all(pending.splice(0))) {
-      dependencyUpdates.push(...result.updates);
-      result.productionErrors.forEach((error) => productionErrors.add(error));
-      fileErrors.push(...result.fileErrors);
-    }
+  const schedule = (sha: string, bump: DependencyUpdate) => {
+    const index = nextIndex++;
+    const task = checkBump(sha, bump).then((result) => { results[index] = result; });
+    active.set(index, task);
+    task.finally(() => active.delete(index));
   };
+
   try {
     for await (const page of getCommitPages()) {
       for (const { sha, message } of page) {
         const bump = parseBumpCommit(message);
         if (!bump) continue;
-        if (pending.length === commitFileLookupCapacity) await drain();
-        pending.push(checkBump(sha, bump));
+        if (active.size >= commitFileLookupCapacity) await Promise.race(active.values());
+        schedule(sha, bump);
       }
     }
   } catch (error) {
     lookupErrors.push(error);
   }
-  await drain();
+  await Promise.all(active.values());
+
+  const dependencyUpdates: DependencyUpdate[] = [];
+  const productionErrors = new Set<unknown>();
+  const fileErrors: unknown[] = [];
+  for (const result of results) {
+    dependencyUpdates.push(...result.updates);
+    result.productionErrors.forEach((error) => productionErrors.add(error));
+    fileErrors.push(...result.fileErrors);
+  }
   return { dependencyUpdates, lookupErrors: [...lookupErrors, ...productionErrors, ...fileErrors] };
 };
 
