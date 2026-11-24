@@ -45,9 +45,12 @@ const lexGradle = (content: string, maskSlashyStrings: boolean): string => {
 };
 
 const collectGradleDependencies = (content: string): { coordinates: string[]; aliases: string[] } => {
+  // JVM test suites (the built-in `test` suite and any registered via the `testing` extension) declare
+  // their dependencies with the same bare `implementation`/`api` names used for production dependencies,
+  // so their whole `testing { suites { ... } }` block is excluded like a `constraints { ... }` block.
   const tokens = new RegExp(
     /"""[\s\S]*?(?:"""|(?![\s\S]))|'''[\s\S]*?(?:'''|(?![\s\S]))|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/.source
-    + '|' + /(?<=^|[;{])[^\S\r\n\u2028\u2029]*(?:(constraints\s*(?:\(\s*\)\s*)?\{)|((?:implementation|api)\b))|[{}]/.source,
+    + '|' + /(?<=^|[;{])[^\S\r\n\u2028\u2029]*(?:(constraints\s*(?:\(\s*\)\s*)?\{|testing\s*\{)|((?:implementation|api)\b))|[{}]/.source,
     'gm'
   );
   const argument = new RegExp(
@@ -60,11 +63,11 @@ const collectGradleDependencies = (content: string): { coordinates: string[]; al
   );
   const coordinates: string[] = [];
   const aliases: string[] = [];
-  let constraintDepth = 0;
-  for (const { 0: token, 1: constraint, 2: configuration, index } of content.matchAll(tokens)) {
-    if (constraint || (token === '{' && constraintDepth > 0)) constraintDepth++;
-    else if (token === '}') constraintDepth = Math.max(0, constraintDepth - 1);
-    else if (configuration && constraintDepth === 0) {
+  let suppressedDepth = 0;
+  for (const { 0: token, 1: suppressed, 2: configuration, index } of content.matchAll(tokens)) {
+    if (suppressed || (token === '{' && suppressedDepth > 0)) suppressedDepth++;
+    else if (token === '}') suppressedDepth = Math.max(0, suppressedDepth - 1);
+    else if (configuration && suppressedDepth === 0) {
       argument.lastIndex = index + token.length;
       const match = argument.exec(content);
       if (!match) continue;
