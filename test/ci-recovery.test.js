@@ -239,6 +239,32 @@ test('leaves context-only alerts and failures without a valid publisher open', a
   assert.deepEqual(events, ['list']);
 });
 
+test('closes an alert recorded with a legacy mixed-case status context when the publisher succeeds', async (t) => {
+  const legacyKey = Buffer.from(JSON.stringify(['status', 'CI/Lint', 42])).toString('base64url');
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} ${legacyKey} -->` };
+  const statuses = [{ context: 'ci/lint', state: 'success', creator: { login: 'ci-bot', id: 42 } }];
+  const { run, events } = setup(t, { alerts: [legacy], statuses });
+  await run(true);
+  assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+    ['list', 'comment', 'close']);
+});
+
+test('leaves a legacy mixed-case alert open when a different publisher succeeds', async (t) => {
+  const legacyKey = Buffer.from(JSON.stringify(['status', 'CI/Lint', 42])).toString('base64url');
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} ${legacyKey} -->` };
+  const statuses = [{ context: 'ci/lint', state: 'success', creator: { login: 'other-bot', id: 43 } }];
+  const { run, events } = setup(t, { alerts: [legacy], statuses });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+});
+
+test('tolerates an unparsable recorded check key without closing the alert', async (t) => {
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} not-a-valid-key -->` };
+  const { run, events } = setup(t, { alerts: [legacy] });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+});
+
 test('leaves an alert open when workflow identity lookup fails', async (t) => {
   const { run, events } = setup(t, { workflowError: new Error('Workflow runs unavailable') });
   await run(true);
