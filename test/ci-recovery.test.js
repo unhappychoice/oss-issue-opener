@@ -39,6 +39,7 @@ const passedLint = { context: 'lint', state: 'success', creator: { login: 'ci-bo
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
   persistIssues = false, workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
+  getHead = () => sha,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -54,7 +55,10 @@ const setup = (t, {
     return { data: { login } };
   });
   t.mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  t.mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha } } } } }));
+  t.mock.method(client.repos, 'getBranch', async () => {
+    const head = getHead(comments.length);
+    return { data: { commit: { sha: head, commit: { tree: { sha } } } } };
+  });
   t.mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: statuses }));
   const workflowRuns = t.mock.method(client.actions, 'listWorkflowRunsForRepo', async (params) => {
     assert.deepEqual(params, { owner: 'owner', repo: 'project', head_sha: sha, per_page: 100, page: 1 });
@@ -140,6 +144,28 @@ test('closes only a matching open alert and records the checked commit once', as
     ['close', { ...issue, state: 'closed', state_reason: 'completed' }],
     'list',
   ]);
+});
+
+[
+  ['the head advances before the recovery comment', 0, () => 'b'.repeat(40), false],
+  ['the head advances after the recovery comment', 1, () => 'b'.repeat(40), false],
+  ['the head is missing before the recovery comment', 0, () => { throw Object.assign(new Error('Not found'), { status: 404 }); }, false],
+  ['the head lookup fails after the recovery comment', 1, () => { throw new Error('Branch lookup unavailable'); }, true],
+].forEach(([scenario, afterComments, changedHead, lookupFails]) => {
+  test(`leaves the alert open when ${scenario}`, async (t) => {
+    let recoveryDetected = false;
+    const { run, events } = setup(t, {
+      currentAlert: (issue) => {
+        recoveryDetected = true;
+        return issue;
+      },
+      getHead: (comments) => recoveryDetected && comments >= afterComments ? changedHead() : sha,
+    });
+    if (lookupFails) await assert.rejects(run(true), /Failed 1 maintenance operations/);
+    else await run(true);
+    assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+      afterComments ? ['list', 'comment'] : ['list']);
+  });
 });
 
 [
