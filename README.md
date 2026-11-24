@@ -17,7 +17,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 | Ruby | `*.gemspec`, `Gemfile` | Gemspec `add_dependency` or `add_runtime_dependency`. If the gem is absent from the runtime dependencies in the root gemspecs, the scanner checks `gem` declarations in the root `Gemfile`, excluding declarations scoped exclusively to `:development`, `:test`, or both. For example, ungrouped `gem 'rack'` can qualify a `Gemfile.lock`-only bump for a pending-release notification, while `gem 'rack', group: :test` is excluded. |
 | Node/TypeScript | `package.json` | `dependencies` |
 | Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
-| Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
+| Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` declared for the main project. Declarations inside a JVM test suite's `testing { suites { ... } }` block, including the built-in `test` suite, are excluded even though they also use `implementation`. |
 | Go | `go.mod` | `require` |
 | Swift | `Package.swift` | `.package()` |
 

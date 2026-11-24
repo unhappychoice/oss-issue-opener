@@ -247,6 +247,26 @@ dialects.forEach(({ file, declaration }) => {
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
   });
 
+  test(`${file}: JVM test suite-only bumps, including the built-in test suite, do not qualify for a release`, async (t) => {
+    const content = `dependencies { ${declaration('implementation', 'org.example:runtime:1.0')} }
+    testing { suites {
+      named("test") { dependencies { ${declaration('implementation', 'org.example:test-helper:1.1')} } }
+      register("integrationTest") { dependencies { ${declaration('implementation', 'org.example:integration-helper:1.1')} } }
+    } }`;
+    const message = 'Bump org.example:test-helper from 1.0 to 1.1';
+    stubRepository({ [file]: content });
+    mockCommitFiles(t.mock, [file]);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: file }], commits: [{ sha: 'bump', commit: { message } }],
+    } }));
+    const check = createDependencyChecker('owner', 'repo', 'kotlin');
+
+    assert.equal(await check('org.example:test-helper'), false);
+    assert.equal(await check('org.example:integration-helper'), false);
+    assert.equal(await check('org.example:runtime'), true);
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
+  });
+
   ['implementation', 'api'].forEach((configuration) => {
     test(`${file}: ignores block-commented ${configuration} dependencies and test-only releases`, async (t) => {
       const content = `dependencies {
