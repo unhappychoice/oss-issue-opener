@@ -139,6 +139,14 @@ let package = Package(dependencies: [.package(name: "actual")])
   assert.deepEqual(swiftDependencies(content), new Set(['actual']));
 });
 
+test('Swift skips package lookalikes in a bare regex after a closure signature', () => {
+  const content = `
+let make = { () in /.package(name: "fake")/ }
+let package = Package(dependencies: [.package(name: "actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
 test('Swift keeps compact and spaced division before real package calls', () => {
   const content = `
 let compact = 24/3/2; .package(name: "compact")
