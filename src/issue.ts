@@ -1,6 +1,6 @@
 import { completeIssue, createIssue, getAuthenticatedLogin, listOpenIssueDetails, updateIssueBody } from './github.js';
 import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
-import { ISSUE_REPO, recoveryCheckKey } from './types.js';
+import { ISSUE_REPO, normalizeRecoveryCheckKey, recoveryCheckKey } from './types.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 const ISSUE_BODY_LIMIT = 65_536;
@@ -61,7 +61,7 @@ export const closeRecoveredCIAlerts = async (
     const recovery = recoveries.get(repo);
     if (!recovery || !/^[a-f0-9]{40}$/i.test(recovery.sha)) continue;
     const passed = new Set(recovery.passedChecks.map(recoveryCheckKey));
-    if (!checks.every((check) => passed.has(check))) continue;
+    if (!checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)))) continue;
 
     try {
       const url = `https://github.com/${repo}/commit/${recovery.sha}`;
@@ -69,7 +69,8 @@ export const closeRecoveredCIAlerts = async (
         `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`,
         (issue) => {
           const current = recordedChecks(issue, author);
-          return current?.repo === repo && current.checks.every((check) => passed.has(check));
+          return current?.repo === repo &&
+            current.checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)));
         });
       if (closed) console.log(`  [closed] ${alert.title} (#${number})`);
     } catch (cause) {
