@@ -209,3 +209,34 @@ test('Swift stops an unterminated single-line extended regex at a line break', (
     assert.deepEqual(swiftDependencies(content), new Set(['actual']));
   }
 });
+
+test('Swift hides package lookalikes in valid single-line and multiline extended regex literals', () => {
+  const content = String.raw`
+let single = #/.package(id: "single-ghost")/#
+let multi = ##/
+.package(id: "multi-ghost")
+/##
+let package = Package(dependencies: [.package(path: "../actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift bounds repeated scans for unmatched multiline extended regex openers', () => {
+  const buildContent = (count) =>
+    `${'let v = ##/\nunfinished body line\n'.repeat(count)}.package(id: "actual")\n`;
+  const time = (count) => {
+    const content = buildContent(count);
+    const start = process.hrtime.bigint();
+    const dependencies = swiftDependencies(content);
+    const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+    assert.deepEqual(dependencies, new Set(['actual']));
+    return elapsedMs;
+  };
+  time(500);
+  const small = time(1000);
+  const large = time(5000);
+  assert.ok(
+    large < small * 10 + 50,
+    `expected sub-quadratic scaling, got ${small}ms for 1000 openers and ${large}ms for 5000 openers`
+  );
+});

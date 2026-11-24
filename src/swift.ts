@@ -42,6 +42,44 @@ const swiftTokens = (content: string): string[] => {
 
 type StringFrame = { opening: number; start: number; closing: string; escape: string };
 type InterpolationFrame = { depth: number; previous?: string };
+type ClosingIndex = { positions: Map<number, number[]>; newlines: number[] };
+
+// Indexes every unescaped `/` + hashes closer and line break once per manifest, grouped by
+// hash count, so regexEnd can binary-search instead of rescanning the suffix for each opener.
+const buildClosingIndex = (content: string): ClosingIndex => {
+  const positions = new Map<number, number[]>();
+  const newlines: number[] = [];
+  let backslashRun = 0;
+  for (let index = 0; index < content.length; index++) {
+    const char = content[index];
+    if (char === '\\') { backslashRun++; continue; }
+    if (char === '/' && backslashRun % 2 === 0) {
+      let end = index + 1;
+      while (content[end] === '#') end++;
+      if (end > index + 1) {
+        const hashCount = end - index - 1;
+        const list = positions.get(hashCount);
+        if (list) list.push(index); else positions.set(hashCount, [index]);
+        index = end - 1;
+        backslashRun = 0;
+        continue;
+      }
+    }
+    if (char === '\r' || char === '\n') newlines.push(index);
+    backslashRun = 0;
+  }
+  return { positions, newlines };
+};
+
+const atOrAfter = (sorted: readonly number[], value: number): number | undefined => {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (sorted[mid] < value) low = mid + 1; else high = mid;
+  }
+  return low < sorted.length ? sorted[low] : undefined;
+};
 
 const startsExpression = (previous: string | undefined): boolean =>
   previous === undefined || /^(?:[([{,:;=!?&|+*%~<>^-]|if|in|return|throw|case|try|await|yield)$/.test(previous);
@@ -54,10 +92,10 @@ const swiftTokenReader = (content: string): ((index: number, previous: string | 
   const code = /\s+|\/\/[^\r\n]*|\/\*|(#+)(?:("""|")|(\/))?|("""|")|[A-Za-z_]\w*|[^\s]/gy;
   const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
   const multilineRegexStart = /[ \t]*[\r\n]/y;
-  const regex = /\\[^\r\n]|\/(#+)|[\r\n]/g;
   const bareRegexPart = /\\[^\r\n]|[^\\\/()[\]\r\n]+|[()[\]\/]/y;
 
   const unterminated = new Set<number>();
+  let closingIndex: ClosingIndex | undefined;
 
   const readToken = (index: number, previous: string | undefined): string => {
     code.lastIndex = index;
@@ -93,12 +131,12 @@ const swiftTokenReader = (content: string): ((index: number, previous: string | 
   const regexEnd = (start: number, hashCount: number): number => {
     multilineRegexStart.lastIndex = start;
     const multiline = multilineRegexStart.test(content);
-    regex.lastIndex = start;
-    for (let match = regex.exec(content); match; match = regex.exec(content)) {
-      if (match[1]?.length === hashCount) return regex.lastIndex;
-      if (!multiline && /[\r\n]/.test(match[0])) return match.index;
-    }
-    return start;
+    closingIndex ??= buildClosingIndex(content);
+    const position = atOrAfter(closingIndex.positions.get(hashCount) ?? [], start);
+    if (multiline) return position === undefined ? start : position + 1 + hashCount;
+    const newline = atOrAfter(closingIndex.newlines, start);
+    if (position !== undefined && (newline === undefined || position < newline)) return position + 1 + hashCount;
+    return newline ?? start;
   };
 
   const blockCommentEnd = (start: number): number => {
