@@ -6,7 +6,8 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    const literal = expressionLiteral(content, match.index, token, tokens);
+    const literal = expressionLiteral(content, match.index, token, tokens) ??
+      putsRegexpArgument(content, match.index, token, tokens);
     if (literal) {
       pattern.lastIndex = literal.end;
       tokens.push(literal.token);
@@ -49,6 +50,21 @@ const expressionLiteral = (content: string, start: number, token: string, tokens
     const end = regexpEnd(content, start);
     if (end !== undefined) return { end, token: '/…/' };
   }
+  return undefined;
+};
+
+const putsRegexpArgument = (content: string, start: number, token: string, tokens: string[]) => {
+  if (token !== '/' || !/[ \t]/.test(content[start - 1] ?? '') ||
+    !/[^\s=]/.test(content[start + 1] ?? '')) return undefined;
+  const index = previousTokenIndex(tokens);
+  if (tokens[index] !== 'puts') return undefined;
+  const before = tokens[previousTokenIndex(tokens, index)] ?? '\n';
+  if (!/^(?:\n|;|do|\{)$/.test(before)) return undefined;
+  // An earlier occurrence could bind puts as a local, making the slash division.
+  if (tokens.slice(0, index).some((previous, i) =>
+    previous === 'puts=' || (previous === 'puts' && tokens[i + 2] !== '/…/'))) return undefined;
+  const end = regexpEnd(content, start);
+  if (end !== undefined) return { end, token: '/…/' };
   return undefined;
 };
 
