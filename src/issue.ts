@@ -5,10 +5,12 @@ import { ISSUE_REPO, normalizeRecoveryCheckKey, recoveryCheckKey } from './types
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 const ISSUE_BODY_LIMIT = 65_536;
 
+const ciFailureLinks = (repo: string): string =>
+  `\n\n**Repository**: https://github.com/${repo}\n**Actions**: https://github.com/${repo}/actions`;
+
 export const buildCIFailureIssue = (repo: string, failedChecks: FailedCheck[], scanComplete = true): PendingIssue => {
   const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
-  const links = `\n\n**Repository**: https://github.com/${repo}
-**Actions**: https://github.com/${repo}/actions`;
+  const links = ciFailureLinks(repo);
   const items = failedChecks.map(formatFailedCheck);
   return {
     type: 'ci-failure',
@@ -228,6 +230,30 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
   }
 };
 
+const SUMMARY_LINE = /^- \.\.\. and (\d+) more$/;
+
+// Shrinks an already-rendered check list from the end, growing its "... and N more" summary,
+// so a near-limit alert can still make room for a complete recovery marker on update.
+const reclaimItemsSpace = (visible: string, available: number): string => {
+  if (visible.length <= available) return visible;
+
+  const lines = visible.split('\n');
+  let hidden = 0;
+  const summary = lines.at(-1)?.match(SUMMARY_LINE);
+  if (summary) {
+    hidden = Number(summary[1]);
+    lines.pop();
+  }
+
+  let content = hidden > 0 ? [...lines, `- ... and ${hidden} more`].join('\n') : lines.join('\n');
+  while (content.length > available && lines.length > 0 && lines.at(-1)!.startsWith('- ')) {
+    lines.pop();
+    hidden += 1;
+    content = [...lines, `- ... and ${hidden} more`].join('\n');
+  }
+  return content;
+};
+
 const recordSubsequentFailures = (number: number, issue: PendingIssue, author: string): Promise<boolean> =>
   updateIssueBody(issueOwner, issueRepo, number, (current) => {
     const recorded = recordedChecks(current, author);
@@ -236,8 +262,12 @@ const recordSubsequentFailures = (number: number, issue: PendingIssue, author: s
     const incoming = readRecoveryMarker(issue.body);
     const checks = incoming?.repo === issue.repo && incoming.checks.length
       ? [...recorded.checks, ...incoming.checks] : [];
-    const body = current.body.trimEnd().split('\n').slice(0, -1).join('\n').trimEnd();
-    const marker = formatRecoveryMarker(issue.repo, checks, Math.min(ISSUE_BODY_LIMIT - body.length, ISSUE_BODY_LIMIT / 2));
-    const updated = body.length + marker.length <= ISSUE_BODY_LIMIT ? body + marker : body;
+    const marker = formatRecoveryMarker(issue.repo, checks);
+    const links = ciFailureLinks(issue.repo);
+    const bodyWithoutMarker = current.body.trimEnd().split('\n').slice(0, -1).join('\n').trimEnd();
+    if (!bodyWithoutMarker.endsWith(links)) return undefined;
+
+    const visible = reclaimItemsSpace(bodyWithoutMarker.slice(0, -links.length), ISSUE_BODY_LIMIT - links.length - marker.length);
+    const updated = visible + links + marker;
     return updated === current.body.trimEnd() ? undefined : updated;
   });
