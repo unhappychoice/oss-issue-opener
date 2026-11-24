@@ -7,6 +7,39 @@ import { commitSha, initMockOctokit, mockCommitFiles, npmLock, npmLockResponse }
 
 initMockOctokit('test-token');
 
+for (const manifestChanged of [true, false]) {
+  test(`reports a lockfile lookup error when the npm manifest ${manifestChanged ? 'confirms a bump' : 'is unchanged'}`, async (t) => {
+    const { repos } = getOctokit();
+    const baseSha = commitSha('refs/tags/v1');
+    const headSha = commitSha('heads/main');
+    const paths = ['package.json', 'package-lock.json'];
+    const lockError = new Error('Lockfile lookup failed');
+    t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+    t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+    mockCommitFiles(t.mock, paths);
+    t.mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: paths.map((filename) => ({ filename })),
+      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 2.0.0' } }],
+    } }));
+    t.mock.method(repos, 'getContent', async ({ path, ref }) => {
+      if (path === 'package-lock.json') {
+        if (ref === headSha) throw lockError;
+        return { data: npmLock({ runtime: '1.0.0' }) };
+      }
+      const version = manifestChanged && ref === baseSha ? '^1.0.0' : '^2.0.0';
+      return { data: JSON.stringify({ dependencies: { runtime: version } }) };
+    });
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), manifestChanged ? {
+      status: 'pending',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'runtime', from: '1.0.0', to: '2.0.0' }],
+      compareUrl: `https://github.com/owner/repo/compare/${baseSha}...${headSha}`,
+      lookupErrors: [lockError],
+    } : { status: 'incomplete', lookupErrors: [lockError] });
+  });
+}
+
 const cases = [
   ...['constructor', 'toString', 'hasOwnProperty'].flatMap((pkg) => [
     ['empty dependencies', { dependencies: {} }, pkg, false],
