@@ -165,21 +165,41 @@ const formatChangedSources = (changedSources: string[]): string => {
 };
 
 type OpenIssue = Awaited<ReturnType<typeof listCIAlerts>>[number];
-type ListedIssue = Pick<OpenIssue, 'title' | 'number' | 'body'> & Partial<Pick<OpenIssue, 'user'>>;
+
+// A recovery candidate carries only what duplicate detection and marker updates need, so the
+// source alert's body is parsed once here rather than on every notification that shares its repo.
+interface RecoveryCandidate {
+  title: string;
+  number: number;
+  user?: OpenIssue['user'];
+  checks: string[];
+}
 
 const sortIssues = (issues: PendingIssue[]): PendingIssue[] =>
   [...issues].sort((a, b) => a.type.localeCompare(b.type) || a.repo.localeCompare(b.repo));
 
+const indexRecoveryCandidate = (candidatesByRepo: Map<string, RecoveryCandidate[]>, candidate: RecoveryCandidate, repo: string): void => {
+  const list = candidatesByRepo.get(repo);
+  if (list) list.push(candidate); else candidatesByRepo.set(repo, [candidate]);
+};
+
 export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void> => {
   const sorted = sortIssues(issues);
-  const existingByLabel = new Map<IssueType, ListedIssue[]>();
+  const titlesByType = new Map<IssueType, Set<string>>();
+  const ciCandidatesByRepo = new Map<string, RecoveryCandidate[]>();
   const failures: Error[] = [];
   let login: ReturnType<typeof getAuthenticatedLogin> | undefined;
 
   for (const type of new Set(sorted.map((issue) => issue.type))) {
     try {
       const existing = await listOpenIssueDetails(issueOwner, issueRepo, type);
-      existingByLabel.set(type, existing);
+      titlesByType.set(type, new Set(existing.map(({ title }) => title)));
+      if (type === 'ci-failure') {
+        for (const alert of existing) {
+          const recorded = readRecoveryMarker(alert.body);
+          if (recorded) indexRecoveryCandidate(ciCandidatesByRepo, { title: alert.title, number: alert.number, user: alert.user, checks: recorded.checks }, recorded.repo);
+        }
+      }
     } catch (cause) {
       failures.push(new Error(`Failed to look up open issues for ${type}`, { cause }));
       console.error(`  [failed] Looking up open issues for ${type}`, cause);
@@ -189,24 +209,22 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
   console.log('\n=== Creating Issues (sorted by type, then repo) ===\n');
 
   for (const issue of sorted) {
-    const existing = existingByLabel.get(issue.type);
-    if (!existing) continue;
-    let duplicate = existing.some(({ title }) => title === issue.title);
+    const titles = titlesByType.get(issue.type);
+    if (!titles) continue;
+    let duplicate = titles.has(issue.title);
     try {
-      const candidates = issue.type === 'ci-failure' ? existing.flatMap((alert) => {
-        const recorded = readRecoveryMarker(alert.body);
-        return recorded?.repo === issue.repo && (recorded.checks.length || !duplicate)
-          ? [{ alert, hasChecks: recorded.checks.length > 0 }] : [];
-      }) : [];
+      const candidates = issue.type === 'ci-failure'
+        ? (ciCandidatesByRepo.get(issue.repo) ?? []).filter(({ checks }) => checks.length || !duplicate)
+        : [];
       let updated = false;
       if (candidates.length > 0) {
         const author = await (login ??= getAuthenticatedLogin());
-        for (const { alert, hasChecks } of candidates) {
-          if (alert.user !== undefined && alert.user?.login !== author) continue;
+        for (const { title, number, user, checks } of candidates) {
+          if (user !== undefined && user?.login !== author) continue;
           duplicate = true;
-          if (hasChecks && await recordSubsequentFailures(alert.number, issue, author)) {
+          if (checks.length && await recordSubsequentFailures(number, issue, author)) {
             updated = true;
-            console.log(`  [updated] ${alert.title} (#${alert.number})`);
+            console.log(`  [updated] ${title} (#${number})`);
           }
         }
       }
@@ -216,7 +234,11 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
       }
 
       const num = await createIssue(issueOwner, issueRepo, issue.title, issue.body, [issue.type]);
-      existing.push({ title: issue.title, number: num, body: issue.body });
+      titles.add(issue.title);
+      if (issue.type === 'ci-failure') {
+        const recorded = readRecoveryMarker(issue.body);
+        if (recorded) indexRecoveryCandidate(ciCandidatesByRepo, { title: issue.title, number: num, checks: recorded.checks }, issue.repo);
+      }
       console.log(`  [created] ${issue.title} (#${num})`);
     } catch (cause) {
       const failure = new Error(`Failed to ${duplicate ? 'update' : 'create'} issue: ${issue.title}`, { cause });
