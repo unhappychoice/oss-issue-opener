@@ -212,9 +212,7 @@ test('starts a first-page lookup while the next comparison page is pending and r
 test('bounds the candidate backlog and keeps comparison order across batches', async (t) => {
   const repos = stubRelease(t);
   const firstLookup = Promise.withResolvers();
-  const lookup = t.mock.fn(async (ref) => {
-    if (ref === 'bump-2') await firstLookup.promise;
-  });
+  const lookup = t.mock.fn(async () => { await firstLookup.promise; });
   const versions = Array.from({ length: 101 }, (_, index) => index + 2);
   stubProductionDependencies(t, repos, lookup, versions);
   const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => ({
