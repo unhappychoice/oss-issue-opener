@@ -44,7 +44,7 @@ type StringFrame = { opening: number; start: number; closing: string; escape: st
 type InterpolationFrame = { depth: number; previous?: string };
 
 const startsExpression = (previous: string | undefined): boolean =>
-  previous === undefined || /^(?:[([{,:;=!?&|+*%~<>^-]|return|throw|case|try|await|yield)$/.test(previous);
+  previous === undefined || /^(?:[([{,:;=!?&|+*%~<>^-]|if|return|throw|case|try|await|yield)$/.test(previous);
 
 const stringFrame = (opening: number, start: number, hashes: string, quotes: string): StringFrame => ({
   opening, start, closing: quotes + hashes, escape: '\\' + hashes,

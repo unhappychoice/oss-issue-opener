@@ -131,6 +131,14 @@ let package = Package(dependencies: [.package(path: "../actual")])
   assert.deepEqual(swiftDependencies(content), new Set(['actual']));
 });
 
+test('Swift skips package lookalikes in a bare regex at the start of an if condition', () => {
+  const content = `
+if /.package(name: "fake")/.wholeMatch(in: "") != nil {}
+let package = Package(dependencies: [.package(name: "actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
 test('Swift keeps compact and spaced division before real package calls', () => {
   const content = `
 let compact = 24/3/2; .package(name: "compact")
