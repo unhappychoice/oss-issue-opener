@@ -398,7 +398,7 @@ test('shares a tree-fetch concurrency limit across concurrent comparisons and re
   const gate = Promise.withResolvers();
   let active = 0;
   let maxActive = 0;
-  const getTree = t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
+  t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
     const isRoot = tree_sha in roots;
     active++;
     maxActive = Math.max(maxActive, active);
