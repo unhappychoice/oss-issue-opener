@@ -101,6 +101,25 @@ test('ignores bare dependency names in Gemfile declarations', () => {
   assert.equal(isProductionGem(gemfile, 'puma'), false);
 });
 
+[
+  ['assigned if', 'enabled = if true\n    true\n  end'],
+  ['assigned unless', 'enabled = unless false\n    true\n  end'],
+  ['assigned if on the next line', 'enabled =\n    if true\n      true\n    end'],
+  ['assigned if inside parentheses', '(enabled = if true\n    true\n  end)'],
+  ['postfix if', 'enabled = true if true'],
+  ['postfix unless', 'enabled = true unless false'],
+].forEach(([description, conditional]) => {
+  test(`preserves test group boundaries with ${description}`, () => {
+    const gemfile = `group :test do
+  ${conditional}
+  gem 'rack'
+end
+gem 'puma'`;
+
+    assert.deepEqual(productionGemNames(gemfile), new Set(['puma']));
+  });
+});
+
 test('tracks excluded and shared groups through deeply nested scopes', () => {
   const depth = 4_096;
   const names = productionGemNames([

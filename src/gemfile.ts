@@ -12,7 +12,8 @@ export const productionGemNames = (content: string): ReadonlySet<string> => {
     if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
     const excluded = excludedScopes > 0;
     if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
-      /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
+      /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '') ||
+      opensAssignedConditional(tokens)) {
       const excludesGroup = tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1));
       blocks.push(excludesGroup);
       if (excludesGroup) excludedScopes++;
@@ -23,6 +24,15 @@ export const productionGemNames = (content: string): ReadonlySet<string> => {
     if (name !== undefined && !hasInlineExcludedGroup(tokens.slice(nameIndex + 1))) names.add(name);
   });
   return names;
+};
+
+const opensAssignedConditional = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return depth === 0 && tokens[index - 1] === '=' && /^(if|unless)$/.test(token);
+  });
 };
 
 const isEndlessMethod = (tokens: string[]): boolean => {
