@@ -30,6 +30,24 @@ const setupAlertUpdate = (t, alert, author = 'bot') => {
   return alerts;
 };
 
+const setupAlertsUpdate = (t, initialAlerts, authenticatedAs = 'bot') => {
+  initOctokit('test-token');
+  const client = getOctokit();
+  const alerts = initialAlerts.map((alert) => ({ ...alert }));
+  t.mock.method(client, 'paginate', async () => alerts);
+  t.mock.method(client.issues, 'get', async ({ issue_number }) => ({ data: alerts.find(({ number }) => number === issue_number) }));
+  const updates = [];
+  t.mock.method(client.issues, 'update', async ({ issue_number, body }) => {
+    updates.push(issue_number);
+    alerts.find(({ number }) => number === issue_number).body = body;
+  });
+  t.mock.method(client.users, 'getAuthenticated', async () => ({ data: { login: authenticatedAs } }));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+  t.after(() => t.mock.restoreAll());
+  return { alerts, updates };
+};
+
 test('escapes Markdown-significant check names and rejects non-http(s) URLs', () => {
   const maliciousIssue = buildCIFailureIssue('owner/repo', [
     { name: 'build](https://evil.example/phish)[', url: 'https://good.example/actions' },
@@ -269,6 +287,56 @@ test('extends an already-truncated check list further when more recovery metadat
   const [updatedRepo, ...keys] = updatedMarker[1].split(' ');
   assert.equal(updatedRepo, repo);
   assert.deepEqual(new Set(keys), new Set([key1, key2, key3]));
+});
+
+test('updates only the recovery candidate for the notification repository, leaving other repos untouched', async (t) => {
+  const repoA = 'owner/a';
+  const repoB = 'owner/b';
+  const alertA = buildCIFailureIssue(repoA, [{ name: 'build', source: 'check', workflowId: 1, url: '' }]);
+  const alertB = buildCIFailureIssue(repoB, [{ name: 'lint', source: 'status', publisherId: 2, url: '' }]);
+
+  const { alerts, updates } = setupAlertsUpdate(t, [
+    { number: 1, title: alertA.title, body: alertA.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'bot' } },
+    { number: 2, title: alertB.title, body: alertB.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'bot' } },
+  ]);
+
+  const nextIssue = buildCIFailureIssue(repoB, [{ name: 'typecheck', source: 'check', workflowId: 3, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.deepEqual(updates, [2]);
+  assert.equal(alerts[0].body, alertA.body);
+  assert.notEqual(alerts[1].body, alertB.body);
+});
+
+test('matches a renamed alert through its recovery marker when the title no longer matches', async (t) => {
+  const repo = 'owner/repo';
+  const initial = buildCIFailureIssue(repo, [{ name: 'build', source: 'check', workflowId: 1, url: '' }]);
+
+  const { alerts, updates } = setupAlertsUpdate(t, [
+    { number: 1, title: 'Investigate flaky build', body: initial.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'bot' } },
+  ]);
+
+  const nextIssue = buildCIFailureIssue(repo, [{ name: 'lint', source: 'status', publisherId: 2, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.deepEqual(updates, [1]);
+  assert.notEqual(alerts[0].body, initial.body);
+});
+
+test('creates a new alert when the matching recovery candidate was authored by someone else', async (t) => {
+  const repo = 'owner/repo';
+  const initial = buildCIFailureIssue(repo, [{ name: 'build', source: 'check', workflowId: 1, url: '' }]);
+
+  const { updates } = setupAlertsUpdate(t, [
+    { number: 1, title: 'Investigate flaky build', body: initial.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'someone-else' } },
+  ]);
+  const create = t.mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 2, labels: [{ name: 'ci-failure' }] } }));
+
+  const nextIssue = buildCIFailureIssue(repo, [{ name: 'lint', source: 'status', publisherId: 2, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.deepEqual(updates, []);
+  assert.equal(create.mock.callCount(), 1);
 });
 
 test('resolves when creation succeeds and skips existing issues', async (t) => {
