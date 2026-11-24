@@ -181,8 +181,12 @@ export type CIResult = {
   publisherId?: number | undefined;
 };
 
-export async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
+export async function listWorkflowIds(
+  owner: string, repo: string, head_sha: string, neededCheckSuiteIds?: Set<number>
+): Promise<Map<number, number>> {
   const workflows = new Map<number, number>();
+  const resolved = () => neededCheckSuiteIds !== undefined &&
+    [...neededCheckSuiteIds].every((id) => workflows.has(id));
   try {
     // GitHub caps filtered workflow-run listings at 1,000 results.
     for (let page = 1; page <= 10; page++) {
@@ -192,7 +196,7 @@ export async function listWorkflowIds(owner: string, repo: string, head_sha: str
       for (const { check_suite_id, workflow_id } of workflow_runs) {
         if (check_suite_id && workflow_id > 0) workflows.set(check_suite_id, workflow_id);
       }
-      if (workflow_runs.length < 100) break;
+      if (workflow_runs.length < 100 || resolved()) break;
     }
     return workflows;
   } catch {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import {
   getCheckRuns, getCommitStatus, getDefaultBranchHead, getLatestRelease,
-  getOctokit, listOpenIssues,
+  getOctokit, listOpenIssues, listWorkflowIds,
 } from '../dist/github.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
 import { initMockOctokit } from './helpers/github.mjs';
@@ -203,4 +203,42 @@ test('returns up-to-date for a successful empty comparison', async () => {
   mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: { files: [], commits: [] } }));
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
+});
+
+const workflowRunPage = (start) => Array.from({ length: 100 }, (_, i) => ({
+  check_suite_id: start + i, workflow_id: 1000 + start + i,
+}));
+
+test('stops paging once every requested check-suite id resolves on the first page', async () => {
+  const runs = mock.method(getOctokit().actions, 'listWorkflowRunsForRepo', async () => ({
+    data: { workflow_runs: workflowRunPage(0) },
+  }));
+
+  const workflows = await listWorkflowIds('owner', 'repo', 'a'.repeat(40), new Set([5, 50]));
+
+  assert.equal(runs.mock.callCount(), 1);
+  assert.equal(workflows.get(5), 1005);
+  assert.equal(workflows.get(50), 1050);
+});
+
+test('keeps paging until a later page resolves a requested check-suite id', async () => {
+  const runs = mock.method(getOctokit().actions, 'listWorkflowRunsForRepo', async ({ page }) => ({
+    data: { workflow_runs: page === 1 ? workflowRunPage(0) : [{ check_suite_id: 500, workflow_id: 2500 }] },
+  }));
+
+  const workflows = await listWorkflowIds('owner', 'repo', 'a'.repeat(40), new Set([500]));
+
+  assert.equal(runs.mock.callCount(), 2);
+  assert.equal(workflows.get(500), 2500);
+});
+
+test('pages through the cap and leaves an unresolved check-suite id missing', async () => {
+  const runs = mock.method(getOctokit().actions, 'listWorkflowRunsForRepo', async ({ page }) => ({
+    data: { workflow_runs: workflowRunPage((page - 1) * 100) },
+  }));
+
+  const workflows = await listWorkflowIds('owner', 'repo', 'a'.repeat(40), new Set([9999]));
+
+  assert.equal(runs.mock.callCount(), 10);
+  assert.equal(workflows.has(9999), false);
 });
