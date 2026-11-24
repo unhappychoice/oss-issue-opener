@@ -1,5 +1,5 @@
 export const gemfileTokens = (content: string): string[] => {
-  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|[^\S\n]+|\n|./g;
+  const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
   let match: RegExpExecArray | null;
@@ -38,7 +38,7 @@ export const gemfileTokens = (content: string): string[] => {
 
 const expectsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
-  if (index < 0 || /^(?:\n|;|[=(\[,~?!:]|=>)$/.test(tokens[index])) return true;
+  if (index < 0 || /^(?:\n|;|[=(\[,~?!:]|=>|&&|\|\|)$/.test(tokens[index])) return true;
   return /^(?:if|elsif|unless|when|do)$/.test(tokens[index]) &&
     tokens[previousTokenIndex(tokens, index)] !== '.';
 };
@@ -81,7 +81,7 @@ const literalEnd = (
 };
 
 const interpolationEnd = (content: string, start: number): number | undefined => {
-  const pattern = /#[^\n]*|%([qQwWiIxs]?)([^\p{L}\p{N}\s])|\\\r?\n|:\w+|\w+[!?]?|=>|[^\S\n]+|\n|./uy;
+  const pattern = /#[^\n]*|%([qQwWiIxs]?)([^\p{L}\p{N}\s])|\\\r?\n|:\w+|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./uy;
   pattern.lastIndex = start;
   const tokens: string[] = [];
   let depth = 1;

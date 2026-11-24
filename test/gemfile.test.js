@@ -246,6 +246,15 @@ test('recognizes a heredoc argument after a method named class', () => {
 
 test('keeps scope keywords inside regexps out of the group stack', () => {
   const bodies = [
+    `pattern = flag && /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = flag || %r{prefix
+class TestHelper
+gem 'ignored'
+suffix}x`,
+    'pattern = /#{ flag && /nested/.source }; end; gem "ignored"/x',
     String.raw`pattern = /prefix\/
 class TestHelper
 gem 'ignored'
