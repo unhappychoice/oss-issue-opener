@@ -47,8 +47,12 @@ export const checkCIStatus = async (
   return { status: 'success', failedChecks: [], recovery: { sha, passedChecks: collectPassedChecks(candidates, workflows) } };
 };
 
-const loadWorkflows = (owner: string, repo: string, sha: string, results: CIResult[]) =>
-  results.some(({ workflowSuiteId }) => workflowSuiteId !== undefined) ? listWorkflowIds(owner, repo, sha) : undefined;
+const loadWorkflows = (owner: string, repo: string, sha: string, results: CIResult[]) => {
+  const neededCheckSuiteIds = new Set(
+    results.flatMap(({ workflowSuiteId }) => workflowSuiteId === undefined ? [] : [workflowSuiteId])
+  );
+  return neededCheckSuiteIds.size > 0 ? listWorkflowIds(owner, repo, sha, neededCheckSuiteIds) : undefined;
+};
 
 const checkIdentity = ({ context, source, workflowSuiteId, publisherId }: CIResult, workflows?: Map<number, number>): CheckIdentity => {
   const workflowId = workflowSuiteId === undefined ? undefined : workflows?.get(workflowSuiteId);
