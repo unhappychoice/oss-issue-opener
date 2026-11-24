@@ -4,7 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { compareCommits, getCommitFiles, getOctokit } from '../dist/github.js';
 import { buildPendingReleaseIssue } from '../dist/issue.js';
-import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles, npmLockResponse } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 
@@ -30,9 +30,9 @@ test('detects a production bump after the first 250 commits', async (t) => {
       commits: messages.slice((page - 1) * per_page, page * per_page),
     },
   }));
-  t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
@@ -69,9 +69,9 @@ test('detects the original final production bump and links to the scanned commit
       ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
-  const manifest = t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  const manifest = t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
@@ -84,7 +84,11 @@ test('detects the original final production bump and links to the scanned commit
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
   assert.deepEqual(manifest.mock.calls.map(({ arguments: [{ owner, repo, path, ref }] }) => ({ owner, repo, path, ref })),
-    [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
+    [
+      { owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead },
+      { owner: 'owner', repo: 'repo', path: 'package-lock.json', ref: baseSha },
+      { owner: 'owner', repo: 'repo', path: 'package-lock.json', ref: originalHead },
+    ]);
 });
 
 for (const path of ['docs/readme.md', 'src/index.ts', 'Gemfile.lock', null]) {
@@ -170,9 +174,9 @@ const stubProductionDependency = (t, repos, lookup) => {
     await lookup(params.ref);
     return { data: { files: [{ filename: 'package-lock.json' }] } };
   });
-  t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 };
 
 test('starts a first-page lookup while the next comparison page is pending and retains the update when it fails', async (t) => {
@@ -357,9 +361,9 @@ test('uses the pinned head tree to find a dependency change that requires later 
     : { commits: [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }] },
   }));
   mockCommitFiles(t.mock, ['package-lock.json']);
-  t.mock.method(getOctokit().repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(getOctokit().repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');

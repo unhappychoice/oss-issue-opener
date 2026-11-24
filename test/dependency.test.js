@@ -4,14 +4,17 @@ import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles, npmLockResponse } from './helpers/github.mjs';
 
 const stubRepository = (manifests, commitMessages = []) => {
   initMockOctokit('test');
   const calls = [];
   Object.assign(getOctokit().repos, {
-    getContent: async ({ owner, repo, path }) => {
+    getContent: async ({ owner, repo, path, ref }) => {
       calls.push({ owner, repo, path });
+      if (path === 'package-lock.json' && manifests[path] === undefined) {
+        return npmLockResponse(ref, 'v1', { first: '0', second: '1' }, { first: '100', second: '99', dev: '98' });
+      }
       const content = path === '' ? manifests[''] ?? Object.keys(manifests) : manifests[path];
       if (content === undefined) throw Object.assign(new Error('Not found'), { status: 404 });
       return { data: Array.isArray(content) ? content.map((name) => ({ name })) :
@@ -89,7 +92,7 @@ test('release checks reuse parsed Node dependencies and preserve every productio
     dependencies: { first: '*', second: '*' }, devDependencies: { dev: '*' },
   }) }, messages);
   const result = await checkPendingRelease('owner', 'repo', 'node');
-  assert.deepEqual(calls, [{ owner: 'owner', repo: 'repo', path: 'package.json' }]);
+  assert.deepEqual(calls.map(({ path }) => path), ['package.json', 'package-lock.json', 'package-lock.json']);
   assert.deepEqual(result, {
     status: 'pending',
     changedSources: ['src/main.ts'],
@@ -98,8 +101,8 @@ test('release checks reuse parsed Node dependencies and preserve every productio
   });
   await checkPendingRelease('owner', 'repo', 'node');
   await checkPendingRelease('owner', 'other', 'node');
-  assert.equal(calls.length, 3);
-  assert.equal(calls[2].repo, 'other');
+  assert.equal(calls.length, 9);
+  assert.ok(calls.slice(6).every(({ repo }) => repo === 'other'));
 });
 
 test('Ruby reuses the root listing, gemspec and fallback Gemfile', async () => {

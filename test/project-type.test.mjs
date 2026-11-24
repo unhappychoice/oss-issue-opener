@@ -74,11 +74,11 @@ test('ignores undeclared dependency updates for a Gemfile-only repository', asyn
   assert.deepEqual(await checkPendingRelease(owner, repo, type), { status: 'up-to-date' });
 });
 
-const mockManifests = (manifests) => {
-  mock.method(getOctokit().repos, 'getContent', async ({ path }) => ({
+const mockManifests = (manifests, baseline = {}) => {
+  mock.method(getOctokit().repos, 'getContent', async ({ path, ref }) => ({
     data: path === ''
       ? Object.keys(manifests).map((name) => ({ name }))
-      : manifests[path] ?? '',
+      : (ref === commitSha('refs/tags/v1.0.0') ? baseline[path] : manifests[path]) ?? '',
   }));
 };
 
@@ -116,7 +116,7 @@ const mockManifests = (manifests) => {
         'package.json': JSON.stringify({
           dependencies: { express: '3.1.0' }, devDependencies: { prettier: '3' },
         }),
-      });
+      }, { 'package.json': JSON.stringify({ dependencies: { express: '3.0.0' } }) });
       mockReleaseComparison([rubyManifest, 'Gemfile.lock', 'package.json'], [
         `Bump ${pkg} from 3.0.0 to 3.1.0`,
       ], pkg === 'rack' ? ['Gemfile.lock'] : ['package.json']);

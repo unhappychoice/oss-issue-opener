@@ -128,7 +128,11 @@ lookup error and exits with a nonzero status after processing the batch.
    `devDependencies` is skipped after reading `package.json`, without a commit-file
    request. For a surviving bump to count as an update, its changed manifest or lockfile
    paths must identify exactly one ecosystem, and that ecosystem must have a production
-   match for the package. If a commit page omits its file list or the lookup reaches the
+   match for the package. For npm bumps, the scanner compares the package's declared
+   range in `package.json` or resolved version in `package-lock.json` or
+   `npm-shrinkwrap.json` at the release baseline and comparison head, using the
+   files changed by both the bump commit and the release comparison. If a commit page
+   omits its file list or the lookup reaches the
    3,000-file limit, the scanner records a lookup failure and still reports any
    confirmed release changes
 5. Creates an issue if source files changed or production dependencies were updated, including both reasons when applicable
