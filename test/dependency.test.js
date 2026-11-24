@@ -13,7 +13,7 @@ const stubRepository = (manifests, commitMessages = []) => {
     getContent: async ({ owner, repo, path, ref }) => {
       calls.push({ owner, repo, path });
       if (path === 'package-lock.json' && manifests[path] === undefined) {
-        return npmLockResponse(ref, 'v1', { first: '0', second: '1' }, { first: '100', second: '99', dev: '98' });
+        return npmLockResponse(ref, 'v1', { first: '0', second: '1' }, { first: '100', second: '98', dev: '99' });
       }
       const content = path === '' ? manifests[''] ?? Object.keys(manifests) : manifests[path];
       if (content === undefined) throw Object.assign(new Error('Not found'), { status: 404 });
@@ -87,7 +87,7 @@ test('Gradle skips the catalog for direct-only scripts', async () => {
   });
 });
 
-test('release checks reuse parsed Node dependencies and preserve every production update', async () => {
+test('release checks reuse parsed Node dependencies and report updates matching the head', async () => {
   const calls = stubRepository({ 'package.json': JSON.stringify({
     dependencies: { first: '*', second: '*' }, devDependencies: { dev: '*' },
   }) }, messages);
@@ -96,7 +96,10 @@ test('release checks reuse parsed Node dependencies and preserve every productio
   assert.deepEqual(result, {
     status: 'pending',
     changedSources: ['src/main.ts'],
-    dependencyUpdates: bumps.filter(({ pkg }) => pkg !== 'dev'),
+    dependencyUpdates: [
+      { pkg: 'second', from: '97', to: '98' },
+      { pkg: 'first', from: '99', to: '100' },
+    ],
     compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1')}...${commitSha('heads/main')}`,
   });
   await checkPendingRelease('owner', 'repo', 'node');

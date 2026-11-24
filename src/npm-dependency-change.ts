@@ -1,11 +1,12 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getFileContent } from './github.js';
+import type { DependencyUpdate } from './types.js';
 
 export const createNpmDependencyChangeChecker = (
   owner: string, repo: string, baseSha: string, headSha: string, paths: string[]
 ) => {
-  const comparisons = new Map<string, Promise<(pkg: string) => boolean>>();
-  return async (pkg: string, bumpPaths: string[]): Promise<{ changed: boolean; errors: unknown[] }> => {
+  const comparisons = new Map<string, Promise<(bump: DependencyUpdate) => boolean>>();
+  return async (bump: DependencyUpdate, bumpPaths: string[]): Promise<{ changed: boolean; errors: unknown[] }> => {
     const relevant = paths.filter((path) => bumpPaths.includes(path));
     if (relevant.some((path) => otherNodeLockfile.test(path))) return { changed: true, errors: [] };
     const checks = relevant.filter((path) => npmFiles.has(path)).map((path) => {
@@ -13,9 +14,10 @@ export const createNpmDependencyChangeChecker = (
         const load = (ref: string) => limitDownload(() => getFileContent(owner, repo, path, ref, true))
           .then(parseSnapshot);
         comparisons.set(path, Promise.all([load(baseSha), load(headSha)]).then(([base, head]) =>
-          (pkg) => {
+          ({ pkg, to }) => {
             const version = dependencyVersion(head, path, pkg);
-            return typeof version === 'string' && version !== dependencyVersion(base, path, pkg);
+            if (typeof version !== 'string' || version === dependencyVersion(base, path, pkg)) return false;
+            return version === to || (path === 'package.json' && version.replace(/^[~^]/, '') === to);
           }
         ));
       }
@@ -23,7 +25,7 @@ export const createNpmDependencyChangeChecker = (
     });
     const results = await Promise.allSettled(checks);
     return {
-      changed: results.some((result) => result.status === 'fulfilled' && result.value(pkg)),
+      changed: results.some((result) => result.status === 'fulfilled' && result.value(bump)),
       errors: results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []),
     };
   };

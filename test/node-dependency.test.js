@@ -7,6 +7,31 @@ import { commitSha, initMockOctokit, mockCommitFiles, npmLock, npmLockResponse }
 
 initMockOctokit('test-token');
 
+for (const path of ['package-lock.json', 'package.json']) {
+  test(`reports only the surviving bump after partially reverting updates in ${path}`, async (t) => {
+    const { repos } = getOctokit();
+    const baseSha = commitSha('refs/tags/v1');
+    t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+    t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+    mockCommitFiles(t.mock, [path]);
+    t.mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: path }],
+      commits: [
+        { sha: 'first', commit: { message: 'Bump runtime from 1.0.0 to 1.1.0' } },
+        { sha: 'second', commit: { message: 'Bump runtime from 1.1.0 to 1.2.0' } },
+        { sha: 'revert', commit: { message: 'Restore runtime to 1.1.0' } },
+      ],
+    } }));
+    t.mock.method(repos, 'getContent', async ({ path: file, ref }) => file === 'package-lock.json'
+      ? npmLockResponse(ref, 'v1', { runtime: '1.0.0' }, { runtime: '1.1.0' })
+      : { data: JSON.stringify({ dependencies: { runtime: ref === baseSha ? '^1.0.0' : '^1.1.0' } }) });
+
+    const release = await checkPendingRelease('owner', 'repo', 'node');
+    assert.equal(release.status, 'pending');
+    assert.deepEqual(release.dependencyUpdates, [{ pkg: 'runtime', from: '1.0.0', to: '1.1.0' }]);
+  });
+}
+
 for (const manifestChanged of [true, false]) {
   test(`reports a lockfile lookup error when the npm manifest ${manifestChanged ? 'confirms a bump' : 'is unchanged'}`, async (t) => {
     const { repos } = getOctokit();

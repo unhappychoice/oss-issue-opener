@@ -9,7 +9,7 @@ initMockOctokit('test-token');
 
 const prefixes = ['Bump', 'chore(deps): bump', 'fix(deps): bump', 'chore: bump', 'chore(deps)!: bump'];
 
-const stubRepository = (t, message, paths = ['package-lock.json']) => {
+const stubRepository = (t, message, paths = ['package-lock.json'], headVersion = '22.0.1') => {
   const repos = getOctokit().repos;
   t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1.0.0' }] }));
   t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
@@ -21,7 +21,7 @@ const stubRepository = (t, message, paths = ['package-lock.json']) => {
     },
   }));
   t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
-    ? npmLockResponse(ref, 'v1.0.0', { '@octokit/rest': '21.1.1' }, { '@octokit/rest': '22.0.1' })
+    ? npmLockResponse(ref, 'v1.0.0', { '@octokit/rest': '21.1.1' }, { '@octokit/rest': headVersion })
     : { data: JSON.stringify({
       dependencies: { '@octokit/rest': '^22.0.1' },
       devDependencies: { typescript: '^7.0.2' },
@@ -50,7 +50,7 @@ prefixes.forEach((prefix) => {
 test('renders versions from a production dependency bump as literal text', async (t) => {
   const from = '`[old](https://example.com/old)`';
   const to = '``<https://example.com/new>``';
-  stubRepository(t, `Bump @octokit/rest from ${from} to ${to}`);
+  stubRepository(t, `Bump @octokit/rest from ${from} to ${to}`, undefined, to);
 
   const release = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(release.status, 'pending');
@@ -420,7 +420,7 @@ test('detects source changes without dependency updates', async (t) => {
   ['reports', 'rust-change', 'pending'],
 ].forEach(([action, renameCommit, status]) => {
   test(`${action} a Node production bump when the Rust lockfile rename is in ${renameCommit}`, async (t) => {
-    const message = 'Bump @octokit/rest from 21 to 22';
+    const message = 'Bump @octokit/rest from 21.1.1 to 22.0.1';
     stubRepository(t, message);
     const { repos } = getOctokit();
     const nodeFile = { filename: 'package-lock.json', status: 'modified' };
@@ -440,7 +440,7 @@ test('detects source changes without dependency updates', async (t) => {
     const result = await checkPendingRelease('owner', 'repo', ['node', 'rust']);
     assert.equal(result.status, status);
     if (status === 'pending') {
-      assert.deepEqual(result.dependencyUpdates, [{ pkg: '@octokit/rest', from: '21', to: '22' }]);
+      assert.deepEqual(result.dependencyUpdates, [{ pkg: '@octokit/rest', from: '21.1.1', to: '22.0.1' }]);
     }
   });
 });
@@ -453,7 +453,7 @@ test('shares the bump lookup limit across scans and holds slots across pages', a
     files: [{ filename: 'package-lock.json' }],
     commits: versions.map((version) => ({
       sha: version,
-      commit: { message: `Bump @octokit/rest from ${version} to 22` },
+      commit: { message: `Bump @octokit/rest from ${version} to 22.0.1` },
     })),
   } }));
 
@@ -498,7 +498,7 @@ test('shares the bump lookup limit across scans and holds slots across pages', a
     const results = await scans;
     for (const result of results) {
       assert.equal(result.status, 'pending');
-      assert.deepEqual(result.dependencyUpdates, versions.map((from) => ({ pkg: '@octokit/rest', from, to: '22' })));
+      assert.deepEqual(result.dependencyUpdates, versions.map((from) => ({ pkg: '@octokit/rest', from, to: '22.0.1' })));
     }
   }
 });

@@ -185,7 +185,7 @@ const findDependencyUpdates = async (
         ? await attributeBump(owner, repo, sha, productionTypes)
         : undefined;
       const { changed, errors } = attribution?.type === 'node'
-        ? await hasNpmChange(bump.pkg, attribution.paths)
+        ? await hasNpmChange(bump, attribution.paths)
         : { changed: attribution !== undefined, errors: [] };
       return { updates: changed ? [bump] : [], productionErrors, fileErrors: errors };
     } catch (error) {
