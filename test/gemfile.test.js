@@ -244,7 +244,7 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-['then', 'or'].forEach((method) => {
+['then', 'and', 'or'].forEach((method) => {
   test(`treats a slash after a ${method} method call as division`, () => {
     const gemfile = `group :test do
   ratio = receiver.${method} / 2
@@ -289,6 +289,14 @@ gem 'ignored'
 suffix/x`,
     `pattern = flag || %r{prefix
 class TestHelper
+gem 'ignored'
+suffix}x`,
+    `flag and /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `flag and %r{prefix
+module TestHelpers
 gem 'ignored'
 suffix}x`,
     `flag or /prefix
