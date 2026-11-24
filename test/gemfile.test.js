@@ -246,6 +246,14 @@ test('recognizes a heredoc argument after a method named class', () => {
 
 test('keeps scope keywords inside regexps out of the group stack', () => {
   const bodies = [
+    `predicate = not /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `predicate = not %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x`,
     `return /prefix
 class TestHelper
 gem 'ignored'
