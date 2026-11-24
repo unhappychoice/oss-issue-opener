@@ -244,16 +244,18 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
-test('treats a slash after a then method call as division', () => {
-  const gemfile = `group :test do
-  ratio = receiver.then / 2
+['then', 'or'].forEach((method) => {
+  test(`treats a slash after a ${method} method call as division`, () => {
+    const gemfile = `group :test do
+  ratio = receiver.${method} / 2
   gem 'rspec'
 end
 gem 'rack'
 ratio = 8 / 2`;
 
-  assert.equal(isProductionGem(gemfile, 'rspec'), false);
-  assert.equal(isProductionGem(gemfile, 'rack'), true);
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
 });
 
 test('keeps scope keywords inside regexps out of the group stack', () => {
@@ -289,6 +291,10 @@ suffix/x`,
 class TestHelper
 gem 'ignored'
 suffix}x`,
+    `flag or /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
     'pattern = /#{ flag && /nested/.source }; end; gem "ignored"/x',
     String.raw`pattern = /prefix\/
 class TestHelper

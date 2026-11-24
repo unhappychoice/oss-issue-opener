@@ -37,7 +37,7 @@ export const gemfileTokens = (content: string): string[] => {
 const expectsRegexp = (tokens: string[]): boolean => {
   const index = previousTokenIndex(tokens);
   if (index < 0 || /^(?:\n|;|[=(\[,~?!:]|=>|&&|\|\|)$/.test(tokens[index])) return true;
-  return /^(?:if|elsif|unless|when|then|do|return|not)$/.test(tokens[index]) &&
+  return /^(?:if|elsif|unless|when|then|do|return|not|or)$/.test(tokens[index]) &&
     tokens[previousTokenIndex(tokens, index)] !== '.';
 };
 
