@@ -206,3 +206,145 @@ gem 'rack'`;
     });
   });
 });
+
+const namespaceDefinitions = [
+  'class TestHelper\nend',
+  'module TestHelpers\n  class TestHelper < Object\n  end\nend',
+  'result = class TestHelper; end',
+  'result = module TestHelpers; end',
+  'result ||= class TestHelper\n  end',
+  'result &&= module TestHelpers; end',
+  'class <<self; end',
+  'class << self; end',
+  'result = class <<self; end',
+  'result ||= class <<self; end',
+  'class <<self\n=begin\nend\ngem "ignored"\n=end\nend',
+  'consume(result = class TestHelper; end)',
+];
+
+[':test', ':development', ':development, :test'].forEach((group) => {
+  namespaceDefinitions.forEach((definition) => {
+    test(`preserves ${group} scope across ${definition}`, () => {
+      const gemfile = `group ${group} do
+${definition}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    });
+  });
+});
+
+test('recognizes a heredoc argument after a method named class', () => {
+  const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['then', 'else', 'and', 'or'].forEach((method) => {
+  test(`treats a slash after receiver.${method} as division`, () => {
+    const gemfile = `group :test do
+  ratio = receiver.${method} / 2
+  gem 'rspec'
+end
+gem 'rack'
+ratio = 8 / 2`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps scope keywords inside regexps out of the group stack', () => {
+  const bodies = [
+    `if enabled then /prefix
+class TestHelper
+gem 'ignored'
+suffix/x
+end`,
+    `if enabled
+  true
+else /prefix
+class TestHelper
+gem 'ignored'
+suffix/x
+end`,
+    `if enabled
+  true
+else %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x
+end`,
+    `case mode
+when :test then %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x
+end`,
+    `predicate = not /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `predicate = not %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+    `return /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = flag && /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = flag || %r{prefix
+class TestHelper
+gem 'ignored'
+suffix}x`,
+    `flag and /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `flag and %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+    `flag or /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    'pattern = /#{ flag && /nested/.source }; end; gem "ignored"/x',
+    String.raw`pattern = /prefix\/
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = %r{prefix{nested}
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+    'pattern = /#{ 8 / 2 }; end; gem "ignored"/x',
+    'pattern = /#{ "a/b" }; end; gem "ignored"/x',
+    'pattern = /#{ %q(}/) }; end; gem "ignored"/x',
+    'pattern = %r{#{ { path: "}" }[:path] }; end; gem "ignored"}x',
+    'pattern = /#{ "#{ /nested/.source }" }; end; gem "ignored"/x',
+    'pattern = /#{ ?/ }; end; gem "ignored"/x',
+    'pattern = flag ? /#{ "a/b" }; end; gem "ignored"/x : /fallback/',
+    'pattern = flag ?/prefix; end; gem "ignored"/x : /fallback/',
+  ];
+
+  bodies.forEach((body) => {
+    const gemfile = `group :test do
+  ${body}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, body);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, body);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false, body);
+  });
+});
