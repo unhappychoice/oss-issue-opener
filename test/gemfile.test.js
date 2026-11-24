@@ -272,7 +272,9 @@ suffix}x`,
     'pattern = /#{ %q(}/) }; end; gem "ignored"/x',
     'pattern = %r{#{ { path: "}" }[:path] }; end; gem "ignored"}x',
     'pattern = /#{ "#{ /nested/.source }" }; end; gem "ignored"/x',
+    'pattern = /#{ ?/ }; end; gem "ignored"/x',
     'pattern = flag ? /#{ "a/b" }; end; gem "ignored"/x : /fallback/',
+    'pattern = flag ?/prefix; end; gem "ignored"/x : /fallback/',
   ];
 
   bodies.forEach((body) => {

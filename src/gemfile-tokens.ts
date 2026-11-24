@@ -6,13 +6,11 @@ export const gemfileTokens = (content: string): string[] => {
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
-    if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
-      const end = regexpEnd(content, match.index);
-      if (end !== undefined) {
-        pattern.lastIndex = end;
-        tokens.push('/…/');
-        continue;
-      }
+    const literal = expressionLiteral(content, match.index, token, tokens);
+    if (literal) {
+      pattern.lastIndex = literal.end;
+      tokens.push(literal.token);
+      continue;
     }
     if (token.startsWith('<<')) {
       if (followsClassKeyword(tokens)) {
@@ -41,6 +39,17 @@ const expectsRegexp = (tokens: string[]): boolean => {
   if (index < 0 || /^(?:\n|;|[=(\[,~?!:]|=>|&&|\|\|)$/.test(tokens[index])) return true;
   return /^(?:if|elsif|unless|when|do|return)$/.test(tokens[index]) &&
     tokens[previousTokenIndex(tokens, index)] !== '.';
+};
+
+const expressionLiteral = (content: string, start: number, token: string, tokens: string[]) => {
+  if (token === '?' && content[start + 1] === '/' && expectsRegexp(tokens)) {
+    return { end: start + 2, token: '?/' };
+  }
+  if ((token === '/' || token === '%') && expectsRegexp(tokens)) {
+    const end = regexpEnd(content, start);
+    if (end !== undefined) return { end, token: '/…/' };
+  }
+  return undefined;
 };
 
 const literalDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
@@ -109,8 +118,7 @@ const interpolationLiteralEnd = (
   if (token === '"' || token === "'" || token === '`') {
     return literalEnd(content, start + 1, token, token !== "'");
   }
-  if ((token === '/' || token === '%') && expectsRegexp(tokens)) return regexpEnd(content, start);
-  return undefined;
+  return expressionLiteral(content, start, token, tokens)?.end;
 };
 
 const followsClassKeyword = (tokens: string[]): boolean => {
