@@ -121,6 +121,43 @@ let label = ##"""
   assert.deepEqual(swiftDependencies(content), new Set(['actual']));
 });
 
+test('Swift skips package lookalikes in bare regexes at expression positions', () => {
+  const content = String.raw`
+let regex = /.package(name: "fake")/
+let escaped = first(/* leading comment */ /https:\/\/example.com\/.package(id: "escaped")/)
+func pattern() -> Regex<Substring> { return /[)].package(id: "returned")/ }
+let package = Package(dependencies: [.package(path: "../actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift keeps compact and spaced division before real package calls', () => {
+  const content = `
+let compact = 24/3/2; .package(name: "compact")
+let spaced = (24 / 3) / 2; .package(name: "spaced")
+let named = numerators[0]/denominator/2; .package(name: "named")
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['compact', 'spaced', 'named']));
+});
+
+test('Swift skips bare regexes inside string interpolation', () => {
+  const content = String.raw`
+let label = "\(/[)]" .package(id: "fake")/)"
+.package(name: "actual")
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift leaves operators and unterminated bare regex candidates in the token stream', () => {
+  const content = String.raw`
+let prefix = /value; .package(name: "same-line")
+let other = call(/value)/2; .package(name: "after-prefix")
+let unfinished = /unfinished\
+.package(name: "next-line")
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['same-line', 'after-prefix', 'next-line']));
+});
+
 test('Swift requires matching hash counts to close an extended regex', () => {
   const content = String.raw`
 let pattern = ##/
