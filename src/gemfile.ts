@@ -11,7 +11,7 @@ export const productionGemNames = (content: string): ReadonlySet<string> => {
   gemfileStatements(content).forEach((tokens) => {
     if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
     const excluded = excludedScopes > 0;
-    if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+    if (opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
       /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
       const excludesGroup = tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1));
       blocks.push(excludesGroup);
@@ -24,6 +24,18 @@ export const productionGemNames = (content: string): ReadonlySet<string> => {
   });
   return names;
 };
+
+const opensNamespace = (tokens: string[]): boolean => {
+  if (isNamespaceKeyword(tokens[0])) return true;
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return depth === 0 && token === '=' && isNamespaceKeyword(tokens[index + 1]);
+  });
+};
+
+const isNamespaceKeyword = (token?: string): boolean => token === 'class' || token === 'module';
 
 const isEndlessMethod = (tokens: string[]): boolean => {
   let depth = 0;
