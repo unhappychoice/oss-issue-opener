@@ -60,9 +60,11 @@ const putsRegexpArgument = (content: string, start: number, token: string, token
   if (tokens[index] !== 'puts') return undefined;
   const before = tokens[previousTokenIndex(tokens, index)] ?? '\n';
   if (!/^(?:\n|;|do|\{)$/.test(before)) return undefined;
-  // An earlier occurrence could bind puts as a local, making the slash division.
+  // An earlier assignment (plain or multiple) could bind puts as a local, making the slash division.
   if (tokens.slice(0, index).some((previous, i) =>
-    previous === 'puts=' || (previous === 'puts' && tokens[i + 2] !== '/…/'))) return undefined;
+    previous === 'puts=' || (previous === 'puts' && /^[=,]$/.test(tokens[nextTokenIndex(tokens, i)] ?? '')))) {
+    return undefined;
+  }
   const end = regexpEnd(content, start);
   if (end !== undefined) return { end, token: '/…/' };
   return undefined;
@@ -147,6 +149,12 @@ const followsClassKeyword = (tokens: string[]): boolean => {
 const previousTokenIndex = (tokens: string[], before = tokens.length): number => {
   let index = before - 1;
   while (index >= 0 && isTokenSpacing(tokens[index])) index--;
+  return index;
+};
+
+const nextTokenIndex = (tokens: string[], after: number): number => {
+  let index = after + 1;
+  while (index < tokens.length && isTokenSpacing(tokens[index])) index++;
   return index;
 };
 
