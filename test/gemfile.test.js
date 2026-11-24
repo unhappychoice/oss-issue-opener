@@ -244,8 +244,31 @@ test('recognizes a heredoc argument after a method named class', () => {
   assert.equal(isProductionGem(gemfile, 'rack'), true);
 });
 
+test('treats a slash after a then method call as division', () => {
+  const gemfile = `group :test do
+  ratio = receiver.then / 2
+  gem 'rspec'
+end
+gem 'rack'
+ratio = 8 / 2`;
+
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
 test('keeps scope keywords inside regexps out of the group stack', () => {
   const bodies = [
+    `if enabled then /prefix
+class TestHelper
+gem 'ignored'
+suffix/x
+end`,
+    `case mode
+when :test then %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x
+end`,
     `predicate = not /prefix
 class TestHelper
 gem 'ignored'
