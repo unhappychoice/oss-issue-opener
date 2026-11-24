@@ -1,6 +1,7 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getCommitStatus, getCheckRuns, listWorkflowIds, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommit } from './github.js';
+import { createNpmDependencyChangeChecker } from './npm-dependency-change.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import { recoveryCheckKey } from './types.js';
@@ -145,7 +146,8 @@ export const checkPendingRelease = async (
   const changedDependencyTypes = getDependencyProjectTypes(files);
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
   const { dependencyUpdates, lookupErrors } = await findDependencyUpdates(
-    owner, repo, getCommitPages, dependencyTypes, headSha, getPinnedContents
+    owner, repo, getCommitPages, dependencyTypes, headSha, getPinnedContents,
+    createNpmDependencyChangeChecker(owner, repo, baseSha, headSha, files)
   );
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
@@ -164,7 +166,8 @@ const findDependencyUpdates = async (
   getCommitPages: () => AsyncIterable<ComparedCommit[]>,
   types: ProjectType[],
   headSha: string,
-  getContents: GetContents
+  getContents: GetContents,
+  hasNpmChange: ReturnType<typeof createNpmDependencyChangeChecker>
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
   const checkers = types.map((type) => ({
@@ -178,8 +181,13 @@ const findDependencyUpdates = async (
     const productionTypes = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
     const productionErrors = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
     try {
-      const eligible = productionTypes.length > 0 && await isEligibleBump(owner, repo, sha, productionTypes);
-      return { updates: eligible ? [bump] : [], productionErrors, fileErrors: [] };
+      const attribution = productionTypes.length > 0
+        ? await attributeBump(owner, repo, sha, productionTypes)
+        : undefined;
+      const { changed, errors } = attribution?.type === 'node'
+        ? await hasNpmChange(bump, attribution.paths)
+        : { changed: attribution !== undefined, errors: [] };
+      return { updates: changed ? [bump] : [], productionErrors, fileErrors: errors };
     } catch (error) {
       return { updates: [], productionErrors, fileErrors: [error] };
     }
@@ -213,16 +221,19 @@ const findDependencyUpdates = async (
   return { dependencyUpdates, lookupErrors: [...lookupErrors, ...productionErrors, ...fileErrors] };
 };
 
-const isEligibleBump = async (
+const attributeBump = async (
   owner: string, repo: string, sha: string, productionTypes: ProjectType[]
-): Promise<boolean> => limitCommitFileLookup(async () => {
+): Promise<{ type: ProjectType; paths: string[] } | undefined> => limitCommitFileLookup(async () => {
+  const bumpPaths: string[] = [];
   const affected = new Set<ProjectType>();
   for await (const paths of getCommitFilePages(owner, repo, sha)) {
+    paths.forEach((path) => bumpPaths.push(path));
     for (const type of getDependencyProjectTypes(paths)) {
-      if (!productionTypes.includes(type)) return false;
+      if (!productionTypes.includes(type)) return undefined;
       affected.add(type);
-      if (affected.size > 1) return false;
+      if (affected.size > 1) return undefined;
     }
   }
-  return affected.size === 1;
+  const [type] = affected;
+  return type === undefined ? undefined : { type, paths: bumpPaths };
 });

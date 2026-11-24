@@ -37,3 +37,14 @@ export const mockRubyRepository = (gemspec, gemfile = '') => {
       ? 'Bump (a+)+$ from 1 to 2' : 'Bump rake from 1 to 2' } }],
   } }));
 };
+
+export const npmLock = (versions) => JSON.stringify({
+  lockfileVersion: 3,
+  packages: Object.fromEntries(Object.entries(versions).map(([pkg, version]) =>
+    [`node_modules/${pkg}`, { version }]
+  )),
+});
+
+export const npmLockResponse = (ref, tag, before, after) => ({
+  data: npmLock(ref === commitSha(`refs/tags/${tag}`) ? before : after),
+});

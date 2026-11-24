@@ -4,7 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { compareCommits, getCommitFiles, getOctokit } from '../dist/github.js';
 import { buildPendingReleaseIssue } from '../dist/issue.js';
-import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles, npmLockResponse } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 
@@ -30,9 +30,9 @@ test('detects a production bump after the first 250 commits', async (t) => {
       commits: messages.slice((page - 1) * per_page, page * per_page),
     },
   }));
-  t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
@@ -69,9 +69,9 @@ test('detects the original final production bump and links to the scanned commit
       ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
-  const manifest = t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  const manifest = t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
@@ -84,7 +84,11 @@ test('detects the original final production bump and links to the scanned commit
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
   assert.deepEqual(manifest.mock.calls.map(({ arguments: [{ owner, repo, path, ref }] }) => ({ owner, repo, path, ref })),
-    [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
+    [
+      { owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead },
+      { owner: 'owner', repo: 'repo', path: 'package-lock.json', ref: baseSha },
+      { owner: 'owner', repo: 'repo', path: 'package-lock.json', ref: originalHead },
+    ]);
 });
 
 for (const path of ['docs/readme.md', 'src/index.ts', 'Gemfile.lock', null]) {
@@ -160,19 +164,21 @@ test('reports an incomplete release investigation when subsequent comparison pag
 
 const bump = (version) => ({
   sha: `bump-${version}`,
-  commit: { message: `Bump example from 1 to ${version}` },
+  commit: { message: `Bump example-${version} from 1.0.0 to ${version}.0.0` },
 });
 
-const stubProductionDependency = (t, repos, lookup) => {
+const stubProductionDependencies = (t, repos, lookup, versions) => {
   const resolveCommit = repos.getCommit.bind(repos);
   t.mock.method(repos, 'getCommit', async (params) => {
     if (params.page === undefined) return resolveCommit(params);
     await lookup(params.ref);
     return { data: { files: [{ filename: 'package-lock.json' }] } };
   });
-  t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  const before = Object.fromEntries(versions.map((version) => [`example-${version}`, '1.0.0']));
+  const after = Object.fromEntries(versions.map((version) => [`example-${version}`, `${version}.0.0`]));
+  t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', before, after)
+    : { data: JSON.stringify({ dependencies: after }) });
 };
 
 test('starts a first-page lookup while the next comparison page is pending and retains the update when it fails', async (t) => {
@@ -180,7 +186,7 @@ test('starts a first-page lookup while the next comparison page is pending and r
   const nextPage = Promise.withResolvers();
   const failure = new Error('Comparison page failed');
   const lookup = t.mock.fn();
-  stubProductionDependency(t, repos, lookup);
+  stubProductionDependencies(t, repos, lookup, [2]);
   const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => {
     if (page === 1) return { data: {
       files: [{ filename: 'package-lock.json' }],
@@ -199,7 +205,7 @@ test('starts a first-page lookup while the next comparison page is pending and r
   assert.equal(pagesRequested, 2);
   assert.equal(lookedUpWhilePagePending, 1);
   assert.equal(result.status, 'pending');
-  assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example', from: '1', to: '2' }]);
+  assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example-2', from: '1.0.0', to: '2.0.0' }]);
   assert.deepEqual(result.lookupErrors, [failure]);
 });
 
@@ -209,11 +215,12 @@ test('bounds the candidate backlog and keeps comparison order across batches', a
   const lookup = t.mock.fn(async (ref) => {
     if (ref === 'bump-2') await firstLookup.promise;
   });
-  stubProductionDependency(t, repos, lookup);
+  const versions = Array.from({ length: 101 }, (_, index) => index + 2);
+  stubProductionDependencies(t, repos, lookup, versions);
   const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => ({
     data: page === 1
-      ? { files: [{ filename: 'package-lock.json' }], commits: Array.from({ length: 100 }, (_, index) => bump(index + 2)) }
-      : { commits: [bump(102)] },
+      ? { files: [{ filename: 'package-lock.json' }], commits: versions.slice(0, 100).map(bump) }
+      : { commits: versions.slice(100).map(bump) },
   }));
 
   const release = checkPendingRelease('owner', 'repo', 'node');
@@ -227,7 +234,7 @@ test('bounds the candidate backlog and keeps comparison order across batches', a
   assert.equal(compare.mock.callCount(), 2);
   assert.equal(result.status, 'pending');
   assert.deepEqual(result.dependencyUpdates.map(({ to }) => to),
-    Array.from({ length: 101 }, (_, index) => String(index + 2)));
+    versions.map((version) => `${version}.0.0`));
 });
 
 const blob = (path, sha, mode = '100644') => ({ path, sha, type: 'blob', mode });
@@ -357,9 +364,9 @@ test('uses the pinned head tree to find a dependency change that requires later 
     : { commits: [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }] },
   }));
   mockCommitFiles(t.mock, ['package-lock.json']);
-  t.mock.method(getOctokit().repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(getOctokit().repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
