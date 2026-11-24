@@ -382,6 +382,15 @@ test('skips workflow lookup when the only alert is for another repository', asyn
   assert.equal(workflowRuns.mock.callCount(), 0);
 });
 
+test('skips recovery workflow lookup and leaves the issue untouched when the only alert belongs to another author', async (t) => {
+  const { run, events, workflowRuns } = setup(t, {
+    alerts: [{ ...alert, user: { login: 'other-author' } }],
+  });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+  assert.equal(workflowRuns.mock.callCount(), 0);
+});
+
 test('reports a failure when workflow lookup fails and keeps the resulting alert open', async (t) => {
   const runs = [{ ...passedBuild, conclusion: 'failure' }];
   const { run, events, created, workflowRuns } = setup(t, {
