@@ -503,6 +503,45 @@ test('shares the bump lookup limit across scans and holds slots across pages', a
   }
 });
 
+test('refills a local lookup slot as soon as any bump settles, without waiting for the whole batch', async (t) => {
+  stubRepository(t, 'Bump @octokit/rest from 0 to 22.0.1');
+  const repos = getOctokit().repos;
+  const versions = Array.from({ length: 32 }, (_, index) => String(index));
+  repos.compareCommits.mock.mockImplementation(async () => ({ data: {
+    files: [{ filename: 'package-lock.json' }],
+    commits: versions.map((version) => ({
+      sha: version,
+      commit: { message: `Bump @octokit/rest from ${version} to 22.0.1` },
+    })),
+  } }));
+
+  const started = [];
+  const first = Promise.withResolvers();
+  const rest = Promise.withResolvers();
+  t.mock.method(repos, 'getCommit', async ({ ref, page }) => {
+    if (page === undefined) return { data: commitSha(ref) };
+    if (page === 1) started.push(ref);
+    if (ref === '0') await first.promise;
+    else if (Number(ref) < 16) await rest.promise;
+    return { data: { files: [{ filename: 'package-lock.json' }] } };
+  });
+
+  const scan = checkPendingRelease('owner', 'repo', 'node');
+  await new Promise(setImmediate);
+  assert.equal(started.length, 16);
+  assert.ok(!started.includes('16'));
+
+  rest.resolve();
+  await new Promise(setImmediate);
+  assert.ok(started.includes('16'));
+  assert.equal(started.filter((ref) => ref === '0').length, 1);
+
+  first.resolve();
+  const result = await scan;
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(result.dependencyUpdates, versions.map((from) => ({ pkg: '@octokit/rest', from, to: '22.0.1' })));
+});
+
 test('reports an incomplete release check when its only bump lookup fails', async (t) => {
   stubRepository(t, 'Bump @octokit/rest from 21 to 22');
   const failure = new Error('Commit files unavailable');
