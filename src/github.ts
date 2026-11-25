@@ -186,21 +186,29 @@ export async function* getCheckRuns(
   // Keep only the current run per name across every page/suite before yielding, instead of
   // deduping within a single page the way getCommitStatus does. A rerun can leave a stale check
   // run behind in the same check suite, so scope the dedup key to its check suite where known,
-  // rather than merging unrelated check suites that happen to use the same job name.
-  const currentRuns = new Map<string, CheckRun>();
+  // rather than merging unrelated check suites that happen to use the same job name. Drop a run
+  // only once another one for the same key is positively known to be newer (by id or start time);
+  // when neither side has that signal, keep both so the ambiguity still reaches checker.ts instead
+  // of silently picking one.
+  const currentRuns = new Map<string, CheckRun[]>();
   let pendingError: unknown;
   try {
     for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
       for (const run of checkRuns) {
         const key = `${run.check_suite?.id ?? ''}:${run.name}`;
-        const current = currentRuns.get(key);
-        if (!current || isMoreCurrentCheckRun(run, current)) currentRuns.set(key, run);
+        const existing = currentRuns.get(key);
+        if (!existing) {
+          currentRuns.set(key, [run]);
+          continue;
+        }
+        if (existing.some((other) => isMoreCurrentCheckRun(other, run))) continue;
+        currentRuns.set(key, [...existing.filter((other) => !isMoreCurrentCheckRun(run, other)), run]);
       }
     }
   } catch (error) {
     pendingError = error;
   }
-  yield [...currentRuns.values()].map(toResult);
+  yield [...currentRuns.values()].flat().map(toResult);
   if (pendingError !== undefined) throw pendingError;
 }
 
