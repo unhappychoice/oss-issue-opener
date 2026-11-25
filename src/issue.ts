@@ -1,6 +1,7 @@
 import { completeIssue, createIssue, getAuthenticatedLogin, listOpenIssueDetails, updateIssueBody } from './github.js';
 import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
-import { ISSUE_REPO, normalizeRecoveryCheckKey, recoveryCheckKey } from './types.js';
+import { ISSUE_REPO } from './types.js';
+import { normalizeRecoveryCheckKey, recoveryCheckKey } from './recovery-key.js';
 
 const [issueOwner, issueRepo] = ISSUE_REPO.split('/') as [string, string];
 const ISSUE_BODY_LIMIT = 65_536;
