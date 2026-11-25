@@ -56,13 +56,6 @@ export interface PendingIssue {
   body: string;
 }
 
-export interface CheckResult {
-  repo: string;
-  projectType: ProjectType;
-  ciStatus: CIStatus;
-  releaseStatus: ReleaseStatus;
-}
-
 export interface DependencyUpdate {
   pkg: string;
   from: string;
