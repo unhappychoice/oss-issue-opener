@@ -5,9 +5,10 @@ import type { DependencyUpdate } from './types.js';
 export const createNpmDependencyChangeChecker = (
   owner: string, repo: string, baseSha: string, headSha: string, paths: string[]
 ) => {
+  const pathSet = new Set(paths);
   const comparisons = new Map<string, Promise<(bump: DependencyUpdate) => boolean>>();
   return async (bump: DependencyUpdate, bumpPaths: string[]): Promise<{ changed: boolean; errors: unknown[] }> => {
-    const relevant = paths.filter((path) => bumpPaths.includes(path));
+    const relevant = bumpPaths.filter((path) => pathSet.has(path));
     const npmPaths = relevant.filter((path) => npmFiles.has(path));
     if (npmPaths.length === 0) {
       return { changed: relevant.some((path) => otherNodeLockfile.test(path)), errors: [] };
