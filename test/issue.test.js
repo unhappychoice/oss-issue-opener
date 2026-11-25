@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getOctokit, initOctokit } from '../dist/github.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
-import { recoveryCheckKey } from '../dist/types.js';
+import { recoveryCheckKey } from '../dist/recovery-key.js';
 
 const setup = (t, create, existing = []) => {
   initOctokit('test-token');

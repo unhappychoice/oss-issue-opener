@@ -43,6 +43,7 @@ setup and check commands, see [Contributing](../CONTRIBUTING.md).
 | Module | Responsibility |
 |--------|----------------|
 | [types.ts](../src/types.ts) | Shared result types and the `ORGS` and `ISSUE_REPO` constants. |
+| [recovery-key.ts](../src/recovery-key.ts) | Encodes and normalizes the recovery key `checker.ts` and `issue.ts` use to match a passed check against its earlier failure. |
 | [github.ts](../src/github.ts) | Octokit initialization, GitHub API calls, pagination, and complete tree comparisons when the comparison file list reaches 300 entries. |
 | [runner.ts](../src/runner.ts) | Concurrency, orchestration, logging, and collection of investigation and creation failures. |
 | [checker.ts](../src/checker.ts) | CI classification, dependency bump parsing, and pending release decisions. |

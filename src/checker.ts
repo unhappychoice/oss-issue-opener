@@ -4,7 +4,7 @@ import type { CIResult, ComparedCommit } from './github.js';
 import { createNpmDependencyChangeChecker } from './npm-dependency-change.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
-import { recoveryCheckKey } from './types.js';
+import { recoveryCheckKey } from './recovery-key.js';
 import type { CheckIdentity, CIStatus, DependencyUpdate, FailedCheck, ProjectType, ReleaseStatus } from './types.js';
 
 // Share the lookup budget across repository scans, including paginated lookups.
