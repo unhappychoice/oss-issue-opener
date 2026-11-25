@@ -135,6 +135,35 @@ test('shares four suite slots across repositories for the full pagination and yi
   });
 });
 
+test('drops a stale failed check run once a same-named rerun has succeeded', async (t) => {
+  initOctokit('test-token');
+  const octokit = getOctokit();
+  t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
+  t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  t.mock.method(octokit.repos, 'listCommitStatusesForRef', async () => ({ data: [] }));
+  t.mock.method(octokit.checks, 'listSuitesForRef', async () => ({ data: { total_count: 1 } }));
+  octokit.hook.wrap('request', async (_request, options) => ({
+    status: 200,
+    url: options.url,
+    headers: {},
+    data: {
+      total_count: 2,
+      check_runs: [
+        {
+          id: 1, name: 'build', status: 'completed', conclusion: 'failure',
+          html_url: 'https://github.com/owner/repo/actions/runs/1', check_suite: { id: 9 },
+        },
+        {
+          id: 2, name: 'build', status: 'completed', conclusion: 'success',
+          html_url: 'https://github.com/owner/repo/actions/runs/2', check_suite: { id: 9 },
+        },
+      ],
+    },
+  }));
+
+  assert.deepEqual(await checkCIStatus('owner', 'repo'), { status: 'success', failedChecks: [] });
+});
+
 [
   ['reports a failed check on the oldest of 1,001 check suites', false],
   ['preserves an earlier failed check when a later page in its suite fails', true],
