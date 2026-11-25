@@ -141,6 +141,21 @@ export async function* getCommitStatus(
   }
 }
 
+type CheckRun = Awaited<ReturnType<Octokit['checks']['listForSuite']>>['data']['check_runs'][number];
+
+// A re-run ("Re-run failed jobs") can leave the superseded check run listed alongside the new
+// one for the same name, and the Checks API gives no ordering guarantee across pages/suites to
+// tell them apart by position. The run's own id (monotonically increasing) or, failing that, its
+// start time is the only reliable signal of which one is actually current.
+const isMoreCurrentCheckRun = (candidate: CheckRun, current: CheckRun): boolean => {
+  if (typeof candidate.id === 'number' && typeof current.id === 'number') {
+    return candidate.id > current.id;
+  }
+  const candidateStarted = candidate.started_at ? Date.parse(candidate.started_at) : NaN;
+  const currentStarted = current.started_at ? Date.parse(current.started_at) : NaN;
+  return !Number.isNaN(candidateStarted) && !Number.isNaN(currentStarted) && candidateStarted > currentStarted;
+};
+
 export async function* getCheckRuns(
   owner: string,
   repo: string,
@@ -158,17 +173,35 @@ export async function* getCheckRuns(
     startup_failure: 'failure',
   };
 
-  for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
-    yield checkRuns.map((c) => ({
-      state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
-        ? conclusionStates[c.conclusion] : 'pending',
-      source: 'check',
-      passed: c.status === 'completed' && c.conclusion === 'success',
-      context: c.name,
-      url: c.html_url ?? '',
-      workflowSuiteId: c.app?.slug === 'github-actions' ? c.check_suite?.id : undefined,
-    }));
+  const toResult = (c: CheckRun): CIResult => ({
+    state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
+      ? conclusionStates[c.conclusion] : 'pending',
+    source: 'check',
+    passed: c.status === 'completed' && c.conclusion === 'success',
+    context: c.name,
+    url: c.html_url ?? '',
+    workflowSuiteId: c.app?.slug === 'github-actions' ? c.check_suite?.id : undefined,
+  });
+
+  // Keep only the current run per name across every page/suite before yielding, instead of
+  // deduping within a single page the way getCommitStatus does. A rerun can leave a stale check
+  // run behind in the same check suite, so scope the dedup key to its check suite where known,
+  // rather than merging unrelated check suites that happen to use the same job name.
+  const currentRuns = new Map<string, CheckRun>();
+  let pendingError: unknown;
+  try {
+    for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
+      for (const run of checkRuns) {
+        const key = `${run.check_suite?.id ?? ''}:${run.name}`;
+        const current = currentRuns.get(key);
+        if (!current || isMoreCurrentCheckRun(run, current)) currentRuns.set(key, run);
+      }
+    }
+  } catch (error) {
+    pendingError = error;
   }
+  yield [...currentRuns.values()].map(toResult);
+  if (pendingError !== undefined) throw pendingError;
 }
 
 export type CIResult = {
