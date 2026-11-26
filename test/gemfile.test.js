@@ -37,19 +37,20 @@ const cases = [
   ['combined brace block', "group(:development, :test) { gem 'rake' }", false],
   ['multiline brace block', "group(:production) {\n  gem 'other'\n  gem 'rake'\n}", true],
   ['semicolon brace declarations', "group(:production) { gem 'other'; gem 'rake' }", true],
-  ['nested brace groups', "group(:test) { group(:production) { gem 'rake' } }", false],
+  ['nested brace groups', "group(:test) { group(:production) { gem 'rake' } }", true],
   ['brace source in excluded group', "group(:test) { source('https://rubygems.org') { gem 'rake' } }", false],
   ['brace inside excluded do block', "group :test do\n  source('https://rubygems.org') { gem 'other' }\n  gem 'rake'\nend", false],
   ['do inside excluded brace block', "group(:test) { source 'https://rubygems.org' do\n  gem 'other'\nend\ngem 'rake' }", false],
   ['after excluded brace block', "group(:test) { gem 'other' }; gem 'rake'", true],
-  ['inline exclusion in brace block', "group(:production) { gem 'rake', group: :test }", false],
-  ['hash options in brace block', "group(:production) { gem 'rake', { group: :test } }", false],
+  ['production inline in test brace block', "group(:test) { gem 'rake', group: :production }", true],
+  ['inline exclusion in brace block', "group(:production) { gem 'rake', group: :test }", true],
+  ['hash options in brace block', "group(:production) { gem 'rake', { group: :test } }", true],
   ['hash options before production declaration', "gem 'other', { group: :test }; gem 'rake'", true],
   ['brace characters in strings', "source('https://example.com/{gems}') { gem 'rake' }", true],
   ['similar group name', "group :development_tools do\n  gem 'rake'\nend", true],
-  ['production inline in test block', "group :test do\n  gem 'rake', group: :production\nend", false],
-  ['test inline in production block', "group :production do\n  gem 'rake', group: :test\nend", false],
-  ['nested groups', "group :test do\n  group :production do\n    gem 'rake'\n  end\nend", false],
+  ['production inline in test block', "group :test do\n  gem 'rake', group: :production\nend", true],
+  ['test inline in production block', "group :production do\n  gem 'rake', group: :test\nend", true],
+  ['nested groups', "group :test do\n  group :production do\n    gem 'rake'\n  end\nend", true],
   ['nested source', "group :test do\n  source 'https://example.com' do\n    gem 'other'\n  end\n  gem 'rake'\nend", false],
   ['nested conditional', "group :test do\n  if RUBY_ENGINE == 'ruby'\n    gem 'other'\n  end\n  gem 'rake'\nend", false],
   ['after excluded block', "group :test do\n  gem 'other'\nend\ngem 'rake'", true],
@@ -104,26 +105,28 @@ test('ignores bare dependency names in Gemfile declarations', () => {
 test('tracks excluded and shared groups through deeply nested scopes', () => {
   const depth = 4_096;
   const names = productionGemNames([
-    'group :test, :production do\n'.repeat(depth),
+    'group :development do\n'.repeat(depth),
+    'group :test do\n'.repeat(depth),
+    "gem 'exclusively_test'",
+    'end\n'.repeat(depth),
+    'end\n'.repeat(depth),
+    'group :test do\n'.repeat(depth),
+    'group :production do\n'.repeat(depth),
     "gem 'shared'",
     'group :development do',
-    'group :production do\n'.repeat(depth),
-    'group :test do',
-    "gem 'inner_test'",
-    'end',
-    "gem 'after_test'",
-    'end\n'.repeat(depth),
-    "gem 'after_production'",
+    "gem 'shared_with_development'",
     'end',
     "gem 'after_development'",
+    'end\n'.repeat(depth),
+    "gem 'after_production'",
     'end\n'.repeat(depth),
     "gem 'ungrouped'",
   ].join('\n'));
 
-  for (const pkg of ['shared', 'after_development', 'ungrouped']) {
+  for (const pkg of ['shared', 'shared_with_development', 'after_development', 'ungrouped']) {
     assert.equal(names.has(pkg), true, pkg);
   }
-  for (const pkg of ['inner_test', 'after_test', 'after_production', 'missing']) {
+  for (const pkg of ['exclusively_test', 'after_production', 'missing']) {
     assert.equal(names.has(pkg), false, pkg);
   }
 });
