@@ -114,6 +114,15 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
             const checkSuites = [{ id: 1 }, { id: 2 }].slice(0, Number(searchParams.get('per_page')));
             return respond({ total_count: 1001, check_suites: checkSuites });
           }
+          if (endpoint === 'check-suite-pages') {
+            if (searchParams.get('page') === '2') {
+              return respond({ total_count: 1001, check_suites: [{ id: 2 }] });
+            }
+            const next = new URL(url);
+            next.searchParams.set('page', '2');
+            const headers = searchParams.get('per_page') === '100' ? { link: '<' + next + '>; rel="next"' } : {};
+            return respond({ total_count: 1001, check_suites: [{ id: 1 }] }, { headers });
+          }
           if (endpoint === 'check-suite-groups') {
             const checkSuites = Array.from({ length: 5 }, (_, index) => ({ id: index + 1 }))
               .slice(0, Number(searchParams.get('per_page')));
@@ -128,6 +137,12 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
           return respond({
             total_count: 1, check_runs: [{ name: 'tests', status: 'completed', conclusion: 'failure' }],
           });
+        }
+        if (endpoint === 'check-suite-pages' && pathname.endsWith('/example/check-suites/1/check-runs')) {
+          return respond({ message: 'CI page unavailable' }, { status: 503 });
+        }
+        if (endpoint === 'check-suite-pages' && pathname.endsWith('/example/check-suites/2/check-runs')) {
+          return respond({ total_count: 1, check_runs: [{ name: 'build', status: 'completed', conclusion: 'failure' }] });
         }
         if (endpoint === 'check-suite-groups' && pathname.includes('/example/check-suites/')) {
           const suite = pathname.split('/').at(-2);
@@ -177,6 +192,7 @@ const runCLIWithCIFailures = (endpoint, hasFailure) => {
   ['check-runs', false],
   ['check-suite', true],
   ['check-suite-groups', true],
+  ['check-suite-pages', true],
 ].forEach(([endpoint, hasFailure]) => {
   test(`CLI exits with status 1 after a ${endpoint} error with ${hasFailure ? 'a confirmed failure' : 'no confirmed failures'}`, () => {
     const result = runCLIWithCIFailures(endpoint, hasFailure);
