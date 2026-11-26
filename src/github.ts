@@ -141,6 +141,29 @@ export async function* getCommitStatus(
   }
 }
 
+type CheckRun = Awaited<ReturnType<Octokit['checks']['listForSuite']>>['data']['check_runs'][number];
+
+// A re-run ("Re-run failed jobs") can leave the superseded check run listed alongside the new
+// one for the same name, and the Checks API gives no ordering guarantee across pages/suites to
+// tell them apart by position. The run's own id (monotonically increasing) or, failing that, its
+// start time is the only reliable signal of which one is actually current.
+const isMoreCurrentCheckRun = (candidate: CheckRun, current: CheckRun): boolean => {
+  if (typeof candidate.id === 'number' && typeof current.id === 'number') {
+    return candidate.id > current.id;
+  }
+  const candidateStarted = candidate.started_at ? Date.parse(candidate.started_at) : NaN;
+  const currentStarted = current.started_at ? Date.parse(current.started_at) : NaN;
+  return !Number.isNaN(candidateStarted) && !Number.isNaN(currentStarted) && candidateStarted > currentStarted;
+};
+
+// Same name and suite doesn't mean same job: GitHub lets integrations run several same-named
+// check runs per suite (e.g. a matrix build), distinguished by their own external_id. Only treat
+// one as superseding the other when there's no such evidence that they're independent jobs.
+const isSameCheckIdentity = (a: CheckRun, b: CheckRun): boolean => {
+  if (a.external_id || b.external_id) return a.external_id === b.external_id;
+  return true;
+};
+
 export async function* getCheckRuns(
   owner: string,
   repo: string,
@@ -158,17 +181,47 @@ export async function* getCheckRuns(
     startup_failure: 'failure',
   };
 
-  for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
-    yield checkRuns.map((c) => ({
-      state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
-        ? conclusionStates[c.conclusion] : 'pending',
-      source: 'check',
-      passed: c.status === 'completed' && c.conclusion === 'success',
-      context: c.name,
-      url: c.html_url ?? '',
-      workflowSuiteId: c.app?.slug === 'github-actions' ? c.check_suite?.id : undefined,
-    }));
+  const toResult = (c: CheckRun): CIResult => ({
+    state: c.status === 'completed' && c.conclusion && Object.hasOwn(conclusionStates, c.conclusion)
+      ? conclusionStates[c.conclusion] : 'pending',
+    source: 'check',
+    passed: c.status === 'completed' && c.conclusion === 'success',
+    context: c.name,
+    url: c.html_url ?? '',
+    workflowSuiteId: c.app?.slug === 'github-actions' ? c.check_suite?.id : undefined,
+  });
+
+  // Keep only the current run per name across every page/suite before yielding, instead of
+  // deduping within a single page the way getCommitStatus does. A rerun can leave a stale check
+  // run behind in the same check suite, so scope the dedup key to its check suite where known,
+  // rather than merging unrelated check suites that happen to use the same job name. Drop a run
+  // only once another one for the same key is positively known to be newer (by id or start time)
+  // and known to be the same job (matching external_id, or neither side setting one); when either
+  // signal is missing, keep both so the ambiguity still reaches checker.ts instead of silently
+  // picking one.
+  const currentRuns = new Map<string, CheckRun[]>();
+  let pendingError: unknown;
+  try {
+    for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
+      for (const run of checkRuns) {
+        const key = `${run.check_suite?.id ?? ''}:${run.name}`;
+        const existing = currentRuns.get(key);
+        if (!existing) {
+          currentRuns.set(key, [run]);
+          continue;
+        }
+        if (existing.some((other) => isSameCheckIdentity(other, run) && isMoreCurrentCheckRun(other, run))) continue;
+        currentRuns.set(key, [
+          ...existing.filter((other) => !(isSameCheckIdentity(run, other) && isMoreCurrentCheckRun(run, other))),
+          run,
+        ]);
+      }
+    }
+  } catch (error) {
+    pendingError = error;
   }
+  yield [...currentRuns.values()].flat().map(toResult);
+  if (pendingError !== undefined) throw pendingError;
 }
 
 export type CIResult = {
@@ -181,8 +234,12 @@ export type CIResult = {
   publisherId?: number | undefined;
 };
 
-export async function listWorkflowIds(owner: string, repo: string, head_sha: string): Promise<Map<number, number>> {
+export async function listWorkflowIds(
+  owner: string, repo: string, head_sha: string, neededCheckSuiteIds?: Set<number>
+): Promise<Map<number, number>> {
   const workflows = new Map<number, number>();
+  const resolved = () => neededCheckSuiteIds !== undefined &&
+    [...neededCheckSuiteIds].every((id) => workflows.has(id));
   try {
     // GitHub caps filtered workflow-run listings at 1,000 results.
     for (let page = 1; page <= 10; page++) {
@@ -192,7 +249,7 @@ export async function listWorkflowIds(owner: string, repo: string, head_sha: str
       for (const { check_suite_id, workflow_id } of workflow_runs) {
         if (check_suite_id && workflow_id > 0) workflows.set(check_suite_id, workflow_id);
       }
-      if (workflow_runs.length < 100) break;
+      if (workflow_runs.length < 100 || resolved()) break;
     }
     return workflows;
   } catch {
@@ -262,16 +319,28 @@ const getRootTreeContents = async (owner: string, repo: string, tree_sha?: strin
 
 type TreeEntry = { sha: string; mode: string; type: string };
 
-const readComparisonTree = async (owner: string, repo: string, tree_sha: string): Promise<Map<string, TreeEntry>> => {
-  const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha });
-  if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
-  return new Map(data.tree.map(({ path, sha, mode, type }) => {
-    if (!path || !sha || !mode || !type) {
-      throw new Error('Cannot establish complete comparison: incomplete tree entry');
-    }
-    return [path, { sha, mode, type }];
-  }));
-};
+// Shared across concurrent comparisons so a single release scan can't flood the API with
+// simultaneous tree requests, however many sibling subtrees change at once.
+const TREE_FETCH_CONCURRENCY = 8;
+const limitTreeFetch = createConcurrencyLimiter(TREE_FETCH_CONCURRENCY);
+
+const readComparisonTree = async (owner: string, repo: string, tree_sha: string): Promise<Map<string, TreeEntry>> =>
+  limitTreeFetch(async () => {
+    const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha });
+    if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
+    return new Map(data.tree.map(({ path, sha, mode, type }) => {
+      if (!path || !sha || !mode || !type) {
+        throw new Error('Cannot establish complete comparison: incomplete tree entry');
+      }
+      return [path, { sha, mode, type }];
+    }));
+  });
+
+// A shared subtree can be reached under many directory names, so even cache-deduplicated
+// downloads can expand into far more walked entries and changed paths than files actually
+// changed. Cap both to bound memory for a single comparison.
+const MAX_TREE_EXPANSIONS = 50_000;
+const MAX_CHANGED_PATHS = 10_000;
 
 const compareTrees = async (owner: string, repo: string, base?: string, head?: string): Promise<string[]> => {
   if (!base || !head) throw new Error('Cannot establish complete comparison: missing tree SHA');
@@ -279,7 +348,7 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
   const cache = new Map<string, Promise<Map<string, TreeEntry>>>();
   const empty = new Map<string, TreeEntry>();
   const read = (sha?: string) => {
-    if (!sha) return empty;
+    if (!sha) return Promise.resolve(empty);
     const cached = cache.get(sha);
     if (cached) return cached;
     const pending = readComparisonTree(owner, repo, sha);
@@ -287,10 +356,17 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
     return pending;
   };
 
-  const files: string[] = [];
-  const walk = async (prefix: string, before?: string, after?: string): Promise<void> => {
+  let expansions = 0;
+  let changedPathCount = 0;
+  // Each call returns its own subtree's changed paths in traversal order; the caller
+  // interleaves them with its siblings' so the final order stays deterministic no matter
+  // which sibling's requests happen to resolve first.
+  const walk = async (prefix: string, before?: string, after?: string): Promise<string[]> => {
     const [left, right] = await Promise.all([read(before), read(after)]);
-    for (const name of new Set([...left.keys(), ...right.keys()])) {
+    const entries = [...new Set([...left.keys(), ...right.keys()])].map((name) => {
+      if (++expansions > MAX_TREE_EXPANSIONS) {
+        throw new Error(`Cannot establish complete comparison: exceeded the ${MAX_TREE_EXPANSIONS}-entry expansion limit`);
+      }
       const oldEntry = left.get(name);
       const newEntry = right.get(name);
       const path = prefix + name;
@@ -298,15 +374,21 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
       const newTree = newEntry?.type === 'tree' ? newEntry.sha : undefined;
       const oldFile = oldTree ? undefined : oldEntry;
       const newFile = newTree ? undefined : newEntry;
-      if (oldFile?.sha !== newFile?.sha || oldFile?.mode !== newFile?.mode || oldFile?.type !== newFile?.type) {
-        files.push(path);
+      const changed = oldFile?.sha !== newFile?.sha || oldFile?.mode !== newFile?.mode || oldFile?.type !== newFile?.type;
+      if (changed && ++changedPathCount > MAX_CHANGED_PATHS) {
+        throw new Error(`Cannot establish complete comparison: exceeded the ${MAX_CHANGED_PATHS}-path retention limit`);
       }
-      if (oldTree !== newTree) await walk(`${path}/`, oldTree, newTree);
-    }
+      return { path, oldTree, newTree, changed };
+    });
+
+    const subtreeFiles = await Promise.all(entries.map((entry) =>
+      entry.oldTree !== entry.newTree ? walk(`${entry.path}/`, entry.oldTree, entry.newTree) : Promise.resolve<string[]>([])
+    ));
+
+    return entries.flatMap((entry, index) => [...(entry.changed ? [entry.path] : []), ...subtreeFiles[index]]);
   };
 
-  await walk('', base, head);
-  return files;
+  return walk('', base, head);
 };
 
 export const getCommitFiles = async (owner: string, repo: string, ref: string): Promise<string[]> => {

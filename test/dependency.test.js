@@ -4,14 +4,17 @@ import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { createDependencyChecker, isProductionDependency } from '../dist/dependency.js';
 import { getOctokit } from '../dist/github.js';
-import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles, npmLockResponse } from './helpers/github.mjs';
 
 const stubRepository = (manifests, commitMessages = []) => {
   initMockOctokit('test');
   const calls = [];
   Object.assign(getOctokit().repos, {
-    getContent: async ({ owner, repo, path }) => {
+    getContent: async ({ owner, repo, path, ref }) => {
       calls.push({ owner, repo, path });
+      if (path === 'package-lock.json' && manifests[path] === undefined) {
+        return npmLockResponse(ref, 'v1', { first: '0', second: '1' }, { first: '100', second: '98', dev: '99' });
+      }
       const content = path === '' ? manifests[''] ?? Object.keys(manifests) : manifests[path];
       if (content === undefined) throw Object.assign(new Error('Not found'), { status: 404 });
       return { data: Array.isArray(content) ? content.map((name) => ({ name })) :
@@ -84,22 +87,25 @@ test('Gradle skips the catalog for direct-only scripts', async () => {
   });
 });
 
-test('release checks reuse parsed Node dependencies and preserve every production update', async () => {
+test('release checks reuse parsed Node dependencies and report updates matching the head', async () => {
   const calls = stubRepository({ 'package.json': JSON.stringify({
     dependencies: { first: '*', second: '*' }, devDependencies: { dev: '*' },
   }) }, messages);
   const result = await checkPendingRelease('owner', 'repo', 'node');
-  assert.deepEqual(calls, [{ owner: 'owner', repo: 'repo', path: 'package.json' }]);
+  assert.deepEqual(calls.map(({ path }) => path), ['package.json', 'package-lock.json', 'package-lock.json']);
   assert.deepEqual(result, {
     status: 'pending',
     changedSources: ['src/main.ts'],
-    dependencyUpdates: bumps.filter(({ pkg }) => pkg !== 'dev'),
+    dependencyUpdates: [
+      { pkg: 'second', from: '97', to: '98' },
+      { pkg: 'first', from: '99', to: '100' },
+    ],
     compareUrl: `https://github.com/owner/repo/compare/${commitSha('refs/tags/v1')}...${commitSha('heads/main')}`,
   });
   await checkPendingRelease('owner', 'repo', 'node');
   await checkPendingRelease('owner', 'other', 'node');
-  assert.equal(calls.length, 3);
-  assert.equal(calls[2].repo, 'other');
+  assert.equal(calls.length, 9);
+  assert.ok(calls.slice(6).every(({ repo }) => repo === 'other'));
 });
 
 test('Ruby reuses the root listing, gemspec and fallback Gemfile', async () => {
@@ -237,6 +243,26 @@ dialects.forEach(({ file, declaration }) => {
 
     assert.equal(await check('org.example:constrained'), false);
     assert.equal(await check('org.example:public'), false);
+    assert.equal(await check('org.example:runtime'), true);
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
+  });
+
+  test(`${file}: JVM test suite-only bumps, including the built-in test suite, do not qualify for a release`, async (t) => {
+    const content = `dependencies { ${declaration('implementation', 'org.example:runtime:1.0')} }
+    testing { suites {
+      named("test") { dependencies { ${declaration('implementation', 'org.example:test-helper:1.1')} } }
+      register("integrationTest") { dependencies { ${declaration('implementation', 'org.example:integration-helper:1.1')} } }
+    } }`;
+    const message = 'Bump org.example:test-helper from 1.0 to 1.1';
+    stubRepository({ [file]: content });
+    mockCommitFiles(t.mock, [file]);
+    t.mock.method(getOctokit().repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: file }], commits: [{ sha: 'bump', commit: { message } }],
+    } }));
+    const check = createDependencyChecker('owner', 'repo', 'kotlin');
+
+    assert.equal(await check('org.example:test-helper'), false);
+    assert.equal(await check('org.example:integration-helper'), false);
     assert.equal(await check('org.example:runtime'), true);
     assert.deepEqual(await checkPendingRelease('owner', 'repo', 'kotlin'), { status: 'up-to-date' });
   });

@@ -4,7 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { checkPendingRelease } from '../dist/checker.js';
 import { compareCommits, getCommitFiles, getOctokit } from '../dist/github.js';
 import { buildPendingReleaseIssue } from '../dist/issue.js';
-import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles, npmLockResponse } from './helpers/github.mjs';
 
 beforeEach(() => initMockOctokit('test-token'));
 
@@ -30,9 +30,9 @@ test('detects a production bump after the first 250 commits', async (t) => {
       commits: messages.slice((page - 1) * per_page, page * per_page),
     },
   }));
-  t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
     status: 'pending',
@@ -69,9 +69,9 @@ test('detects the original final production bump and links to the scanned commit
       ? [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }]
       : [] } };
   });
-  const manifest = t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  const manifest = t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');
@@ -84,7 +84,11 @@ test('detects the original final production bump and links to the scanned commit
   assert.deepEqual(compare.mock.calls.map(({ arguments: [{ base, head, page }] }) => [base, head, page]),
     [[baseSha, originalHead, 1], [baseSha, originalHead, 2]]);
   assert.deepEqual(manifest.mock.calls.map(({ arguments: [{ owner, repo, path, ref }] }) => ({ owner, repo, path, ref })),
-    [{ owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead }]);
+    [
+      { owner: 'owner', repo: 'repo', path: 'package.json', ref: originalHead },
+      { owner: 'owner', repo: 'repo', path: 'package-lock.json', ref: baseSha },
+      { owner: 'owner', repo: 'repo', path: 'package-lock.json', ref: originalHead },
+    ]);
 });
 
 for (const path of ['docs/readme.md', 'src/index.ts', 'Gemfile.lock', null]) {
@@ -160,19 +164,21 @@ test('reports an incomplete release investigation when subsequent comparison pag
 
 const bump = (version) => ({
   sha: `bump-${version}`,
-  commit: { message: `Bump example from 1 to ${version}` },
+  commit: { message: `Bump example-${version} from 1.0.0 to ${version}.0.0` },
 });
 
-const stubProductionDependency = (t, repos, lookup) => {
+const stubProductionDependencies = (t, repos, lookup, versions) => {
   const resolveCommit = repos.getCommit.bind(repos);
   t.mock.method(repos, 'getCommit', async (params) => {
     if (params.page === undefined) return resolveCommit(params);
     await lookup(params.ref);
     return { data: { files: [{ filename: 'package-lock.json' }] } };
   });
-  t.mock.method(repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  const before = Object.fromEntries(versions.map((version) => [`example-${version}`, '1.0.0']));
+  const after = Object.fromEntries(versions.map((version) => [`example-${version}`, `${version}.0.0`]));
+  t.mock.method(repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', before, after)
+    : { data: JSON.stringify({ dependencies: after }) });
 };
 
 test('starts a first-page lookup while the next comparison page is pending and retains the update when it fails', async (t) => {
@@ -180,7 +186,7 @@ test('starts a first-page lookup while the next comparison page is pending and r
   const nextPage = Promise.withResolvers();
   const failure = new Error('Comparison page failed');
   const lookup = t.mock.fn();
-  stubProductionDependency(t, repos, lookup);
+  stubProductionDependencies(t, repos, lookup, [2]);
   const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => {
     if (page === 1) return { data: {
       files: [{ filename: 'package-lock.json' }],
@@ -199,21 +205,20 @@ test('starts a first-page lookup while the next comparison page is pending and r
   assert.equal(pagesRequested, 2);
   assert.equal(lookedUpWhilePagePending, 1);
   assert.equal(result.status, 'pending');
-  assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example', from: '1', to: '2' }]);
+  assert.deepEqual(result.dependencyUpdates, [{ pkg: 'example-2', from: '1.0.0', to: '2.0.0' }]);
   assert.deepEqual(result.lookupErrors, [failure]);
 });
 
 test('bounds the candidate backlog and keeps comparison order across batches', async (t) => {
   const repos = stubRelease(t);
   const firstLookup = Promise.withResolvers();
-  const lookup = t.mock.fn(async (ref) => {
-    if (ref === 'bump-2') await firstLookup.promise;
-  });
-  stubProductionDependency(t, repos, lookup);
+  const lookup = t.mock.fn(async () => { await firstLookup.promise; });
+  const versions = Array.from({ length: 101 }, (_, index) => index + 2);
+  stubProductionDependencies(t, repos, lookup, versions);
   const compare = t.mock.method(repos, 'compareCommits', async ({ page }) => ({
     data: page === 1
-      ? { files: [{ filename: 'package-lock.json' }], commits: Array.from({ length: 100 }, (_, index) => bump(index + 2)) }
-      : { commits: [bump(102)] },
+      ? { files: [{ filename: 'package-lock.json' }], commits: versions.slice(0, 100).map(bump) }
+      : { commits: versions.slice(100).map(bump) },
   }));
 
   const release = checkPendingRelease('owner', 'repo', 'node');
@@ -227,7 +232,7 @@ test('bounds the candidate backlog and keeps comparison order across batches', a
   assert.equal(compare.mock.callCount(), 2);
   assert.equal(result.status, 'pending');
   assert.deepEqual(result.dependencyUpdates.map(({ to }) => to),
-    Array.from({ length: 101 }, (_, index) => String(index + 2)));
+    versions.map((version) => `${version}.0.0`));
 });
 
 const blob = (path, sha, mode = '100644') => ({ path, sha, type: 'blob', mode });
@@ -292,11 +297,136 @@ test('detects added and removed subtree paths, file mode changes, and file-to-di
   assert.equal(calls.filter((sha) => sha === 'nested').length, 1);
 });
 
+test('stops at the tree expansion limit when a subtree is shared across directory names, even though every tree read is cached', async (t) => {
+  const depth = 14;
+  // Both sides mirror each other down to identical leaf blobs, so no path is ever reported
+  // as changed; only the directory SHAs differ, which forces recursion at every level.
+  const trees = {
+    'old-level-0': [blob('a', 'leaf'), blob('b', 'leaf')],
+    'new-level-0': [blob('a', 'leaf'), blob('b', 'leaf')],
+  };
+  for (let level = 1; level <= depth; level++) {
+    trees[`old-level-${level}`] = [tree('a', `old-level-${level - 1}`), tree('b', `old-level-${level - 1}`)];
+    trees[`new-level-${level}`] = [tree('a', `new-level-${level - 1}`), tree('b', `new-level-${level - 1}`)];
+  }
+  const getTree = stubCappedComparison(t, { 'merge-base-tree': trees[`old-level-${depth}`], 'head-tree': trees[`new-level-${depth}`], ...trees });
+
+  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /exceeded the 50000-entry expansion limit/);
+  // The "old-level-N"/"new-level-N" subtrees are expanded under both the "a/" and "b/"
+  // prefixes at every level, so total walked entries grow exponentially even though each
+  // distinct subtree SHA is only ever downloaded once.
+  assert.equal(getTree.mock.callCount(), depth * 2 + 2);
+});
+
+test('stops at the retained-path limit when a single directory holds more changed files than the cap allows', async (t) => {
+  const files = Array.from({ length: 10_001 }, (_, i) => blob(`${i}.md`, `new-${i}`));
+  stubCappedComparison(t, { 'head-tree': files });
+
+  await assert.rejects(checkPendingRelease('owner', 'repo', 'node'), /exceeded the 10000-path retention limit/);
+});
+
 test('skips fetching identical root trees', async (t) => {
   const getTree = stubCappedComparison(t);
   const { files } = await compareCommits('owner', 'repo', 'v1', { sha: commitSha('main'), treeSha: 'merge-base-tree' });
   assert.deepEqual(files, []);
   assert.equal(getTree.mock.callCount(), 0);
+});
+
+test(`starts a later sibling's tree requests while an earlier sibling is still blocked`, async (t) => {
+  const repos = stubRelease(t);
+  t.mock.method(repos, 'compareCommits', async () => ({ data: {
+    files: numberedFiles(300, 'docs', 'md'),
+    merge_base_commit: { commit: { tree: { sha: 'merge-base-tree' } } },
+    commits: [],
+  } }));
+
+  const blocked = Promise.withResolvers();
+  const trees = {
+    'merge-base-tree': [tree('src', 'old-a'), tree('lib', 'old-b')],
+    'head-tree': [tree('src', 'new-a'), tree('lib', 'new-b')],
+    'old-a': [blob('file.ts', 'old')],
+    'new-a': [blob('file.ts', 'new')],
+    'old-b': [blob('file.ts', 'old')],
+    'new-b': [blob('file.ts', 'new')],
+  };
+  const getTree = t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
+    assert.ok(tree_sha in trees, `Unexpected tree request: ${tree_sha}`);
+    if (tree_sha === 'old-a') await blocked.promise;
+    return { data: { truncated: false, tree: trees[tree_sha] } };
+  });
+
+  const comparison = checkPendingRelease('owner', 'repo', 'node');
+  await setImmediate();
+  const requested = getTree.mock.calls.map(({ arguments: [{ tree_sha }] }) => tree_sha);
+  assert.ok(requested.includes('old-a'), 'sibling "src" should have started its blocked request');
+  assert.ok(requested.includes('old-b') && requested.includes('new-b'),
+    'sibling "lib" should start its own requests instead of waiting for "src" to finish');
+
+  blocked.resolve();
+  const result = await comparison;
+  assert.equal(result.status, 'pending');
+  assert.deepEqual(result.changedSources.toSorted(), ['lib/file.ts', 'src/file.ts']);
+});
+
+const TREE_FETCH_CONCURRENCY = 8;
+
+test('shares a tree-fetch concurrency limit across concurrent comparisons and returns changed paths in a stable order', async (t) => {
+  const fanOut = (label, count) => {
+    const mergeBaseTree = Array.from({ length: count }, (_, i) => tree(`dir${i}`, `${label}-old-${i}`));
+    const headTree = Array.from({ length: count }, (_, i) => tree(`dir${i}`, `${label}-new-${i}`));
+    const subtrees = {};
+    for (let i = 0; i < count; i++) {
+      subtrees[`${label}-old-${i}`] = [blob('file.ts', `${label}-old-${i}`)];
+      subtrees[`${label}-new-${i}`] = [blob('file.ts', `${label}-new-${i}`)];
+    }
+    return {
+      mergeBaseTree, headTree, subtrees,
+      expectedFiles: Array.from({ length: count }, (_, i) => `dir${i}/file.ts`),
+    };
+  };
+
+  const labels = ['cmp1', 'cmp2'];
+  const comparisons = labels.map((label) => fanOut(label, 10));
+  const roots = Object.assign({}, ...labels.map((label, i) => ({
+    [`${label}-merge-base`]: comparisons[i].mergeBaseTree,
+    [`${label}-head`]: comparisons[i].headTree,
+  })));
+  const subtrees = Object.assign({}, ...comparisons.map((c) => c.subtrees));
+
+  const gate = Promise.withResolvers();
+  let active = 0;
+  let maxActive = 0;
+  t.mock.method(getOctokit().git, 'getTree', async ({ tree_sha }) => {
+    const isRoot = tree_sha in roots;
+    active++;
+    maxActive = Math.max(maxActive, active);
+    try {
+      if (!isRoot) await gate.promise;
+      const data = isRoot ? roots[tree_sha] : subtrees[tree_sha];
+      assert.ok(data, `Unexpected tree request: ${tree_sha}`);
+      return { data: { truncated: false, tree: data } };
+    } finally {
+      active--;
+    }
+  });
+
+  const repos = getOctokit().repos;
+  t.mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
+    files: numberedFiles(300, 'docs', 'md'),
+    merge_base_commit: { commit: { tree: { sha: `${repo}-merge-base` } } },
+    commits: [],
+  } }));
+
+  const started = labels.map((label) =>
+    compareCommits('owner', label, 'v1', { sha: commitSha(label), treeSha: `${label}-head` }));
+  await setImmediate();
+  // 10 changed directories per comparison need 2 tree reads each (old and new side), so 40
+  // requests compete for the shared limiter; only TREE_FETCH_CONCURRENCY may run at once.
+  assert.equal(maxActive, TREE_FETCH_CONCURRENCY);
+
+  gate.resolve();
+  const results = await Promise.all(started);
+  results.forEach(({ files }, i) => assert.deepEqual(files, comparisons[i].expectedFiles));
 });
 
 test('propagates tree fallback API failures instead of declaring up to date', async (t) => {
@@ -357,9 +487,9 @@ test('uses the pinned head tree to find a dependency change that requires later 
     : { commits: [{ sha: 'bump', commit: { message: 'Bump example from 1.0.0 to 2.0.0' } }] },
   }));
   mockCommitFiles(t.mock, ['package-lock.json']);
-  t.mock.method(getOctokit().repos, 'getContent', async () => ({
-    data: JSON.stringify({ dependencies: { example: '^2.0.0' } }),
-  }));
+  t.mock.method(getOctokit().repos, 'getContent', async ({ path, ref }) => path === 'package-lock.json'
+    ? npmLockResponse(ref, 'v1', { example: '1.0.0' }, { example: '2.0.0' })
+    : { data: JSON.stringify({ dependencies: { example: '^2.0.0' } }) });
 
   const result = await checkPendingRelease('owner', 'repo', 'node');
   assert.equal(result.status, 'pending');

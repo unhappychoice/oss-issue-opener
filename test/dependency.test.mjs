@@ -148,6 +148,69 @@ test('Gemfile fallback preserves group exclusions for literal package names', as
   assert.equal(await check('runtimeXtest'), false);
 });
 
+test('Gemfile fallback ignores class declarations inside multiline puts regexps', async () => {
+  mockRubyRepository('', `group :test do
+    puts /first/
+    puts /prefix
+class RegexpText
+gem 'ignored'
+suffix/x
+    gem 'rspec'
+  end
+  gem 'rack'`);
+
+  assert.equal(await check('ignored'), false);
+  assert.equal(await check('rspec'), false);
+  assert.equal(await check('rack'), true);
+});
+
+test('Gemfile fallback ignores class declarations inside a multiline puts regexp after a plain puts call', async () => {
+  mockRubyRepository('', `group :test do
+    puts 'something'
+    puts /prefix
+class RegexpText
+gem 'ignored'
+suffix/x
+    gem 'rspec'
+  end
+  gem 'rack'`);
+
+  assert.equal(await check('ignored'), false);
+  assert.equal(await check('rspec'), false);
+  assert.equal(await check('rack'), true);
+});
+
+['count', 'puts'].forEach((name) => {
+  test(`Gemfile fallback classifies gems after division of multiply assigned ${name}`, async () => {
+    mockRubyRepository('', `group :test do
+    module TestHelpers
+      class TestHelper
+        ${name}, index = [8, 1]
+        ${name} /2
+      end
+    end
+    gem 'rspec'
+  end
+  gem 'rack', path: '/rack'`);
+
+    assert.equal(await check('rspec'), false);
+    assert.equal(await check('rack'), true);
+  });
+});
+
+test('Gemfile fallback classifies gems after a slash character literal', async () => {
+  mockRubyRepository('', `group :test do
+    class TestHelper
+      separator = ?/
+    end
+    gem 'rspec'
+  end
+  gem 'rack', path: '/rack'`);
+
+  assert.equal(await check('rspec'), false);
+  assert.equal(await check('rack'), true);
+});
+
 test('malicious bump completes and the next repository is checked', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
