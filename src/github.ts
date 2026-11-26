@@ -267,16 +267,16 @@ async function* listCheckRunPages(owner: string, repo: string, ref: string) {
     return;
   }
 
+  let failure: { error: unknown } | undefined;
   for await (const { data: suites } of client.paginate.iterator(client.checks.listSuitesForRef, params)) {
     const lookups = suites.map(({ id }) => loadCheckSuite(client, owner, repo, id));
-    let failure: { error: unknown } | undefined;
     for (let start = 0; start < lookups.length; start += CHECK_SUITE_CONCURRENCY) {
       const results = await Promise.all(lookups.slice(start, start + CHECK_SUITE_CONCURRENCY));
       for (const { pages } of results) yield* pages;
       failure ??= results.find((result) => result.failure)?.failure;
     }
-    if (failure) throw failure.error;
   }
+  if (failure) throw failure.error;
 }
 
 const CHECK_SUITE_CONCURRENCY = 4;
