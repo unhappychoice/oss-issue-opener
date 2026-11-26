@@ -156,6 +156,14 @@ const isMoreCurrentCheckRun = (candidate: CheckRun, current: CheckRun): boolean 
   return !Number.isNaN(candidateStarted) && !Number.isNaN(currentStarted) && candidateStarted > currentStarted;
 };
 
+// Same name and suite doesn't mean same job: GitHub lets integrations run several same-named
+// check runs per suite (e.g. a matrix build), distinguished by their own external_id. Only treat
+// one as superseding the other when there's no such evidence that they're independent jobs.
+const isSameCheckIdentity = (a: CheckRun, b: CheckRun): boolean => {
+  if (a.external_id || b.external_id) return a.external_id === b.external_id;
+  return true;
+};
+
 export async function* getCheckRuns(
   owner: string,
   repo: string,
@@ -187,9 +195,10 @@ export async function* getCheckRuns(
   // deduping within a single page the way getCommitStatus does. A rerun can leave a stale check
   // run behind in the same check suite, so scope the dedup key to its check suite where known,
   // rather than merging unrelated check suites that happen to use the same job name. Drop a run
-  // only once another one for the same key is positively known to be newer (by id or start time);
-  // when neither side has that signal, keep both so the ambiguity still reaches checker.ts instead
-  // of silently picking one.
+  // only once another one for the same key is positively known to be newer (by id or start time)
+  // and known to be the same job (matching external_id, or neither side setting one); when either
+  // signal is missing, keep both so the ambiguity still reaches checker.ts instead of silently
+  // picking one.
   const currentRuns = new Map<string, CheckRun[]>();
   let pendingError: unknown;
   try {
@@ -201,8 +210,11 @@ export async function* getCheckRuns(
           currentRuns.set(key, [run]);
           continue;
         }
-        if (existing.some((other) => isMoreCurrentCheckRun(other, run))) continue;
-        currentRuns.set(key, [...existing.filter((other) => !isMoreCurrentCheckRun(run, other)), run]);
+        if (existing.some((other) => isSameCheckIdentity(other, run) && isMoreCurrentCheckRun(other, run))) continue;
+        currentRuns.set(key, [
+          ...existing.filter((other) => !(isSameCheckIdentity(run, other) && isMoreCurrentCheckRun(run, other))),
+          run,
+        ]);
       }
     }
   } catch (error) {
