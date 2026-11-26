@@ -114,20 +114,31 @@ const formatRecoveryMarker = (repo: string, checks: string[], limit = ISSUE_BODY
     ? marker : `\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`;
 };
 
+const SUMMARY_PREFIX = '- ... and ';
+const SUMMARY_SUFFIX = ' more';
+const summaryLine = (hidden: number): string => `${SUMMARY_PREFIX}${hidden}${SUMMARY_SUFFIX}`;
+const SUMMARY_LINE = new RegExp(`^${SUMMARY_PREFIX.replace(/\./g, '\\.')}(\\d+)${SUMMARY_SUFFIX}$`);
+
+// Shrinks a list of lines from the end into a growing "... and N more" summary of the trailing
+// bullet lines dropped, until the result fits the budget or a non-bullet line is reached.
+const fitBulletList = (lines: string[], available: number, alreadyHidden = 0): string => {
+  const render = (shown: number, hidden: number): string =>
+    hidden > 0 ? [...lines.slice(0, shown), summaryLine(hidden)].join('\n') : lines.slice(0, shown).join('\n');
+
+  let shown = lines.length;
+  let hidden = alreadyHidden;
+  let content = render(shown, hidden);
+  while (content.length > available && shown > 0 && lines[shown - 1].startsWith('- ')) {
+    shown -= 1;
+    hidden += 1;
+    content = render(shown, hidden);
+  }
+  return content;
+};
+
 const formatIssueBody = (intro: string, items: string[], links: string): string => {
   const available = ISSUE_BODY_LIMIT - intro.length - links.length;
-  const list = items.join('\n');
-  if (list.length <= available) return intro + list + links;
-
-  let shown = items.length;
-  let lengthWithSeparator = list.length + 1;
-  let summary: string;
-  do {
-    shown -= 1;
-    lengthWithSeparator -= items[shown].length + 1;
-    summary = `- ... and ${items.length - shown} more`;
-  } while (shown > 0 && lengthWithSeparator + summary.length > available);
-  return intro + [...items.slice(0, shown), summary].join('\n') + links;
+  return intro + fitBulletList(items, available) + links;
 };
 
 const escapeMarkdown = (s: string): string => s.replace(/[`[\]()]/g, '\\$&');
@@ -254,28 +265,14 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
   }
 };
 
-const SUMMARY_LINE = /^- \.\.\. and (\d+) more$/;
-
 // Shrinks an already-rendered check list from the end, growing its "... and N more" summary,
 // so a near-limit alert can still make room for a complete recovery marker on update.
 const reclaimItemsSpace = (visible: string, available: number): string => {
-  if (visible.length <= available) return visible;
-
   const lines = visible.split('\n');
-  let hidden = 0;
   const summary = lines.at(-1)?.match(SUMMARY_LINE);
-  if (summary) {
-    hidden = Number(summary[1]);
-    lines.pop();
-  }
-
-  let content = hidden > 0 ? [...lines, `- ... and ${hidden} more`].join('\n') : lines.join('\n');
-  while (content.length > available && lines.length > 0 && lines.at(-1)!.startsWith('- ')) {
-    lines.pop();
-    hidden += 1;
-    content = [...lines, `- ... and ${hidden} more`].join('\n');
-  }
-  return content;
+  const hidden = summary ? Number(summary[1]) : 0;
+  if (summary) lines.pop();
+  return fitBulletList(lines, available, hidden);
 };
 
 const recordSubsequentFailures = (number: number, issue: PendingIssue, author: string): Promise<boolean> =>
