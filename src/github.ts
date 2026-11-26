@@ -480,16 +480,16 @@ export const getAuthenticatedLogin = async (): Promise<string> => {
 
 export const completeIssue = async (
   owner: string, repo: string, issue_number: number, author: string, body: string,
-  isEligible: (issue: Awaited<ReturnType<Octokit['issues']['get']>>['data']) => boolean
+  isEligible: (issue: Awaited<ReturnType<Octokit['issues']['get']>>['data']) => boolean | Promise<boolean>
 ): Promise<boolean> => {
   const client = getOctokit();
   const params = { owner, repo, issue_number };
   const comments = await client.paginate(client.issues.listComments, { ...params, per_page: 100 });
   if (!comments.some((comment) => comment.user?.login === author && comment.body === body)) {
-    if (!isEligible((await client.issues.get(params)).data)) return false;
+    if (!(await isEligible((await client.issues.get(params)).data))) return false;
     await client.issues.createComment({ ...params, body });
   }
-  if (!isEligible((await client.issues.get(params)).data)) return false;
+  if (!(await isEligible((await client.issues.get(params)).data))) return false;
   await client.issues.update({ ...params, state: 'closed', state_reason: 'completed' });
   return true;
 };

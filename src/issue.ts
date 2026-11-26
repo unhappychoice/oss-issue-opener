@@ -1,4 +1,4 @@
-import { completeIssue, createIssue, getAuthenticatedLogin, listOpenIssueDetails, updateIssueBody } from './github.js';
+import { completeIssue, createIssue, getAuthenticatedLogin, getDefaultBranchHead, listOpenIssueDetails, updateIssueBody } from './github.js';
 import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
 import { ISSUE_REPO } from './types.js';
 import { normalizeRecoveryCheckKey, recoveryCheckKey } from './recovery-key.js';
@@ -70,10 +70,13 @@ export const closeRecoveredCIAlerts = async (
       const url = `https://github.com/${repo}/commit/${recovery.sha}`;
       const closed = await completeIssue(issueOwner, issueRepo, number, author,
         `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`,
-        (issue) => {
+        async (issue) => {
           const current = recordedChecks(issue, author);
-          return current?.repo === repo &&
-            current.checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)));
+          if (current?.repo !== repo || !current.checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)))) return false;
+
+          const [owner, name] = repo.split('/') as [string, string];
+          const head = await getDefaultBranchHead(owner, name);
+          return head.status === 'found' && head.head.sha === recovery.sha;
         });
       if (closed) console.log(`  [closed] ${alert.title} (#${number})`);
     } catch (cause) {
