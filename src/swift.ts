@@ -1,3 +1,5 @@
+import { blockCommentEnd } from './block-comments.js';
+
 export const swiftDependencies = (content: string): Set<string> =>
   packageIdentifiers(swiftTokens(content));
 
@@ -90,7 +92,6 @@ const stringFrame = (opening: number, start: number, hashes: string, quotes: str
 
 const swiftTokenReader = (content: string): ((index: number, previous: string | undefined) => string) => {
   const code = /\s+|\/\/[^\r\n]*|\/\*|(#+)(?:("""|")|(\/))?|("""|")|[A-Za-z_]\w*|[^\s]/gy;
-  const comment = /\/\*|\*\/|[^*/]+|[*/]/gy;
   const multilineRegexStart = /[ \t]*[\r\n]/y;
   const bareRegexPart = /\\[^\r\n]|[^\\\/()[\]\r\n]+|[()[\]\/]/y;
 
@@ -101,7 +102,7 @@ const swiftTokenReader = (content: string): ((index: number, previous: string | 
     code.lastIndex = index;
     const [token, hashes, extendedQuotes, regexSlash, plainQuotes] = code.exec(content)!;
     const start = code.lastIndex;
-    if (token === '/*') return content.slice(index, blockCommentEnd(start));
+    if (token === '/*') return content.slice(index, blockCommentEnd(content, start));
     if (regexSlash !== undefined) return content.slice(index, regexEnd(start, hashes.length));
     if (token === '/') return content.slice(index, bareRegexEnd(start, previous));
     const quotes = extendedQuotes ?? plainQuotes;
@@ -139,16 +140,6 @@ const swiftTokenReader = (content: string): ((index: number, previous: string | 
     return newline ?? start;
   };
 
-  const blockCommentEnd = (start: number): number => {
-    comment.lastIndex = start;
-    let depth = 1;
-    for (let match = comment.exec(content); match; match = comment.exec(content)) {
-      if (match[0] === '/*') depth++;
-      if (match[0] === '*/' && --depth === 0) return comment.lastIndex;
-    }
-    return content.length;
-  };
-
   const stringEnd = (opening: StringFrame): number | undefined => {
     const stack: (StringFrame | InterpolationFrame)[] = [opening];
     let index = opening.start;
@@ -166,7 +157,7 @@ const swiftTokenReader = (content: string): ((index: number, previous: string | 
         code.lastIndex = tokenStart;
         const [token, hashes, extendedQuotes, regexSlash, plainQuotes] = code.exec(content)!;
         index = code.lastIndex;
-        if (token === '/*') index = blockCommentEnd(index);
+        if (token === '/*') index = blockCommentEnd(content, index);
         if (regexSlash !== undefined) index = regexEnd(index, hashes.length);
         if (token === '/') index = bareRegexEnd(index, frame.previous);
         if (!/^\s|^\/\/|^\/\*/.test(token)) frame.previous = token;
