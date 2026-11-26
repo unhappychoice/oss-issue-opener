@@ -142,7 +142,8 @@ const formatCodeSpan = (text: string): string => {
 const parseHttpUrl = (url: string): string | null => {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return /[`[\]()]/.test(parsed.href) ? null : parsed.href;
   } catch {
     return null;
   }

@@ -60,6 +60,16 @@ test('escapes Markdown-significant check names and rejects non-http(s) URLs', ()
   assert.ok(!maliciousIssue.body.includes('[Click here](https://evil.example'));
 });
 
+test('rejects check URLs that smuggle a second Markdown link without using spaces', () => {
+  const maliciousIssue = buildCIFailureIssue('owner/repo', [
+    { name: 'build', url: 'https://good.example/)[ClickHere](https://evil.example/' },
+  ]);
+
+  assert.ok(!maliciousIssue.body.includes(']('), 'should not contain any Markdown link syntax');
+  assert.ok(!maliciousIssue.body.includes('https://evil.example'));
+  assert.ok(maliciousIssue.body.includes('- build'));
+});
+
 test('escapes Markdown-significant characters in changed filenames', () => {
   const malicious = 'src/x`](https://evil.example/malware)';
   const maliciousIssue = buildPendingReleaseIssue('owner/repo', [malicious], [], 'https://good.example/compare');
