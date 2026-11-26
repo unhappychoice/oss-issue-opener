@@ -164,6 +164,38 @@ test('drops a stale failed check run once a same-named rerun has succeeded', asy
   assert.deepEqual(await checkCIStatus('owner', 'repo'), { status: 'success', failedChecks: [] });
 });
 
+test('keeps a failed check run alongside a same-named sibling with a different external_id', async (t) => {
+  initOctokit('test-token');
+  const octokit = getOctokit();
+  t.mock.method(octokit.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha: 'head-tree' } } } } }));
+  t.mock.method(octokit.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+  t.mock.method(octokit.repos, 'listCommitStatusesForRef', async () => ({ data: [] }));
+  t.mock.method(octokit.checks, 'listSuitesForRef', async () => ({ data: { total_count: 1 } }));
+  octokit.hook.wrap('request', async (_request, options) => ({
+    status: 200,
+    url: options.url,
+    headers: {},
+    data: {
+      total_count: 2,
+      check_runs: [
+        {
+          id: 41, name: 'build', status: 'completed', conclusion: 'failure', external_id: 'linux',
+          html_url: 'https://github.com/owner/repo/actions/runs/41', check_suite: { id: 7 },
+        },
+        {
+          id: 42, name: 'build', status: 'completed', conclusion: 'success', external_id: 'macos',
+          html_url: 'https://github.com/owner/repo/actions/runs/42', check_suite: { id: 7 },
+        },
+      ],
+    },
+  }));
+
+  assert.deepEqual(await checkCIStatus('owner', 'repo'), {
+    status: 'failure',
+    failedChecks: [{ name: 'build', url: 'https://github.com/owner/repo/actions/runs/41', source: 'check' }],
+  });
+});
+
 [
   ['reports a failed check on the oldest of 1,001 check suites', false],
   ['preserves an earlier failed check when a later page in its suite fails', true],
