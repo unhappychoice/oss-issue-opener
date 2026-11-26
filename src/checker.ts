@@ -1,9 +1,10 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getCommitStatus, getCheckRuns, listWorkflowIds, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommit } from './github.js';
+import { createNpmDependencyChangeChecker } from './npm-dependency-change.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
-import { recoveryCheckKey } from './types.js';
+import { recoveryCheckKey } from './recovery-key.js';
 import type { CheckIdentity, CIStatus, DependencyUpdate, FailedCheck, ProjectType, ReleaseStatus } from './types.js';
 
 // Share the lookup budget across repository scans, including paginated lookups.
@@ -46,8 +47,12 @@ export const checkCIStatus = async (
   return { status: 'success', failedChecks: [], recovery: { sha, passedChecks: collectPassedChecks(candidates, workflows) } };
 };
 
-const loadWorkflows = (owner: string, repo: string, sha: string, results: CIResult[]) =>
-  results.some(({ workflowSuiteId }) => workflowSuiteId !== undefined) ? listWorkflowIds(owner, repo, sha) : undefined;
+const loadWorkflows = (owner: string, repo: string, sha: string, results: CIResult[]) => {
+  const neededCheckSuiteIds = new Set(
+    results.flatMap(({ workflowSuiteId }) => workflowSuiteId === undefined ? [] : [workflowSuiteId])
+  );
+  return neededCheckSuiteIds.size > 0 ? listWorkflowIds(owner, repo, sha, neededCheckSuiteIds) : undefined;
+};
 
 const checkIdentity = ({ context, source, workflowSuiteId, publisherId }: CIResult, workflows?: Map<number, number>): CheckIdentity => {
   const workflowId = workflowSuiteId === undefined ? undefined : workflows?.get(workflowSuiteId);
@@ -145,7 +150,8 @@ export const checkPendingRelease = async (
   const changedDependencyTypes = getDependencyProjectTypes(files);
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
   const { dependencyUpdates, lookupErrors } = await findDependencyUpdates(
-    owner, repo, getCommitPages, dependencyTypes, headSha, getPinnedContents
+    owner, repo, getCommitPages, dependencyTypes, headSha, getPinnedContents,
+    createNpmDependencyChangeChecker(owner, repo, baseSha, headSha, files)
   );
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
@@ -164,7 +170,8 @@ const findDependencyUpdates = async (
   getCommitPages: () => AsyncIterable<ComparedCommit[]>,
   types: ProjectType[],
   headSha: string,
-  getContents: GetContents
+  getContents: GetContents,
+  hasNpmChange: ReturnType<typeof createNpmDependencyChangeChecker>
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
   const checkers = types.map((type) => ({
@@ -172,57 +179,73 @@ const findDependencyUpdates = async (
     check: createDependencyChecker(owner, repo, type, getContents, headSha),
   }));
   const checkBump = async (sha: string, bump: DependencyUpdate) => {
-    const results = await Promise.allSettled(checkers.map(async ({ type, check }) =>
+    const checkResults = await Promise.allSettled(checkers.map(async ({ type, check }) =>
       await check(bump.pkg) ? [type] : []
     ));
-    const productionTypes = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
-    const productionErrors = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
+    const productionTypes = checkResults.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+    const productionErrors = checkResults.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []);
     try {
-      const eligible = productionTypes.length > 0 && await isEligibleBump(owner, repo, sha, productionTypes);
-      return { updates: eligible ? [bump] : [], productionErrors, fileErrors: [] };
+      const attribution = productionTypes.length > 0
+        ? await attributeBump(owner, repo, sha, productionTypes)
+        : undefined;
+      const { changed, errors } = attribution?.type === 'node'
+        ? await hasNpmChange(bump, attribution.paths)
+        : { changed: attribution !== undefined, errors: [] };
+      return { updates: changed ? [bump] : [], productionErrors, fileErrors: errors };
     } catch (error) {
       return { updates: [], productionErrors, fileErrors: [error] };
     }
   };
 
-  const pending: ReturnType<typeof checkBump>[] = [];
-  const dependencyUpdates: DependencyUpdate[] = [];
-  const productionErrors = new Set<unknown>();
-  const fileErrors: unknown[] = [];
+  const results: Awaited<ReturnType<typeof checkBump>>[] = [];
+  const active = new Map<number, Promise<void>>();
+  let nextIndex = 0;
   const lookupErrors: unknown[] = [];
-  const drain = async () => {
-    for (const result of await Promise.all(pending.splice(0))) {
-      dependencyUpdates.push(...result.updates);
-      result.productionErrors.forEach((error) => productionErrors.add(error));
-      fileErrors.push(...result.fileErrors);
-    }
+  const schedule = (sha: string, bump: DependencyUpdate) => {
+    const index = nextIndex++;
+    const task = checkBump(sha, bump).then((result) => { results[index] = result; });
+    active.set(index, task);
+    task.finally(() => active.delete(index));
   };
+
   try {
     for await (const page of getCommitPages()) {
       for (const { sha, message } of page) {
         const bump = parseBumpCommit(message);
         if (!bump) continue;
-        if (pending.length === commitFileLookupCapacity) await drain();
-        pending.push(checkBump(sha, bump));
+        if (active.size >= commitFileLookupCapacity) await Promise.race(active.values());
+        schedule(sha, bump);
       }
     }
   } catch (error) {
     lookupErrors.push(error);
   }
-  await drain();
+  await Promise.all(active.values());
+
+  const dependencyUpdates: DependencyUpdate[] = [];
+  const productionErrors = new Set<unknown>();
+  const fileErrors: unknown[] = [];
+  for (const result of results) {
+    dependencyUpdates.push(...result.updates);
+    result.productionErrors.forEach((error) => productionErrors.add(error));
+    fileErrors.push(...result.fileErrors);
+  }
   return { dependencyUpdates, lookupErrors: [...lookupErrors, ...productionErrors, ...fileErrors] };
 };
 
-const isEligibleBump = async (
+const attributeBump = async (
   owner: string, repo: string, sha: string, productionTypes: ProjectType[]
-): Promise<boolean> => limitCommitFileLookup(async () => {
+): Promise<{ type: ProjectType; paths: string[] } | undefined> => limitCommitFileLookup(async () => {
+  const bumpPaths: string[] = [];
   const affected = new Set<ProjectType>();
   for await (const paths of getCommitFilePages(owner, repo, sha)) {
+    paths.forEach((path) => bumpPaths.push(path));
     for (const type of getDependencyProjectTypes(paths)) {
-      if (!productionTypes.includes(type)) return false;
+      if (!productionTypes.includes(type)) return undefined;
       affected.add(type);
-      if (affected.size > 1) return false;
+      if (affected.size > 1) return undefined;
     }
   }
-  return affected.size === 1;
+  const [type] = affected;
+  return type === undefined ? undefined : { type, paths: bumpPaths };
 });

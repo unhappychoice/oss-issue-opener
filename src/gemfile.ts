@@ -6,24 +6,34 @@ export const isProductionGem = (content: string, pkg: string): boolean =>
 
 export const productionGemNames = (content: string): ReadonlySet<string> => {
   const names = new Set<string>();
-  const blocks: boolean[] = [];
-  let excludedScopes = 0;
+  const blocks: string[][] = [];
   gemfileStatements(content).forEach((tokens) => {
-    if (tokens[0] === 'end' && blocks.pop()) excludedScopes--;
-    const excluded = excludedScopes > 0;
-    if (tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
+    if (tokens[0] === 'end') blocks.pop();
+    if (opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
       /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
-      const excludesGroup = tokens[0] === 'group' && hasExcludedGroup(tokens.slice(1));
-      blocks.push(excludesGroup);
-      if (excludesGroup) excludedScopes++;
+      blocks.push(tokens[0] === 'group' ? groupTokens(tokens.slice(1)) : []);
     }
-    if (tokens[0] !== 'gem' || excluded) return;
+    if (tokens[0] !== 'gem') return;
     const nameIndex = tokens[1] === '(' ? 2 : 1;
     const name = rubyDependencyName(tokens[nameIndex]);
-    if (name !== undefined && !hasInlineExcludedGroup(tokens.slice(nameIndex + 1))) names.add(name);
+    if (name === undefined) return;
+    const memberships = [...blocks.flat(), ...inlineGroupTokens(tokens.slice(nameIndex + 1))];
+    if (memberships.length === 0 || memberships.some((token) => !isExcludedGroup(token))) names.add(name);
   });
   return names;
 };
+
+const opensNamespace = (tokens: string[]): boolean => {
+  if (isNamespaceKeyword(tokens[0])) return true;
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return depth === 0 && token === '=' && isNamespaceKeyword(tokens[index + 1]);
+  });
+};
+
+const isNamespaceKeyword = (token?: string): boolean => token === 'class' || token === 'module';
 
 const isEndlessMethod = (tokens: string[]): boolean => {
   let depth = 0;
@@ -35,21 +45,23 @@ const isEndlessMethod = (tokens: string[]): boolean => {
   });
 };
 
-const hasExcludedGroup = (tokens: string[]): boolean => {
-  const groups = tokens.filter((token) => /^:\w+$|^['"]/.test(token));
-  return groups.length > 0 && groups.every((token) =>
-    /^(?::development|:test|['"]development['"]|['"]test['"])$/.test(token));
-};
+const isExcludedGroup = (token: string): boolean =>
+  /^(?::development|:test|['"]development['"]|['"]test['"])$/.test(token);
 
-const hasInlineExcludedGroup = (tokens: string[]): boolean => tokens.some((token, index) => {
-  const label = /^(groups?|['"]groups?['"])$/.test(token) && tokens[index + 1] === ':';
-  const hashKey = /^:groups?$/.test(token) && tokens[index + 1] === '=>';
-  if (!label && !hashKey) return false;
+const groupTokens = (tokens: string[]): string[] => tokens.filter((token) => /^:\w+$|^['"]/.test(token));
+
+const inlineGroupTokens = (tokens: string[]): string[] => {
+  const index = tokens.findIndex((token, i) => {
+    const label = /^(groups?|['"]groups?['"])$/.test(token) && tokens[i + 1] === ':';
+    const hashKey = /^:groups?$/.test(token) && tokens[i + 1] === '=>';
+    return label || hashKey;
+  });
+  if (index === -1) return [];
   const values = tokens.slice(index + 2);
-  if (values[0] === '[') return hasExcludedGroup(values.slice(1, values.indexOf(']')));
+  if (values[0] === '[') return groupTokens(values.slice(1, values.indexOf(']')));
   const valueLength = values[0] === ':' ? 2 : 1;
-  return hasExcludedGroup(values.slice(0, valueLength));
-});
+  return groupTokens(values.slice(0, valueLength));
+};
 
 const gemfileStatements = (content: string): string[][] => {
   const tokens = gemfileTokens(content);

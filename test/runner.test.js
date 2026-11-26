@@ -4,7 +4,7 @@ import { runChecks } from '../dist/runner.js';
 import { checkCIStatus, checkPendingRelease } from '../dist/checker.js';
 import { getOctokit, listOrgRepos } from '../dist/github.js';
 import { detectProjectTypes } from '../dist/project-type.js';
-import { commitSha, initMockOctokit, mockCommitFiles } from './helpers/github.mjs';
+import { commitSha, initMockOctokit, mockCommitFiles, npmLockResponse } from './helpers/github.mjs';
 
 beforeEach(() => {
   mock.method(console, 'log', () => {});
@@ -353,6 +353,7 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
       commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0 to 1.1' } }],
     } }));
     const content = mock.method(repos, 'getContent', async ({ path, ref }) => {
+      if (path === 'package-lock.json') return npmLockResponse(ref, 'v1', { runtime: '1.0' }, { runtime: '1.1' });
       assert.equal(ref, headSha('repo'));
       if (path === '') return { data: entries };
       assert.equal(path, 'package.json');
@@ -400,7 +401,7 @@ for (const outcome of ['complete', 'request failed', 'truncated', 'incomplete en
     assert.deepEqual(tree.mock.calls.map(({ arguments: [params] }) => params),
       [{ owner: 'owner', repo: 'repo', tree_sha: 'head-tree' }]);
     assert.deepEqual(content.mock.calls.map(({ arguments: [{ path }] }) => path),
-      outcome === 'complete' ? ['', 'package.json'] : ['']);
+      outcome === 'complete' ? ['', 'package.json', 'package-lock.json', 'package-lock.json'] : ['']);
   });
 }
 
@@ -638,6 +639,7 @@ for (const reason of ['source change', 'production bump', 'development bump', 'n
     });
     const manifest = { [hasProductionBump ? 'dependencies' : 'devDependencies']: { lodash: '4.17.21' } };
     const content = mock.method(repos, 'getContent', async ({ path, ref }) => {
+      if (path === 'package-lock.json') return npmLockResponse(ref, 'v1', { lodash: '4.17.20' }, { lodash: '4.17.21' });
       assert.equal(ref, headSha('repo'));
       return { data: path === '' ? [{ name: 'package.json' }] : JSON.stringify(manifest) };
     });
@@ -652,7 +654,7 @@ for (const reason of ['source change', 'production bump', 'development bump', 'n
 
     await expectFailures(deps, [['Failed owner/repo: release investigation', failure]]);
     assert.deepEqual(compare.mock.calls.map(({ arguments: [{ page }] }) => page), [1, 2]);
-    assert.deepEqual(content.mock.calls.map(({ arguments: [{ path }] }) => path), hasBump ? ['', 'package.json'] : ['']);
+    assert.deepEqual(content.mock.calls.map(({ arguments: [{ path }] }) => path), ['', ...(hasBump ? ['package.json'] : []), ...(hasProductionBump ? ['package-lock.json', 'package-lock.json'] : [])]);
     assert.deepEqual(commit.mock.calls.map(({ arguments: [{ ref }] }) => ref), [
       'refs/tags/v1', ...(hasProductionBump ? ['commit-0'] : []),
     ]);
@@ -685,10 +687,10 @@ test('submits confirmed release notifications before reporting incomplete bump f
       ...(repo === 'dependency' ? [{ sha: 'bump', commit: { message: 'Bump runtime from 1 to 2' } }] : []),
     ],
   } }));
-  mock.method(repos, 'getContent', async ({ path }) => ({ data: path === ''
-    ? [{ name: 'package.json' }]
-    : '{"dependencies":{"runtime":"2","unavailable":"2"}}',
-  }));
+  mock.method(repos, 'getContent', async ({ path, ref }) => {
+    if (path === 'package-lock.json') return npmLockResponse(ref, 'v1', { runtime: '1' }, { runtime: '2' });
+    return { data: path === '' ? [{ name: 'package.json' }] : '{"dependencies":{"runtime":"2","unavailable":"2"}}' };
+  });
   const repoNames = ['source', 'dependency', 'unconfirmed'];
   const { deps, batches } = setup({
     listOrgRepos: async function* (org) {
@@ -792,10 +794,12 @@ test('notifies about a production bump in a 1.5 MB manifest at the compared head
   const fetchManifest = mock.method(globalThis, 'fetch', async (url, { headers }) => {
     const { pathname, searchParams } = new URL(url);
     assert.equal(pathname, '/repos/owner/repo/contents/package.json');
-    assert.equal(searchParams.get('ref'), pinnedHead);
+    const ref = searchParams.get('ref');
+    assert.ok([pinnedHead, commitSha('refs/tags/v1')].includes(ref));
     assert.notEqual(branchHead, pinnedHead);
     assert.equal(headers.accept, 'application/vnd.github.raw+json');
-    return new Response(manifest, { headers: { 'content-type': 'application/json' } });
+    return new Response(ref === pinnedHead ? manifest : '{"dependencies":{"lodash":"4.17.20"}}',
+      { headers: { 'content-type': 'application/json' } });
   });
   const { deps, batches } = setup({
     listOrgRepos: async function* (org) {
@@ -811,10 +815,11 @@ test('notifies about a production bump in a 1.5 MB manifest at the compared head
   const issues = batches.flat();
   assert.deepEqual(issues.map(({ type }) => type), ['pending-release']);
   assert.match(issues[0].body, /lodash.*4\.17\.20.*4\.17\.21/);
-  assert.equal(fetchManifest.mock.callCount(), 1);
+  assert.equal(fetchManifest.mock.callCount(), 3);
   assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Types: node')));
   assert.deepEqual(content.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]), [
     ['', pinnedHead], ['package.json', pinnedHead],
+    ['package.json', commitSha('refs/tags/v1')], ['package.json', pinnedHead],
   ]);
 });
 
