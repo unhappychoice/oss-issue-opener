@@ -205,6 +205,16 @@ test('aggregates all creation failures after attempting every issue', async (t) 
   assert.equal(attempts.mock.callCount(), 2);
 });
 
+test('omits every recovery identity, not just the unidentifiable one, when a failed check has no identity', () => {
+  const repo = 'owner/repo';
+  const identifiedCheck = { name: 'build', source: 'check', workflowId: 1, url: '' };
+  const unidentifiedCheck = { name: 'unknown', source: 'check', url: '' };
+
+  const { body } = buildCIFailureIssue(repo, [identifiedCheck, unidentifiedCheck]);
+
+  assert.ok(body.endsWith(`<!-- oss-issue-opener:ci:v1 ${repo} -->`));
+});
+
 test('retains both recovered checks when a near-limit alert gains an identifiable failure', async (t) => {
   const repo = 'owner/repo';
 
