@@ -63,6 +63,54 @@ test('Gradle keeps constraint scope across nested blocks, strings, and comments'
   assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:before:1.0', 'org.example:after:1.0']);
 });
 
+test('Gradle excludes Kotlin DSL JVM test suite dependencies, including the built-in test suite', () => {
+  const content = `dependencies {
+    implementation("org.example:main:1.0")
+  }
+  testing {
+    suites {
+      named<JvmTestSuite>("test") {
+        dependencies {
+          implementation("org.example:test-helper:2")
+        }
+      }
+      val integrationTest by registering(JvmTestSuite::class) {
+        dependencies {
+          implementation("org.example:integration-helper:1")
+        }
+      }
+    }
+  }
+  dependencies {
+    api("org.example:core:1.0")
+  }`;
+  assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:main:1.0', 'org.example:core:1.0']);
+});
+
+test('Gradle excludes Groovy DSL JVM test suite dependencies, including the built-in test suite', () => {
+  const content = `dependencies {
+    implementation 'org.example:main:1.0'
+  }
+  testing {
+    suites {
+      test {
+        dependencies {
+          implementation 'org.example:test-helper:2'
+        }
+      }
+      integrationTest(JvmTestSuite) {
+        dependencies {
+          implementation 'org.example:integration-helper:1'
+        }
+      }
+    }
+  }
+  dependencies {
+    api 'org.example:core:1.0'
+  }`;
+  assert.deepEqual(parseGradleDependencies(content).coordinates, ['org.example:main:1.0', 'org.example:core:1.0']);
+});
+
 test('Gradle collects wrapped coordinates and aliases from the same script', () => {
   const content = `dependencies {
     api enforcedPlatform(group: 'org.example', name: 'bom')

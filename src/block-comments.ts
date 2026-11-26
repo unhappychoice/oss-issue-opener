@@ -16,3 +16,15 @@ export const scanBlockComments = (
     else if (depth > 0 && token === '*/') depth--;
   }
 };
+
+// Resumes scanning a block comment whose opening `/*` already consumed, returning the index
+// just past its matching `*/` (or content.length if it never closes).
+export const blockCommentEnd = (content: string, start: number): number => {
+  comment.lastIndex = start;
+  let depth = 1;
+  for (let match = comment.exec(content); match; match = comment.exec(content)) {
+    if (match[0] === '/*') depth++;
+    if (match[0] === '*/' && --depth === 0) return comment.lastIndex;
+  }
+  return content.length;
+};

@@ -37,19 +37,20 @@ const cases = [
   ['combined brace block', "group(:development, :test) { gem 'rake' }", false],
   ['multiline brace block', "group(:production) {\n  gem 'other'\n  gem 'rake'\n}", true],
   ['semicolon brace declarations', "group(:production) { gem 'other'; gem 'rake' }", true],
-  ['nested brace groups', "group(:test) { group(:production) { gem 'rake' } }", false],
+  ['nested brace groups', "group(:test) { group(:production) { gem 'rake' } }", true],
   ['brace source in excluded group', "group(:test) { source('https://rubygems.org') { gem 'rake' } }", false],
   ['brace inside excluded do block', "group :test do\n  source('https://rubygems.org') { gem 'other' }\n  gem 'rake'\nend", false],
   ['do inside excluded brace block', "group(:test) { source 'https://rubygems.org' do\n  gem 'other'\nend\ngem 'rake' }", false],
   ['after excluded brace block', "group(:test) { gem 'other' }; gem 'rake'", true],
-  ['inline exclusion in brace block', "group(:production) { gem 'rake', group: :test }", false],
-  ['hash options in brace block', "group(:production) { gem 'rake', { group: :test } }", false],
+  ['production inline in test brace block', "group(:test) { gem 'rake', group: :production }", true],
+  ['inline exclusion in brace block', "group(:production) { gem 'rake', group: :test }", true],
+  ['hash options in brace block', "group(:production) { gem 'rake', { group: :test } }", true],
   ['hash options before production declaration', "gem 'other', { group: :test }; gem 'rake'", true],
   ['brace characters in strings', "source('https://example.com/{gems}') { gem 'rake' }", true],
   ['similar group name', "group :development_tools do\n  gem 'rake'\nend", true],
-  ['production inline in test block', "group :test do\n  gem 'rake', group: :production\nend", false],
-  ['test inline in production block', "group :production do\n  gem 'rake', group: :test\nend", false],
-  ['nested groups', "group :test do\n  group :production do\n    gem 'rake'\n  end\nend", false],
+  ['production inline in test block', "group :test do\n  gem 'rake', group: :production\nend", true],
+  ['test inline in production block', "group :production do\n  gem 'rake', group: :test\nend", true],
+  ['nested groups', "group :test do\n  group :production do\n    gem 'rake'\n  end\nend", true],
   ['nested source', "group :test do\n  source 'https://example.com' do\n    gem 'other'\n  end\n  gem 'rake'\nend", false],
   ['nested conditional', "group :test do\n  if RUBY_ENGINE == 'ruby'\n    gem 'other'\n  end\n  gem 'rake'\nend", false],
   ['after excluded block', "group :test do\n  gem 'other'\nend\ngem 'rake'", true],
@@ -123,26 +124,28 @@ gem 'puma'`;
 test('tracks excluded and shared groups through deeply nested scopes', () => {
   const depth = 4_096;
   const names = productionGemNames([
-    'group :test, :production do\n'.repeat(depth),
+    'group :development do\n'.repeat(depth),
+    'group :test do\n'.repeat(depth),
+    "gem 'exclusively_test'",
+    'end\n'.repeat(depth),
+    'end\n'.repeat(depth),
+    'group :test do\n'.repeat(depth),
+    'group :production do\n'.repeat(depth),
     "gem 'shared'",
     'group :development do',
-    'group :production do\n'.repeat(depth),
-    'group :test do',
-    "gem 'inner_test'",
-    'end',
-    "gem 'after_test'",
-    'end\n'.repeat(depth),
-    "gem 'after_production'",
+    "gem 'shared_with_development'",
     'end',
     "gem 'after_development'",
+    'end\n'.repeat(depth),
+    "gem 'after_production'",
     'end\n'.repeat(depth),
     "gem 'ungrouped'",
   ].join('\n'));
 
-  for (const pkg of ['shared', 'after_development', 'ungrouped']) {
+  for (const pkg of ['shared', 'shared_with_development', 'after_development', 'ungrouped']) {
     assert.equal(names.has(pkg), true, pkg);
   }
-  for (const pkg of ['inner_test', 'after_test', 'after_production', 'missing']) {
+  for (const pkg of ['exclusively_test', 'after_production', 'missing']) {
     assert.equal(names.has(pkg), false, pkg);
   }
 });
@@ -223,5 +226,147 @@ gem 'rack'`;
       assert.equal(await isProductionDependency('owner', 'repo', 'rspec', 'ruby'), false);
       assert.equal(await isProductionDependency('owner', 'repo', 'rack', 'ruby'), true);
     });
+  });
+});
+
+const namespaceDefinitions = [
+  'class TestHelper\nend',
+  'module TestHelpers\n  class TestHelper < Object\n  end\nend',
+  'result = class TestHelper; end',
+  'result = module TestHelpers; end',
+  'result ||= class TestHelper\n  end',
+  'result &&= module TestHelpers; end',
+  'class <<self; end',
+  'class << self; end',
+  'result = class <<self; end',
+  'result ||= class <<self; end',
+  'class <<self\n=begin\nend\ngem "ignored"\n=end\nend',
+  'consume(result = class TestHelper; end)',
+];
+
+[':test', ':development', ':development, :test'].forEach((group) => {
+  namespaceDefinitions.forEach((definition) => {
+    test(`preserves ${group} scope across ${definition}`, () => {
+      const gemfile = `group ${group} do
+${definition}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+      assert.equal(isProductionGem(gemfile, 'rspec'), false);
+      assert.equal(isProductionGem(gemfile, 'rack'), true);
+      assert.equal(isProductionGem(gemfile, 'ignored'), false);
+    });
+  });
+});
+
+test('recognizes a heredoc argument after a method named class', () => {
+  const gemfile = "receiver.class <<TEXT\ngem 'rspec'\nTEXT\ngem 'rack'";
+  assert.equal(isProductionGem(gemfile, 'rspec'), false);
+  assert.equal(isProductionGem(gemfile, 'rack'), true);
+});
+
+['then', 'else', 'and', 'or'].forEach((method) => {
+  test(`treats a slash after receiver.${method} as division`, () => {
+    const gemfile = `group :test do
+  ratio = receiver.${method} / 2
+  gem 'rspec'
+end
+gem 'rack'
+ratio = 8 / 2`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false);
+    assert.equal(isProductionGem(gemfile, 'rack'), true);
+  });
+});
+
+test('keeps scope keywords inside regexps out of the group stack', () => {
+  const bodies = [
+    `if enabled then /prefix
+class TestHelper
+gem 'ignored'
+suffix/x
+end`,
+    `if enabled
+  true
+else /prefix
+class TestHelper
+gem 'ignored'
+suffix/x
+end`,
+    `if enabled
+  true
+else %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x
+end`,
+    `case mode
+when :test then %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x
+end`,
+    `predicate = not /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `predicate = not %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+    `return /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = flag && /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = flag || %r{prefix
+class TestHelper
+gem 'ignored'
+suffix}x`,
+    `flag and /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `flag and %r{prefix
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+    `flag or /prefix
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    'pattern = /#{ flag && /nested/.source }; end; gem "ignored"/x',
+    String.raw`pattern = /prefix\/
+class TestHelper
+gem 'ignored'
+suffix/x`,
+    `pattern = %r{prefix{nested}
+module TestHelpers
+gem 'ignored'
+suffix}x`,
+    'pattern = /#{ 8 / 2 }; end; gem "ignored"/x',
+    'pattern = /#{ "a/b" }; end; gem "ignored"/x',
+    'pattern = /#{ %q(}/) }; end; gem "ignored"/x',
+    'pattern = %r{#{ { path: "}" }[:path] }; end; gem "ignored"}x',
+    'pattern = /#{ "#{ /nested/.source }" }; end; gem "ignored"/x',
+    'pattern = /#{ ?/ }; end; gem "ignored"/x',
+    'pattern = flag ? /#{ "a/b" }; end; gem "ignored"/x : /fallback/',
+    'pattern = flag ?/prefix; end; gem "ignored"/x : /fallback/',
+  ];
+
+  bodies.forEach((body) => {
+    const gemfile = `group :test do
+  ${body}
+  gem 'rspec'
+end
+gem 'rack'`;
+
+    assert.equal(isProductionGem(gemfile, 'rspec'), false, body);
+    assert.equal(isProductionGem(gemfile, 'rack'), true, body);
+    assert.equal(isProductionGem(gemfile, 'ignored'), false, body);
   });
 });

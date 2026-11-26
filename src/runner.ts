@@ -1,4 +1,4 @@
-import { getDefaultBranchHead, listOrgRepos } from './github.js';
+import { getAuthenticatedLogin, getDefaultBranchHead, listOrgRepos } from './github.js';
 import { detectProjectTypes } from './project-type.js';
 import { checkCIStatus, checkPendingRelease } from './checker.js';
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
@@ -20,7 +20,10 @@ export const runChecks = async (
   const alerts = autoCloseCIAlerts
     ? await attempt('open CI alert lookup', failures, listCIAlerts, [])
     : [];
-  const alertRepositories = getCIAlertRepositories(alerts);
+  const author = alerts.length > 0
+    ? await attempt<string | undefined>('authenticated account lookup', failures, getAuthenticatedLogin, undefined)
+    : undefined;
+  const alertRepositories = author ? getCIAlertRepositories(alerts, author) : new Set<string>();
   let totalRepos = 0;
 
   for (const org of ORGS) {
@@ -45,8 +48,8 @@ export const runChecks = async (
     await attempt('issue batch creation', failures, () => deps.createIssuesInBatch(allIssues));
   }
 
-  if (alerts.length > 0 && recoveries.size > 0) {
-    await attempt('CI alert closure', failures, () => closeRecoveredCIAlerts(alerts, recoveries));
+  if (author && recoveries.size > 0) {
+    await attempt('CI alert closure', failures, () => closeRecoveredCIAlerts(alerts, recoveries, author));
   }
 
   const ciFailures = allIssues.filter((i) => i.type === 'ci-failure').length;

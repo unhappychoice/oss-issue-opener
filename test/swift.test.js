@@ -121,6 +121,59 @@ let label = ##"""
   assert.deepEqual(swiftDependencies(content), new Set(['actual']));
 });
 
+test('Swift skips package lookalikes in bare regexes at expression positions', () => {
+  const content = String.raw`
+let regex = /.package(name: "fake")/
+let escaped = first(/* leading comment */ /https:\/\/example.com\/.package(id: "escaped")/)
+func pattern() -> Regex<Substring> { return /[)].package(id: "returned")/ }
+let package = Package(dependencies: [.package(path: "../actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift skips package lookalikes in a bare regex at the start of an if condition', () => {
+  const content = `
+if /.package(name: "fake")/.wholeMatch(in: "") != nil {}
+let package = Package(dependencies: [.package(name: "actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift skips package lookalikes in a bare regex after a closure signature', () => {
+  const content = `
+let make = { () in /.package(name: "fake")/ }
+let package = Package(dependencies: [.package(name: "actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift keeps compact and spaced division before real package calls', () => {
+  const content = `
+let compact = 24/3/2; .package(name: "compact")
+let spaced = (24 / 3) / 2; .package(name: "spaced")
+let named = numerators[0]/denominator/2; .package(name: "named")
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['compact', 'spaced', 'named']));
+});
+
+test('Swift skips bare regexes inside string interpolation', () => {
+  const content = String.raw`
+let label = "\(/[)]" .package(id: "fake")/)"
+.package(name: "actual")
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift leaves operators and unterminated bare regex candidates in the token stream', () => {
+  const content = String.raw`
+let prefix = /value; .package(name: "same-line")
+let other = call(/value)/2; .package(name: "after-prefix")
+let unfinished = /unfinished\
+.package(name: "next-line")
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['same-line', 'after-prefix', 'next-line']));
+});
+
 test('Swift requires matching hash counts to close an extended regex', () => {
   const content = String.raw`
 let pattern = ##/
@@ -155,4 +208,35 @@ test('Swift stops an unterminated single-line extended regex at a line break', (
     ].join(newline);
     assert.deepEqual(swiftDependencies(content), new Set(['actual']));
   }
+});
+
+test('Swift hides package lookalikes in valid single-line and multiline extended regex literals', () => {
+  const content = String.raw`
+let single = #/.package(id: "single-ghost")/#
+let multi = ##/
+.package(id: "multi-ghost")
+/##
+let package = Package(dependencies: [.package(path: "../actual")])
+`;
+  assert.deepEqual(swiftDependencies(content), new Set(['actual']));
+});
+
+test('Swift bounds repeated scans for unmatched multiline extended regex openers', () => {
+  const buildContent = (count) =>
+    `${'let v = ##/\nunfinished body line\n'.repeat(count)}.package(id: "actual")\n`;
+  const time = (count) => {
+    const content = buildContent(count);
+    const start = process.hrtime.bigint();
+    const dependencies = swiftDependencies(content);
+    const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+    assert.deepEqual(dependencies, new Set(['actual']));
+    return elapsedMs;
+  };
+  time(500);
+  const small = time(1000);
+  const large = time(5000);
+  assert.ok(
+    large < small * 10 + 50,
+    `expected sub-quadratic scaling, got ${small}ms for 1000 openers and ${large}ms for 5000 openers`
+  );
 });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getOctokit, initOctokit } from '../dist/github.js';
 import { buildCIFailureIssue, buildPendingReleaseIssue, createIssuesInBatch } from '../dist/issue.js';
+import { recoveryCheckKey } from '../dist/recovery-key.js';
 
 const setup = (t, create, existing = []) => {
   initOctokit('test-token');
@@ -15,6 +16,38 @@ const setup = (t, create, existing = []) => {
 
 const issue = (repo) => buildCIFailureIssue(repo, []);
 
+const setupAlertUpdate = (t, alert, author = 'bot') => {
+  initOctokit('test-token');
+  const client = getOctokit();
+  const alerts = [{ ...alert, user: { login: author } }];
+  t.mock.method(client, 'paginate', async () => alerts);
+  t.mock.method(client.issues, 'get', async () => ({ data: alerts[0] }));
+  t.mock.method(client.issues, 'update', async ({ body }) => { alerts[0].body = body; });
+  t.mock.method(client.users, 'getAuthenticated', async () => ({ data: { login: author } }));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+  t.after(() => t.mock.restoreAll());
+  return alerts;
+};
+
+const setupAlertsUpdate = (t, initialAlerts, authenticatedAs = 'bot') => {
+  initOctokit('test-token');
+  const client = getOctokit();
+  const alerts = initialAlerts.map((alert) => ({ ...alert }));
+  t.mock.method(client, 'paginate', async () => alerts);
+  t.mock.method(client.issues, 'get', async ({ issue_number }) => ({ data: alerts.find(({ number }) => number === issue_number) }));
+  const updates = [];
+  t.mock.method(client.issues, 'update', async ({ issue_number, body }) => {
+    updates.push(issue_number);
+    alerts.find(({ number }) => number === issue_number).body = body;
+  });
+  t.mock.method(client.users, 'getAuthenticated', async () => ({ data: { login: authenticatedAs } }));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+  t.after(() => t.mock.restoreAll());
+  return { alerts, updates };
+};
+
 test('escapes Markdown-significant check names and rejects non-http(s) URLs', () => {
   const maliciousIssue = buildCIFailureIssue('owner/repo', [
     { name: 'build](https://evil.example/phish)[', url: 'https://good.example/actions' },
@@ -25,6 +58,16 @@ test('escapes Markdown-significant check names and rejects non-http(s) URLs', ()
   assert.ok(maliciousIssue.body.includes('- [build\\]\\(https://evil.example/phish\\)\\[](https://good.example/actions)'));
   assert.ok(maliciousIssue.body.includes('- \\`rm -rf\\`'));
   assert.ok(!maliciousIssue.body.includes('[Click here](https://evil.example'));
+});
+
+test('rejects check URLs that smuggle a second Markdown link without using spaces', () => {
+  const maliciousIssue = buildCIFailureIssue('owner/repo', [
+    { name: 'build', url: 'https://good.example/)[ClickHere](https://evil.example/' },
+  ]);
+
+  assert.ok(!maliciousIssue.body.includes(']('), 'should not contain any Markdown link syntax');
+  assert.ok(!maliciousIssue.body.includes('https://evil.example'));
+  assert.ok(maliciousIssue.body.includes('- build'));
 });
 
 test('escapes Markdown-significant characters in changed filenames', () => {
@@ -160,6 +203,160 @@ test('aggregates all creation failures after attempting every issue', async (t) 
     return true;
   });
   assert.equal(attempts.mock.callCount(), 2);
+});
+
+test('omits every recovery identity, not just the unidentifiable one, when a failed check has no identity', () => {
+  const repo = 'owner/repo';
+  const identifiedCheck = { name: 'build', source: 'check', workflowId: 1, url: '' };
+  const unidentifiedCheck = { name: 'unknown', source: 'check', url: '' };
+
+  const { body } = buildCIFailureIssue(repo, [identifiedCheck, unidentifiedCheck]);
+
+  assert.ok(body.endsWith(`<!-- oss-issue-opener:ci:v1 ${repo} -->`));
+});
+
+test('retains both recovered checks when a near-limit alert gains an identifiable failure', async (t) => {
+  const repo = 'owner/repo';
+
+  const firstCheck = { name: 'x', source: 'check', workflowId: 1, url: 'https://e/' };
+  const secondCheck = { name: 'y', source: 'status', publisherId: 2, url: '' };
+  const key1 = recoveryCheckKey(firstCheck);
+  const key2 = recoveryCheckKey(secondCheck);
+
+  // Pad the check's URL (not part of its recovery identity) so the alert body fills the
+  // 65,536-char issue limit while its recovery marker stays far below half that limit.
+  const baseline = buildCIFailureIssue(repo, [firstCheck]).body;
+  const extra = 65_536 - baseline.length;
+  const paddedCheck = { ...firstCheck, url: firstCheck.url + 'a'.repeat(extra) };
+  const initial = buildCIFailureIssue(repo, [paddedCheck]);
+  assert.equal(initial.body.length, 65_536);
+
+  const originalMarker = initial.body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
+  assert.equal(originalMarker[1], `${repo} ${key1}`);
+  assert.ok(originalMarker[0].length < 65_536 / 2);
+
+  const alerts = setupAlertUpdate(t, {
+    number: 1, title: initial.title, body: initial.body, labels: [{ name: 'ci-failure' }], state: 'open',
+  });
+
+  const nextIssue = buildCIFailureIssue(repo, [secondCheck]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.ok(alerts[0].body.length <= 65_536);
+  assert.match(alerts[0].body, /- \.\.\. and 1 more/);
+  const updatedMarker = alerts[0].body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
+  const [updatedRepo, ...keys] = updatedMarker[1].split(' ');
+  assert.equal(updatedRepo, repo);
+  assert.deepEqual(new Set(keys), new Set([key1, key2]));
+});
+
+test('falls back to a bare marker and requires manual closure when the merged checks exceed the recovery budget', async (t) => {
+  const repo = 'owner/repo';
+
+  // Each identity fits the recovery metadata budget on its own, but their union does not.
+  const recordedCheck = { name: 'a'.repeat(20_000), source: 'check', workflowId: 1, url: '' };
+  const incomingCheck = { name: 'b'.repeat(20_000), source: 'check', workflowId: 2, url: '' };
+
+  const initial = buildCIFailureIssue(repo, [recordedCheck]);
+  const originalMarker = initial.body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
+  assert.ok(originalMarker[0].length < 65_536 / 2);
+
+  const alerts = setupAlertUpdate(t, {
+    number: 1, title: initial.title, body: initial.body, labels: [{ name: 'ci-failure' }], state: 'open',
+  });
+
+  const nextIssue = buildCIFailureIssue(repo, [incomingCheck]);
+  const incomingMarker = nextIssue.body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
+  assert.ok(incomingMarker[0].length < 65_536 / 2);
+
+  await createIssuesInBatch([nextIssue]);
+
+  assert.ok(alerts[0].body.length <= 65_536);
+  assert.match(alerts[0].body, /<!-- oss-issue-opener:ci:v1 owner\/repo -->$/);
+});
+
+test('extends an already-truncated check list further when more recovery metadata space is needed', async (t) => {
+  const repo = 'owner/repo';
+
+  const key1 = recoveryCheckKey({ name: 'c0', source: 'check', workflowId: 1 });
+  const key2 = recoveryCheckKey({ name: 'c1', source: 'check', workflowId: 2 });
+  const key3 = recoveryCheckKey({ name: 'c2', source: 'check', workflowId: 3 });
+  const links = `\n\n**Repository**: https://github.com/${repo}\n**Actions**: https://github.com/${repo}/actions`;
+  const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
+  const marker2 = `\n\n<!-- oss-issue-opener:ci:v1 ${repo} ${key1} ${key2} -->`;
+  const existingSummary = '- ... and 1 more';
+
+  // Pad a check list that is already truncated (one check hidden behind a summary line) so the
+  // alert body fills the issue limit, then force a second reclaim when a third check is merged.
+  const fixedLength = intro.length + 1 + existingSummary.length + links.length + marker2.length;
+  const bigBulletLine = `- ${'a'.repeat(65_536 - fixedLength - 2)}`;
+  const visibleInput = `${intro}${bigBulletLine}\n${existingSummary}`;
+  const initialBody = `${visibleInput}${links}${marker2}`;
+  assert.equal(initialBody.length, 65_536);
+
+  const alerts = setupAlertUpdate(t, {
+    number: 1, title: `[CI Failure] ${repo}`, body: initialBody, labels: [{ name: 'ci-failure' }], state: 'open',
+  });
+
+  const nextIssue = buildCIFailureIssue(repo, [{ name: 'c2', source: 'check', workflowId: 3, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.ok(alerts[0].body.length <= 65_536);
+  assert.match(alerts[0].body, /- \.\.\. and 2 more/);
+  const updatedMarker = alerts[0].body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
+  const [updatedRepo, ...keys] = updatedMarker[1].split(' ');
+  assert.equal(updatedRepo, repo);
+  assert.deepEqual(new Set(keys), new Set([key1, key2, key3]));
+});
+
+test('updates only the recovery candidate for the notification repository, leaving other repos untouched', async (t) => {
+  const repoA = 'owner/a';
+  const repoB = 'owner/b';
+  const alertA = buildCIFailureIssue(repoA, [{ name: 'build', source: 'check', workflowId: 1, url: '' }]);
+  const alertB = buildCIFailureIssue(repoB, [{ name: 'lint', source: 'status', publisherId: 2, url: '' }]);
+
+  const { alerts, updates } = setupAlertsUpdate(t, [
+    { number: 1, title: alertA.title, body: alertA.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'bot' } },
+    { number: 2, title: alertB.title, body: alertB.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'bot' } },
+  ]);
+
+  const nextIssue = buildCIFailureIssue(repoB, [{ name: 'typecheck', source: 'check', workflowId: 3, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.deepEqual(updates, [2]);
+  assert.equal(alerts[0].body, alertA.body);
+  assert.notEqual(alerts[1].body, alertB.body);
+});
+
+test('matches a renamed alert through its recovery marker when the title no longer matches', async (t) => {
+  const repo = 'owner/repo';
+  const initial = buildCIFailureIssue(repo, [{ name: 'build', source: 'check', workflowId: 1, url: '' }]);
+
+  const { alerts, updates } = setupAlertsUpdate(t, [
+    { number: 1, title: 'Investigate flaky build', body: initial.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'bot' } },
+  ]);
+
+  const nextIssue = buildCIFailureIssue(repo, [{ name: 'lint', source: 'status', publisherId: 2, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.deepEqual(updates, [1]);
+  assert.notEqual(alerts[0].body, initial.body);
+});
+
+test('creates a new alert when the matching recovery candidate was authored by someone else', async (t) => {
+  const repo = 'owner/repo';
+  const initial = buildCIFailureIssue(repo, [{ name: 'build', source: 'check', workflowId: 1, url: '' }]);
+
+  const { updates } = setupAlertsUpdate(t, [
+    { number: 1, title: 'Investigate flaky build', body: initial.body, labels: [{ name: 'ci-failure' }], state: 'open', user: { login: 'someone-else' } },
+  ]);
+  const create = t.mock.method(getOctokit().issues, 'create', async () => ({ data: { number: 2, labels: [{ name: 'ci-failure' }] } }));
+
+  const nextIssue = buildCIFailureIssue(repo, [{ name: 'lint', source: 'status', publisherId: 2, url: '' }]);
+  await createIssuesInBatch([nextIssue]);
+
+  assert.deepEqual(updates, []);
+  assert.equal(create.mock.callCount(), 1);
 });
 
 test('resolves when creation succeeds and skips existing issues', async (t) => {

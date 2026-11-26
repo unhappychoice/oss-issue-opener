@@ -16,12 +16,6 @@ export interface CheckIdentity {
   publisherId?: number;
 }
 
-export const recoveryCheckKey = ({ name, source, workflowId, publisherId }: CheckIdentity): string | undefined => {
-  const id = source === 'check' ? workflowId : publisherId;
-  if (id === undefined || !Number.isSafeInteger(id) || id <= 0) return undefined;
-  return Buffer.from(JSON.stringify([source, name, id])).toString('base64url');
-};
-
 export interface FailedCheck extends CheckIdentity {
   url: string;
 }
@@ -40,13 +34,6 @@ export interface PendingIssue {
   repo: string;
   title: string;
   body: string;
-}
-
-export interface CheckResult {
-  repo: string;
-  projectType: ProjectType;
-  ciStatus: CIStatus;
-  releaseStatus: ReleaseStatus;
 }
 
 export interface DependencyUpdate {

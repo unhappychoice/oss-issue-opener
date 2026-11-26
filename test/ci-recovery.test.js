@@ -39,6 +39,7 @@ const passedLint = { context: 'lint', state: 'success', creator: { login: 'ci-bo
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
   persistIssues = false, workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
+  getHead = () => sha,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -54,7 +55,10 @@ const setup = (t, {
     return { data: { login } };
   });
   t.mock.method(client.repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  t.mock.method(client.repos, 'getBranch', async () => ({ data: { commit: { sha, commit: { tree: { sha } } } } }));
+  t.mock.method(client.repos, 'getBranch', async () => {
+    const head = getHead(comments.length);
+    return { data: { commit: { sha: head, commit: { tree: { sha } } } } };
+  });
   t.mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: statuses }));
   const workflowRuns = t.mock.method(client.actions, 'listWorkflowRunsForRepo', async (params) => {
     assert.deepEqual(params, { owner: 'owner', repo: 'project', head_sha: sha, per_page: 100, page: 1 });
@@ -140,6 +144,28 @@ test('closes only a matching open alert and records the checked commit once', as
     ['close', { ...issue, state: 'closed', state_reason: 'completed' }],
     'list',
   ]);
+});
+
+[
+  ['the head advances before the recovery comment', 0, () => 'b'.repeat(40), false],
+  ['the head advances after the recovery comment', 1, () => 'b'.repeat(40), false],
+  ['the head is missing before the recovery comment', 0, () => { throw Object.assign(new Error('Not found'), { status: 404 }); }, false],
+  ['the head lookup fails after the recovery comment', 1, () => { throw new Error('Branch lookup unavailable'); }, true],
+].forEach(([scenario, afterComments, changedHead, lookupFails]) => {
+  test(`leaves the alert open when ${scenario}`, async (t) => {
+    let recoveryDetected = false;
+    const { run, events } = setup(t, {
+      currentAlert: (issue) => {
+        recoveryDetected = true;
+        return issue;
+      },
+      getHead: (comments) => recoveryDetected && comments >= afterComments ? changedHead() : sha,
+    });
+    if (lookupFails) await assert.rejects(run(true), /Failed 1 maintenance operations/);
+    else await run(true);
+    assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+      afterComments ? ['list', 'comment'] : ['list']);
+  });
 });
 
 [
@@ -235,6 +261,32 @@ test('leaves context-only alerts and failures without a valid publisher open', a
   assert.match(recordedAlert.body, /- lint/);
 
   statuses[0] = passedLint;
+  await run(true);
+  assert.deepEqual(events, ['list']);
+});
+
+test('closes an alert recorded with a legacy mixed-case status context when the publisher succeeds', async (t) => {
+  const legacyKey = Buffer.from(JSON.stringify(['status', 'CI/Lint', 42])).toString('base64url');
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} ${legacyKey} -->` };
+  const statuses = [{ context: 'ci/lint', state: 'success', creator: { login: 'ci-bot', id: 42 } }];
+  const { run, events } = setup(t, { alerts: [legacy], statuses });
+  await run(true);
+  assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+    ['list', 'comment', 'close']);
+});
+
+test('leaves a legacy mixed-case alert open when a different publisher succeeds', async (t) => {
+  const legacyKey = Buffer.from(JSON.stringify(['status', 'CI/Lint', 42])).toString('base64url');
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} ${legacyKey} -->` };
+  const statuses = [{ context: 'ci/lint', state: 'success', creator: { login: 'other-bot', id: 43 } }];
+  const { run, events } = setup(t, { alerts: [legacy], statuses });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+});
+
+test('tolerates an unparsable recorded check key without closing the alert', async (t) => {
+  const legacy = { ...alert, body: `<!-- oss-issue-opener:ci:v1 ${repo} not-a-valid-key -->` };
+  const { run, events } = setup(t, { alerts: [legacy] });
   await run(true);
   assert.deepEqual(events, ['list']);
 });
@@ -350,6 +402,15 @@ test('skips workflow lookup for Codecov-only pages even when the repository has 
 test('skips workflow lookup when the only alert is for another repository', async (t) => {
   const { run, events, workflowRuns } = setup(t, {
     alerts: [{ ...alert, body: buildCIFailureIssue('owner/another', checks).body }],
+  });
+  await run(true);
+  assert.deepEqual(events, ['list']);
+  assert.equal(workflowRuns.mock.callCount(), 0);
+});
+
+test('skips recovery workflow lookup and leaves the issue untouched when the only alert belongs to another author', async (t) => {
+  const { run, events, workflowRuns } = setup(t, {
+    alerts: [{ ...alert, user: { login: 'other-author' } }],
   });
   await run(true);
   assert.deepEqual(events, ['list']);

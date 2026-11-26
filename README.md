@@ -17,7 +17,7 @@ Weekly automated issue opener for OSS maintenance tasks.
 | Ruby | `*.gemspec`, `Gemfile` | Gemspec `add_dependency` or `add_runtime_dependency`. If the gem is absent from the runtime dependencies in the root gemspecs, the scanner checks `gem` declarations in the root `Gemfile`, excluding declarations scoped exclusively to `:development`, `:test`, or both. For example, ungrouped `gem 'rack'` can qualify a `Gemfile.lock`-only bump for a pending-release notification, while `gem 'rack', group: :test` is excluded. |
 | Node/TypeScript | `package.json` | `dependencies` |
 | Rust | `Cargo.toml` | Global and target-specific `dependencies`, including individual tables |
-| Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` |
+| Kotlin/Java | `build.gradle(.kts)` | `implementation`, `api` declared for the main project. Declarations inside a JVM test suite's `testing { suites { ... } }` block, including the built-in `test` suite, are excluded even though they also use `implementation`. |
 | Go | `go.mod` | `require` |
 | Swift | `Package.swift` | `.package()` |
 
@@ -128,7 +128,14 @@ lookup error and exits with a nonzero status after processing the batch.
    `devDependencies` is skipped after reading `package.json`, without a commit-file
    request. For a surviving bump to count as an update, its changed manifest or lockfile
    paths must identify exactly one ecosystem, and that ecosystem must have a production
-   match for the package. If a commit page omits its file list or the lookup reaches the
+   match for the package. For npm bumps, the scanner compares the package's declared
+   range in `package.json` or resolved version in `package-lock.json` or
+   `npm-shrinkwrap.json` at the release baseline and comparison head, using the
+   files changed by both the bump commit and the release comparison. The head value
+   must differ from the baseline and match the bump's target version. In
+   `package.json`, a declaration with a leading `^` or `~` can also match the
+   target without that prefix. If a commit page
+   omits its file list or the lookup reaches the
    3,000-file limit, the scanner records a lookup failure and still reports any
    confirmed release changes
 5. Creates an issue if source files changed or production dependencies were updated, including both reasons when applicable
@@ -139,6 +146,10 @@ Source changes alone qualify: for example, a change to `src/index.ts` with the c
 Comparisons returning 300 files may omit additional changes. In that case, the scanner compares
 Git trees at the merge base and comparison head, skipping subtrees with matching SHAs.
 Tree retrieval failures and incomplete tree responses fail the release investigation.
+The walk also caps the number of expanded tree entries at 50,000 and the number of retained
+changed paths at 10,000 per comparison, since a shared subtree reached under multiple directory
+names can expand far beyond the trees actually downloaded; exceeding either cap fails the release
+investigation the same way.
 
 CI and release investigations run concurrently and independently for each repository. Investigation failures are
 logged with their target and cause, and scanning continues with the remaining repositories.
