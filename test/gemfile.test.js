@@ -102,6 +102,43 @@ test('ignores bare dependency names in Gemfile declarations', () => {
   assert.equal(isProductionGem(gemfile, 'puma'), false);
 });
 
+[
+  ['assigned if', 'enabled = if true\n    true\n  end'],
+  ['assigned unless', 'enabled = unless false\n    true\n  end'],
+  ['assigned if on the next line', 'enabled =\n    if true\n      true\n    end'],
+  ['assigned if inside parentheses', '(enabled = if true\n    true\n  end)'],
+  ['postfix if', 'enabled = true if true'],
+  ['postfix unless', 'enabled = true unless false'],
+  ['assigned if with a postfix if on its end', 'enabled = if true\n    true\n  end if true'],
+  ['assigned unless with a postfix unless on its end', 'enabled = unless false\n    true\n  end unless false'],
+].forEach(([description, conditional]) => {
+  test(`preserves test group boundaries with ${description}`, () => {
+    const gemfile = `group :test do
+  ${conditional}
+  gem 'rack'
+end
+gem 'puma'`;
+
+    assert.deepEqual(productionGemNames(gemfile), new Set(['puma']));
+  });
+});
+
+[
+  ['percent string', "disabled = %q|enabled = if|"],
+  ['percent string with parentheses delimiters', "disabled = %Q(enabled = unless)"],
+  ['percent word array', "disabled = %w[enabled = if]"],
+].forEach(([description, literal]) => {
+  test(`does not treat '=' and 'if'/'unless' inside a ${description} as an assigned conditional`, () => {
+    const gemfile = `group :test do
+  ${literal}
+  gem 'rack'
+end
+gem 'puma'`;
+
+    assert.deepEqual(productionGemNames(gemfile), new Set(['puma']));
+  });
+});
+
 test('tracks excluded and shared groups through deeply nested scopes', () => {
   const depth = 4_096;
   const names = productionGemNames([

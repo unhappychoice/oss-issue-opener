@@ -10,7 +10,8 @@ export const productionGemNames = (content: string): ReadonlySet<string> => {
   gemfileStatements(content).forEach((tokens) => {
     if (tokens[0] === 'end') blocks.pop();
     if (opensNamespace(tokens) || tokens.includes('do') || (tokens[0] === 'def' && !isEndlessMethod(tokens)) ||
-      /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '')) {
+      /^(if|unless|case|begin|while|until|for)$/.test(tokens[0] ?? '') ||
+      opensAssignedConditional(tokens)) {
       blocks.push(tokens[0] === 'group' ? groupTokens(tokens.slice(1)) : []);
     }
     if (tokens[0] !== 'gem') return;
@@ -21,6 +22,15 @@ export const productionGemNames = (content: string): ReadonlySet<string> => {
     if (memberships.length === 0 || memberships.some((token) => !isExcludedGroup(token))) names.add(name);
   });
   return names;
+};
+
+const opensAssignedConditional = (tokens: string[]): boolean => {
+  let depth = 0;
+  return tokens.some((token, index) => {
+    if (['(', '[', '{'].includes(token)) depth++;
+    if ([')', ']', '}'].includes(token)) depth--;
+    return depth === 0 && tokens[index - 1] === '=' && /^(if|unless)$/.test(token);
+  });
 };
 
 const opensNamespace = (tokens: string[]): boolean => {
@@ -94,7 +104,7 @@ const gemfileStatements = (content: string): string[][] => {
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
     current.push(token);
-    if ((token === 'do' || token === 'end') && depth === 0) {
+    if (token === 'do' && depth === 0) {
       result.push(current);
       current = [];
     }
