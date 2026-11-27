@@ -104,7 +104,7 @@ const gemfileStatements = (content: string): string[][] => {
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
     current.push(token);
-    if ((token === 'do' || token === 'end') && depth === 0) {
+    if (token === 'do' && depth === 0) {
       result.push(current);
       current = [];
     }

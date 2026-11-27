@@ -73,13 +73,17 @@ const putsRegexpArgument = (content: string, start: number, token: string, token
 const literalDelimiters = new Map([['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]);
 
 const regexpEnd = (content: string, start: number): number | undefined => {
-  const opening = /\/|%r([^\p{L}\p{N}\s])/uy;
+  const opening = /\/|%([qQwWiIxrs]?)([^\p{L}\p{N}\s])/uy;
   opening.lastIndex = start;
   const match = opening.exec(content);
   if (!match) return undefined;
+  const [token, type, delimiter] = match;
+  const isRegexp = token === '/' || type === 'r';
+  const interpolates = isRegexp || !/^[qwis]$/.test(type);
 
-  const end = literalEnd(content, opening.lastIndex, match[1] ?? '/', true);
+  const end = literalEnd(content, opening.lastIndex, delimiter ?? '/', interpolates);
   if (end === undefined) return undefined;
+  if (!isRegexp) return end;
   const options = /[imxounes]*/y;
   options.lastIndex = end;
   options.exec(content);
