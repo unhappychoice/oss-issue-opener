@@ -50,6 +50,7 @@ setup and check commands, see [Contributing](../CONTRIBUTING.md).
 | [project-type.ts](../src/project-type.ts) | Root manifest detection and source path patterns; multiple ecosystems can be detected in one repository. |
 | [dependency.ts](../src/dependency.ts) | Lazy, cached manifest loading and production dependency checks across detected ecosystems. |
 | [issue.ts](../src/issue.ts) | Issue text, ordering, duplicate detection, and batch creation. |
+| [concurrency-limiter.ts](../src/concurrency-limiter.ts) | Shared FIFO concurrency primitive. `runner.ts` uses it to bound concurrent repository scans, `github.ts` to bound check-suite page lookups and git-tree comparison fetches, `checker.ts` to bound dependency-bump commit file lookups, `dependency.ts` to bound gemspec downloads, and `npm-dependency-change.ts` to bound npm manifest downloads, each with its own capacity. |
 
 Dependency parsing also uses dedicated helpers for Ruby
 ([ruby.ts](../src/ruby.ts), [gemfile.ts](../src/gemfile.ts), and
@@ -125,6 +126,9 @@ and reached the head lookup.
 - **Notification formatting or duplicate handling:** start with `issue.ts`,
   [issue.test.js](../test/issue.test.js), and
   [issue-pagination.test.js](../test/issue-pagination.test.js).
+- **Concurrency caps on repository scans, GitHub API calls, or manifest
+  downloads:** start with `concurrency-limiter.ts` and
+  [concurrency-limiter.test.js](../test/concurrency-limiter.test.js).
 
 Both test commands compile `src/` into `dist/` and run the Node.js test suite,
 whose tests import the compiled modules. The [Test workflow](../.github/workflows/test.yml)
