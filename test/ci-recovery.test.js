@@ -40,6 +40,7 @@ const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
   persistIssues = false, workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
   getHead = () => sha,
+  getRuns = () => runs,
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -67,7 +68,7 @@ const setup = (t, {
   });
   t.mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   t.mock.method(client.paginate, 'iterator', async function* () {
-    yield { data: runs };
+    yield { data: getRuns(comments.length) };
     if (checksError) throw checksError;
   });
   t.mock.method(client, 'paginate', async (endpoint, params) => {
@@ -166,6 +167,53 @@ test('closes only a matching open alert and records the checked commit once', as
     assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
       afterComments ? ['list', 'comment'] : ['list']);
   });
+});
+
+[
+  ['a recorded check is pending before commenting', 0, [{ ...passedBuild, status: 'in_progress', conclusion: null }]],
+  ['a recorded check fails before commenting', 0, [{ ...passedBuild, conclusion: 'failure' }]],
+  ['an unrelated check fails before commenting', 0, [passedBuild, { ...otherBuild, name: 'deploy', conclusion: 'failure' }]],
+  ['a recorded check disappears before commenting', 0, []],
+  ['a recorded check fails after commenting', 1, [{ ...passedBuild, conclusion: 'failure' }]],
+  ['a recorded check is skipped after commenting', 1, [{ ...passedBuild, conclusion: 'skipped' }]],
+].forEach(([scenario, afterComments, changedRuns]) => {
+  test(`leaves the alert open on the same SHA when ${scenario}`, async (t) => {
+    let verifying = false;
+    const { run, events } = setup(t, {
+      currentAlert: (issue) => {
+        verifying = true;
+        return issue;
+      },
+      getRuns: (comments) => verifying && comments >= afterComments ? changedRuns : [passedBuild],
+    });
+    await run(true);
+    assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+      afterComments ? ['list', 'comment'] : ['list']);
+  });
+});
+
+test('reports incomplete CI data during revalidation and skips recovery writes', async (t) => {
+  const { run, events } = setup(t, {
+    getRuns: () => {
+      if (events.length > 1) throw new Error('Check lookup unavailable');
+      return [passedBuild];
+    },
+  });
+  await assert.rejects(run(true), /Failed 1 maintenance operations/);
+  assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event), ['list', 'comment']);
+});
+
+test('skips the recovery comment if the branch advances while refreshing CI', async (t) => {
+  let lookups = 0;
+  const { run, events } = setup(t, {
+    getHead: () => lookups > 1 ? 'b'.repeat(40) : sha,
+    getRuns: () => {
+      lookups += 1;
+      return [passedBuild];
+    },
+  });
+  await run(true);
+  assert.deepEqual(events, ['list']);
 });
 
 [

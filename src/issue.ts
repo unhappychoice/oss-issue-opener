@@ -1,4 +1,5 @@
 import { completeIssue, createIssue, getAuthenticatedLogin, getDefaultBranchHead, listOpenIssueDetails, updateIssueBody } from './github.js';
+import { checkCIStatus } from './checker.js';
 import type { CIStatus, DependencyUpdate, FailedCheck, IssueType, PendingIssue } from './types.js';
 import { ISSUE_REPO } from './types.js';
 import { normalizeRecoveryCheckKey, recoveryCheckKey } from './recovery-key.js';
@@ -63,8 +64,7 @@ export const closeRecoveredCIAlerts = async (
     const { repo, checks } = recorded;
     const recovery = recoveries.get(repo);
     if (!recovery || !/^[a-f0-9]{40}$/i.test(recovery.sha)) continue;
-    const passed = new Set(recovery.passedChecks.map(recoveryCheckKey));
-    if (!checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)))) continue;
+    if (!checksPassed(checks, recovery)) continue;
 
     try {
       const url = `https://github.com/${repo}/commit/${recovery.sha}`;
@@ -72,11 +72,18 @@ export const closeRecoveredCIAlerts = async (
         `CI recovery verified on the default branch at [\`${recovery.sha}\`](${url}). All checks recorded in this alert passed.`,
         async (issue) => {
           const current = recordedChecks(issue, author);
-          if (current?.repo !== repo || !current.checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)))) return false;
+          if (current?.repo !== repo) return false;
 
           const [owner, name] = repo.split('/') as [string, string];
           const head = await getDefaultBranchHead(owner, name);
-          return head.status === 'found' && head.head.sha === recovery.sha;
+          if (head.status !== 'found' || head.head.sha !== recovery.sha) return false;
+
+          const fresh = await checkCIStatus(owner, name, async () => head, true);
+          if (fresh.endpointErrors?.length) throw new AggregateError(fresh.endpointErrors, 'CI recovery lookup failed');
+          if (fresh.status !== 'success' || !fresh.recovery || !checksPassed(current.checks, fresh.recovery)) return false;
+
+          const latest = await getDefaultBranchHead(owner, name);
+          return latest.status === 'found' && latest.head.sha === recovery.sha;
         });
       if (closed) console.log(`  [closed] ${alert.title} (#${number})`);
     } catch (cause) {
@@ -85,6 +92,11 @@ export const closeRecoveredCIAlerts = async (
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, 'CI alert closure failed');
+};
+
+const checksPassed = (checks: string[], recovery: NonNullable<CIStatus['recovery']>): boolean => {
+  const passed = new Set(recovery.passedChecks.map(recoveryCheckKey));
+  return checks.every((check) => passed.has(normalizeRecoveryCheckKey(check)));
 };
 
 const recordedChecks = (
