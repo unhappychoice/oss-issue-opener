@@ -215,13 +215,12 @@ test('omits every recovery identity, not just the unidentifiable one, when a fai
   assert.ok(body.endsWith(`<!-- oss-issue-opener:ci:v1 ${repo} -->`));
 });
 
-test('retains both recovered checks when a near-limit alert gains an identifiable failure', async (t) => {
+test('preserves the generated body when the merged marker would exceed the issue limit', async (t) => {
   const repo = 'owner/repo';
 
   const firstCheck = { name: 'x', source: 'check', workflowId: 1, url: 'https://e/' };
   const secondCheck = { name: 'y', source: 'status', publisherId: 2, url: '' };
   const key1 = recoveryCheckKey(firstCheck);
-  const key2 = recoveryCheckKey(secondCheck);
 
   // Pad the check's URL (not part of its recovery identity) so the alert body fills the
   // 65,536-char issue limit while its recovery marker stays far below half that limit.
@@ -242,12 +241,7 @@ test('retains both recovered checks when a near-limit alert gains an identifiabl
   const nextIssue = buildCIFailureIssue(repo, [secondCheck]);
   await createIssuesInBatch([nextIssue]);
 
-  assert.ok(alerts[0].body.length <= 65_536);
-  assert.match(alerts[0].body, /- \.\.\. and 1 more/);
-  const updatedMarker = alerts[0].body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
-  const [updatedRepo, ...keys] = updatedMarker[1].split(' ');
-  assert.equal(updatedRepo, repo);
-  assert.deepEqual(new Set(keys), new Set([key1, key2]));
+  assert.equal(alerts[0].body, initial.body.replace(originalMarker[0], `\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`));
 });
 
 test('falls back to a bare marker and requires manual closure when the merged checks exceed the recovery budget', async (t) => {
@@ -275,19 +269,18 @@ test('falls back to a bare marker and requires manual closure when the merged ch
   assert.match(alerts[0].body, /<!-- oss-issue-opener:ci:v1 owner\/repo -->$/);
 });
 
-test('extends an already-truncated check list further when more recovery metadata space is needed', async (t) => {
+test('preserves an already-truncated check list when the merged marker would exceed the issue limit', async (t) => {
   const repo = 'owner/repo';
 
   const key1 = recoveryCheckKey({ name: 'c0', source: 'check', workflowId: 1 });
   const key2 = recoveryCheckKey({ name: 'c1', source: 'check', workflowId: 2 });
-  const key3 = recoveryCheckKey({ name: 'c2', source: 'check', workflowId: 3 });
   const links = `\n\n**Repository**: https://github.com/${repo}\n**Actions**: https://github.com/${repo}/actions`;
   const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
   const marker2 = `\n\n<!-- oss-issue-opener:ci:v1 ${repo} ${key1} ${key2} -->`;
   const existingSummary = '- ... and 1 more';
 
   // Pad a check list that is already truncated (one check hidden behind a summary line) so the
-  // alert body fills the issue limit, then force a second reclaim when a third check is merged.
+  // alert body fills the issue limit before a third failure is recorded.
   const fixedLength = intro.length + 1 + existingSummary.length + links.length + marker2.length;
   const bigBulletLine = `- ${'a'.repeat(65_536 - fixedLength - 2)}`;
   const visibleInput = `${intro}${bigBulletLine}\n${existingSummary}`;
@@ -301,12 +294,7 @@ test('extends an already-truncated check list further when more recovery metadat
   const nextIssue = buildCIFailureIssue(repo, [{ name: 'c2', source: 'check', workflowId: 3, url: '' }]);
   await createIssuesInBatch([nextIssue]);
 
-  assert.ok(alerts[0].body.length <= 65_536);
-  assert.match(alerts[0].body, /- \.\.\. and 2 more/);
-  const updatedMarker = alerts[0].body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
-  const [updatedRepo, ...keys] = updatedMarker[1].split(' ');
-  assert.equal(updatedRepo, repo);
-  assert.deepEqual(new Set(keys), new Set([key1, key2, key3]));
+  assert.equal(alerts[0].body, `${visibleInput}${links}\n\n<!-- oss-issue-opener:ci:v1 ${repo} -->`);
 });
 
 test('updates only the recovery candidate for the notification repository, leaving other repos untouched', async (t) => {

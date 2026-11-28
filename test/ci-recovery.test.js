@@ -473,16 +473,20 @@ test('preserves an edited footer and closes only after every recorded check pass
   assert.equal(events.filter((event) => event[0] === 'close').length, 1);
 });
 
-test('keeps a near-limit edited alert open when its complete recovery marker cannot fit', async (t) => {
-  const body = buildCIFailureIssue(repo, [checks[0]]).body.replace('**Actions**', '**Workflow history**');
-  const note = 'x'.repeat(65_536 - body.length - 1) + '\n';
-  const alerts = [{ ...alert, body: note + body }];
+test('preserves an owner-added bullet before the generated footer when the merged marker cannot fit', async (t) => {
+  const generated = buildCIFailureIssue(repo, [checks[0]]).body;
+  const footer = '\n\n**Repository**';
+  const bullet = '\n- Owner investigation: ';
+  const note = bullet + 'x'.repeat(65_536 - generated.length - bullet.length);
+  const body = generated.replace(footer, note + footer);
+  assert.equal(body.length, 65_536);
+  const alerts = [{ ...alert, body }];
   const statuses = [{ ...passedLint, state: 'failure' }];
   const { run, events } = setup(t, { alerts, statuses, persistIssues: true });
 
   await run(true);
   const prefix = body.slice(0, body.lastIndexOf('\n') + 1);
-  assert.equal(alerts[0].body, note + prefix + `<!-- oss-issue-opener:ci:v1 ${repo} -->`);
+  assert.equal(alerts[0].body, prefix + `<!-- oss-issue-opener:ci:v1 ${repo} -->`);
 
   statuses.length = 0;
   await run(true);
