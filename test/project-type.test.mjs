@@ -137,6 +137,24 @@ test('detects source paths from every ecosystem without duplicating files', asyn
   assert.deepEqual(release.changedSources, ['lib/example.js', 'src/example.rs']);
 });
 
+[
+  ["if true then gem 'rack' end", 'pending'],
+  ["group :test do if true then gem 'rack' end end", 'up-to-date'],
+].forEach(([Gemfile, expected]) => {
+  test(`classifies a lockfile-only bump with ${Gemfile}`, async () => {
+    mockManifests({ Gemfile, 'example.gemspec': "spec.add_dependency 'other'" });
+    mockReleaseComparison(['Gemfile.lock'], ['Bump rack from 3.0.0 to 3.1.0']);
+
+    const types = await detectProjectTypes(owner, repo);
+    const release = await checkPendingRelease(owner, repo, types);
+
+    assert.equal(release.status, expected);
+    if (expected === 'pending') {
+      assert.deepEqual(release.dependencyUpdates, [{ pkg: 'rack', from: '3.0.0', to: '3.1.0' }]);
+    }
+  });
+});
+
 test('shares the root listing between project detection and the Ruby dependency checker', async () => {
   const rootCalls = [];
   mock.method(getOctokit().repos, 'getContent', async ({ path }) => {
