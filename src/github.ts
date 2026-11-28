@@ -328,18 +328,6 @@ type TreeEntry = { sha: string; mode: string; type: string };
 const TREE_FETCH_CONCURRENCY = 8;
 const limitTreeFetch = createConcurrencyLimiter(TREE_FETCH_CONCURRENCY);
 
-const readComparisonTree = async (owner: string, repo: string, tree_sha: string): Promise<Map<string, TreeEntry>> =>
-  limitTreeFetch(async () => {
-    const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha });
-    if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
-    return new Map(data.tree.map(({ path, sha, mode, type }) => {
-      if (!path || !sha || !mode || !type) {
-        throw new Error('Cannot establish complete comparison: incomplete tree entry');
-      }
-      return [path, { sha, mode, type }];
-    }));
-  });
-
 // A shared subtree can be reached under many directory names, so even cache-deduplicated
 // downloads can expand into far more walked entries and changed paths than files actually
 // changed. Cap both to bound memory for a single comparison.
@@ -351,11 +339,35 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
   if (base === head) return [];
   const cache = new Map<string, Promise<Map<string, TreeEntry>>>();
   const empty = new Map<string, TreeEntry>();
+  let failure: { error: unknown } | undefined;
+  const fail = (error: unknown): never => {
+    failure ??= { error };
+    throw failure.error;
+  };
+  const throwIfFailed = () => {
+    if (failure) throw failure.error;
+  };
+  const readTree = (tree_sha: string) => limitTreeFetch(async () => {
+    throwIfFailed();
+    try {
+      const { data } = await getOctokit().git.getTree({ owner, repo, tree_sha });
+      if (data.truncated !== false) throw new Error('Cannot establish complete comparison: truncated tree');
+      return new Map(data.tree.map(({ path, sha, mode, type }) => {
+        if (!path || !sha || !mode || !type) {
+          throw new Error('Cannot establish complete comparison: incomplete tree entry');
+        }
+        return [path, { sha, mode, type }];
+      }));
+    } catch (error) {
+      // Record the failure before the limiter hands the slot to another request.
+      return fail(error);
+    }
+  });
   const read = (sha?: string) => {
     if (!sha) return Promise.resolve(empty);
     const cached = cache.get(sha);
     if (cached) return cached;
-    const pending = readComparisonTree(owner, repo, sha);
+    const pending = readTree(sha);
     cache.set(sha, pending);
     return pending;
   };
@@ -367,9 +379,10 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
   // which sibling's requests happen to resolve first.
   const walk = async (prefix: string, before?: string, after?: string): Promise<string[]> => {
     const [left, right] = await Promise.all([read(before), read(after)]);
+    throwIfFailed();
     const entries = [...new Set([...left.keys(), ...right.keys()])].map((name) => {
       if (++expansions > MAX_TREE_EXPANSIONS) {
-        throw new Error(`Cannot establish complete comparison: exceeded the ${MAX_TREE_EXPANSIONS}-entry expansion limit`);
+        fail(new Error(`Cannot establish complete comparison: exceeded the ${MAX_TREE_EXPANSIONS}-entry expansion limit`));
       }
       const oldEntry = left.get(name);
       const newEntry = right.get(name);
@@ -380,7 +393,7 @@ const compareTrees = async (owner: string, repo: string, base?: string, head?: s
       const newFile = newTree ? undefined : newEntry;
       const changed = oldFile?.sha !== newFile?.sha || oldFile?.mode !== newFile?.mode || oldFile?.type !== newFile?.type;
       if (changed && ++changedPathCount > MAX_CHANGED_PATHS) {
-        throw new Error(`Cannot establish complete comparison: exceeded the ${MAX_CHANGED_PATHS}-path retention limit`);
+        fail(new Error(`Cannot establish complete comparison: exceeded the ${MAX_CHANGED_PATHS}-path retention limit`));
       }
       return { path, oldTree, newTree, changed };
     });
