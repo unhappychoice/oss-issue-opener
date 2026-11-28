@@ -120,16 +120,15 @@ const formatRecoveryMarker = (repo: string, checks: string[], limit = ISSUE_BODY
 const SUMMARY_PREFIX = '- ... and ';
 const SUMMARY_SUFFIX = ' more';
 const summaryLine = (hidden: number): string => `${SUMMARY_PREFIX}${hidden}${SUMMARY_SUFFIX}`;
-const SUMMARY_LINE = new RegExp(`^${SUMMARY_PREFIX.replace(/\./g, '\\.')}(\\d+)${SUMMARY_SUFFIX}$`);
 
 // Shrinks a list of lines from the end into a growing "... and N more" summary of the trailing
 // bullet lines dropped, until the result fits the budget or a non-bullet line is reached.
-const fitBulletList = (lines: string[], available: number, alreadyHidden = 0): string => {
+const fitBulletList = (lines: string[], available: number): string => {
   const render = (shown: number, hidden: number): string =>
     hidden > 0 ? [...lines.slice(0, shown), summaryLine(hidden)].join('\n') : lines.slice(0, shown).join('\n');
 
   let shown = lines.length;
-  let hidden = alreadyHidden;
+  let hidden = 0;
   let content = render(shown, hidden);
   while (content.length > available && shown > 0 && lines[shown - 1].startsWith('- ')) {
     shown -= 1;
@@ -268,16 +267,6 @@ export const createIssuesInBatch = async (issues: PendingIssue[]): Promise<void>
   }
 };
 
-// Shrinks an already-rendered check list from the end, growing its "... and N more" summary,
-// so a near-limit alert can still make room for a complete recovery marker on update.
-const reclaimItemsSpace = (visible: string, available: number): string => {
-  const lines = visible.split('\n');
-  const summary = lines.at(-1)?.match(SUMMARY_LINE);
-  const hidden = summary ? Number(summary[1]) : 0;
-  if (summary) lines.pop();
-  return fitBulletList(lines, available, hidden);
-};
-
 const recordSubsequentFailures = (number: number, issue: PendingIssue, author: string): Promise<boolean> =>
   updateIssueBody(issueOwner, issueRepo, number, (current) => {
     const recorded = recordedChecks(current, author);
@@ -287,11 +276,15 @@ const recordSubsequentFailures = (number: number, issue: PendingIssue, author: s
     const checks = incoming?.repo === issue.repo && incoming.checks.length
       ? [...recorded.checks, ...incoming.checks] : [];
     const marker = formatRecoveryMarker(issue.repo, checks);
-    const links = ciFailureLinks(issue.repo);
-    const bodyWithoutMarker = current.body.trimEnd().split('\n').slice(0, -1).join('\n').trimEnd();
-    if (!bodyWithoutMarker.endsWith(links)) return undefined;
-
-    const visible = reclaimItemsSpace(bodyWithoutMarker.slice(0, -links.length), ISSUE_BODY_LIMIT - links.length - marker.length);
-    const updated = visible + links + marker;
-    return updated === current.body.trimEnd() ? undefined : updated;
+    const body = current.body.trimEnd();
+    const updated = replaceRecoveryMarker(body, issue.repo, marker);
+    return updated === body ? undefined : updated;
   });
+
+const replaceRecoveryMarker = (body: string, repo: string, marker: string): string => {
+  const prefix = body.slice(0, body.lastIndexOf('\n') + 1);
+  const updated = prefix + marker.trimStart();
+  if (updated.length <= ISSUE_BODY_LIMIT) return updated;
+
+  return prefix + formatRecoveryMarker(repo, []).trimStart();
+};

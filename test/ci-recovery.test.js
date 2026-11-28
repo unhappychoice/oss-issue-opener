@@ -443,7 +443,7 @@ test('skips workflow lookup for passing Actions jobs when only a commit status f
   assert.equal(created[0].body, buildCIFailureIssue(repo, [checks[1]]).body);
 });
 
-test('merges subsequent failures and closes only after every recorded check passes', async (t) => {
+test('preserves an edited footer and closes only after every recorded check passes', async (t) => {
   const alerts = [];
   const runs = [{ ...passedBuild, conclusion: 'failure' }];
   const lint = { ...passedBuild, name: 'lint' };
@@ -452,13 +452,16 @@ test('merges subsequent failures and closes only after every recorded check pass
   runs.push(lint);
   await run(true);
   assert.equal(alerts.length, 1);
-  const originalBody = alerts[0].body;
+  const editedBody = alerts[0].body.replace('**Actions**', '**Workflow history**');
+  const visibleBody = (body) => body.slice(0, body.lastIndexOf('\n'));
+  alerts[0].body = editedBody;
   runs.splice(0, 2, passedBuild, { ...lint, conclusion: 'failure' });
   await run(false);
   alerts[0].title = 'Renamed CI alert';
   await run(true);
   assert.equal(alerts.length, 1);
-  assert.notEqual(alerts[0].body, originalBody);
+  assert.notEqual(alerts[0].body, editedBody);
+  assert.equal(visibleBody(alerts[0].body), visibleBody(editedBody));
   assert.equal(events.filter((event) => event[0] === 'update').length, 1);
 
   runs[1] = { ...lint, conclusion: 'skipped' };
@@ -468,6 +471,28 @@ test('merges subsequent failures and closes only after every recorded check pass
   runs[1] = lint;
   await run(true);
   assert.equal(events.filter((event) => event[0] === 'close').length, 1);
+});
+
+test('preserves an owner-added bullet before the generated footer when the merged marker cannot fit', async (t) => {
+  const generated = buildCIFailureIssue(repo, [checks[0]]).body;
+  const footer = '\n\n**Repository**';
+  const bullet = '\n- Owner investigation: ';
+  const note = bullet + 'x'.repeat(65_536 - generated.length - bullet.length);
+  const body = generated.replace(footer, note + footer);
+  assert.equal(body.length, 65_536);
+  const alerts = [{ ...alert, body }];
+  const statuses = [{ ...passedLint, state: 'failure' }];
+  const { run, events } = setup(t, { alerts, statuses, persistIssues: true });
+
+  await run(true);
+  const prefix = body.slice(0, body.lastIndexOf('\n') + 1);
+  assert.equal(alerts[0].body, prefix + `<!-- oss-issue-opener:ci:v1 ${repo} -->`);
+
+  statuses.length = 0;
+  await run(true);
+  statuses.push(passedLint);
+  await run(true);
+  assert.equal(events.some((event) => event[0] === 'close'), false);
 });
 
 test('requires the recorded publisher to recover from a subsequent status failure', async (t) => {
