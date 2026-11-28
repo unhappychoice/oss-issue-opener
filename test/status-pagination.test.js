@@ -28,7 +28,9 @@ const sha = 'a'.repeat(40);
         url: `https://api.github.com/repos/owner/repo/commits/${sha}/statuses`,
         headers: {},
         data: secondPage ? [
-          { ...status(1, 'failure'), context: 'STATUS-1' }, status(101, state),
+          { ...status(1, 'failure'), context: 'STATUS-1' },
+          ...(state === 'failure' ? [{ ...status(1, 'failure'), context: 'STATUS-1', creator: { id: 43 } }] : []),
+          status(101, state),
         ] : Array.from({ length: 100 }, (_, i) => status(i + 1, 'success')),
       };
     });
@@ -36,7 +38,10 @@ const sha = 'a'.repeat(40);
     assert.deepEqual(await checkCIStatus('owner', 'repo', undefined, true), {
       status: state,
       failedChecks: state === 'failure'
-        ? [{ name: 'status-101', url: 'https://ci.example.com/builds/101', source: 'status', publisherId: 42 }]
+        ? [
+          { name: 'STATUS-1', url: 'https://ci.example.com/builds/1', source: 'status', publisherId: 43 },
+          { name: 'status-101', url: 'https://ci.example.com/builds/101', source: 'status', publisherId: 42 },
+        ]
         : [],
       ...(state === 'success' ? { recovery: { sha, passedChecks: Array.from({ length: 101 }, (_, i) =>
         ({ name: `status-${i + 1}`, source: 'status', publisherId: 42 })) } } : {}),
