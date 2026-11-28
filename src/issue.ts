@@ -287,11 +287,22 @@ const recordSubsequentFailures = (number: number, issue: PendingIssue, author: s
     const checks = incoming?.repo === issue.repo && incoming.checks.length
       ? [...recorded.checks, ...incoming.checks] : [];
     const marker = formatRecoveryMarker(issue.repo, checks);
-    const links = ciFailureLinks(issue.repo);
-    const bodyWithoutMarker = current.body.trimEnd().split('\n').slice(0, -1).join('\n').trimEnd();
-    if (!bodyWithoutMarker.endsWith(links)) return undefined;
-
-    const visible = reclaimItemsSpace(bodyWithoutMarker.slice(0, -links.length), ISSUE_BODY_LIMIT - links.length - marker.length);
-    const updated = visible + links + marker;
-    return updated === current.body.trimEnd() ? undefined : updated;
+    const body = current.body.trimEnd();
+    const updated = replaceRecoveryMarker(body, issue.repo, marker);
+    return updated === body ? undefined : updated;
   });
+
+const replaceRecoveryMarker = (body: string, repo: string, marker: string): string => {
+  const prefix = body.slice(0, body.lastIndexOf('\n') + 1);
+  const updated = prefix + marker.trimStart();
+  if (updated.length <= ISSUE_BODY_LIMIT) return updated;
+
+  const links = ciFailureLinks(repo);
+  const visible = prefix.trimEnd();
+  if (visible.endsWith(links)) {
+    const items = reclaimItemsSpace(visible.slice(0, -links.length), ISSUE_BODY_LIMIT - links.length - marker.length);
+    const compact = items + links + marker;
+    if (compact.length <= ISSUE_BODY_LIMIT) return compact;
+  }
+  return prefix + formatRecoveryMarker(repo, []).trimStart();
+};
