@@ -156,12 +156,26 @@ const isMoreCurrentCheckRun = (candidate: CheckRun, current: CheckRun): boolean 
   return !Number.isNaN(candidateStarted) && !Number.isNaN(currentStarted) && candidateStarted > currentStarted;
 };
 
-// Same name and suite doesn't mean same job: GitHub lets integrations run several same-named
-// check runs per suite (e.g. a matrix build), distinguished by their own external_id. Only treat
-// one as superseding the other when there's no such evidence that they're independent jobs.
-const isSameCheckIdentity = (a: CheckRun, b: CheckRun): boolean => {
-  if (a.external_id || b.external_id) return a.external_id === b.external_id;
-  return true;
+type CheckRunEntry = { run: CheckRun };
+type CheckRunGroup = {
+  ordered: Set<CheckRunEntry>;
+  byIdentity: Map<string, CheckRunEntry[]>;
+};
+
+const addCheckRun = (group: CheckRunGroup, run: CheckRun) => {
+  const identity = run.external_id || '';
+  const existing = group.byIdentity.get(identity) ?? [];
+  if (existing.some((other) => isMoreCurrentCheckRun(other.run, run))) return;
+
+  const retained = existing.filter((other) => {
+    if (!isMoreCurrentCheckRun(run, other.run)) return true;
+    group.ordered.delete(other);
+    return false;
+  });
+  const entry = { run };
+  retained.push(entry);
+  group.byIdentity.set(identity, retained);
+  group.ordered.add(entry);
 };
 
 export async function* getCheckRuns(
@@ -191,36 +205,26 @@ export async function* getCheckRuns(
     workflowSuiteId: c.app?.slug === 'github-actions' ? c.check_suite?.id : undefined,
   });
 
-  // Keep only the current run per name across every page/suite before yielding, instead of
-  // deduping within a single page the way getCommitStatus does. A rerun can leave a stale check
-  // run behind in the same check suite, so scope the dedup key to its check suite where known,
-  // rather than merging unrelated check suites that happen to use the same job name. Drop a run
-  // only once another one for the same key is positively known to be newer (by id or start time)
-  // and known to be the same job (matching external_id, or neither side setting one); when either
-  // signal is missing, keep both so the ambiguity still reaches checker.ts instead of silently
-  // picking one.
-  const currentRuns = new Map<string, CheckRun[]>();
+  // Collect across pages before yielding so later pages can supersede stale runs. Each suite and
+  // name has its own identity index and preserves encounter order across surviving runs.
+  const currentRuns = new Map<string, CheckRunGroup>();
   let pendingError: unknown;
   try {
     for await (const checkRuns of listCheckRunPages(owner, repo, ref)) {
       for (const run of checkRuns) {
         const key = `${run.check_suite?.id ?? ''}:${run.name}`;
-        const existing = currentRuns.get(key);
-        if (!existing) {
-          currentRuns.set(key, [run]);
-          continue;
+        let group = currentRuns.get(key);
+        if (!group) {
+          group = { ordered: new Set(), byIdentity: new Map() };
+          currentRuns.set(key, group);
         }
-        if (existing.some((other) => isSameCheckIdentity(other, run) && isMoreCurrentCheckRun(other, run))) continue;
-        currentRuns.set(key, [
-          ...existing.filter((other) => !(isSameCheckIdentity(run, other) && isMoreCurrentCheckRun(run, other))),
-          run,
-        ]);
+        addCheckRun(group, run);
       }
     }
   } catch (error) {
     pendingError = error;
   }
-  yield [...currentRuns.values()].flat().map(toResult);
+  yield [...currentRuns.values()].flatMap(({ ordered }) => Array.from(ordered, ({ run }) => toResult(run)));
   if (pendingError !== undefined) throw pendingError;
 }
 
