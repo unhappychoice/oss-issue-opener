@@ -78,7 +78,7 @@ const gemfileStatements = (content: string): string[][] => {
   const result: string[][] = [];
   let current: string[] = [];
   let depth = 0;
-  tokens.forEach((token) => {
+  tokens.forEach((token, index) => {
     if (/^(?:[^\S\n]+|\\\r?\n)$/.test(token)) return;
     if ((token === '\n' || token === ';') && depth === 0 && current.at(-1) !== ',') {
       if (current.length) result.push(current);
@@ -100,6 +100,16 @@ const gemfileStatements = (content: string): string[][] => {
     if (token === 'end' && depth === 0 && current.length) {
       result.push(current);
       current = [];
+    }
+    if (depth === 0 && /^(then|else|elsif|when)$/.test(token) &&
+      !/^(\.|def|alias|undef)$/.test(current.at(-1) ?? '') && tokens[index + 1] !== ':') {
+      const startsBody = token === 'then' || token === 'else';
+      if (token !== 'then' || !current.length ||
+        /^(if|unless|elsif|when)$/.test(current[0]) || opensAssignedConditional(current)) {
+        if (current.length) result.push(current);
+        current = startsBody ? [] : [token];
+        return;
+      }
     }
     if (['(', '[', '{'].includes(token)) depth++;
     if ([')', ']', '}'].includes(token)) depth--;
