@@ -815,11 +815,11 @@ test('notifies about a production bump in a 1.5 MB manifest at the compared head
   const issues = batches.flat();
   assert.deepEqual(issues.map(({ type }) => type), ['pending-release']);
   assert.match(issues[0].body, /lodash.*4\.17\.20.*4\.17\.21/);
-  assert.equal(fetchManifest.mock.callCount(), 3);
+  assert.equal(fetchManifest.mock.callCount(), 2);
   assert.ok(console.log.mock.calls.some(({ arguments: [line] }) => line.includes('Types: node')));
   assert.deepEqual(content.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]), [
     ['', pinnedHead], ['package.json', pinnedHead],
-    ['package.json', commitSha('refs/tags/v1')], ['package.json', pinnedHead],
+    ['package.json', commitSha('refs/tags/v1')],
   ]);
 });
 

@@ -2,8 +2,28 @@ import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getFileContent } from './github.js';
 import type { DependencyUpdate } from './types.js';
 
+type NodeManifest = { snapshot: unknown } | { parseError: unknown };
+
+export const createNodeManifestLoader = (owner: string, repo: string, headRef?: string) => {
+  const manifests = new Map<string | undefined, Promise<NodeManifest>>();
+  return (ref = headRef): Promise<NodeManifest> => {
+    if (!manifests.has(ref)) {
+      const download = () => getFileContent(owner, repo, 'package.json', ref, ref !== headRef);
+      manifests.set(ref, limitDownload(download).then((content) => {
+        try {
+          return { snapshot: parseSnapshot(content) };
+        } catch (parseError) {
+          return { parseError };
+        }
+      }));
+    }
+    return manifests.get(ref)!;
+  };
+};
+
 export const createNpmDependencyChangeChecker = (
-  owner: string, repo: string, baseSha: string, headSha: string, paths: string[]
+  owner: string, repo: string, baseSha: string, headSha: string, paths: string[],
+  loadManifest: ReturnType<typeof createNodeManifestLoader>
 ) => {
   const pathSet = new Set(paths);
   const comparisons = new Map<string, Promise<(bump: DependencyUpdate) => boolean>>();
@@ -15,8 +35,12 @@ export const createNpmDependencyChangeChecker = (
     }
     const checks = npmPaths.map((path) => {
       if (!comparisons.has(path)) {
-        const load = (ref: string) => limitDownload(() => getFileContent(owner, repo, path, ref, true))
-          .then(parseSnapshot);
+        const load = (ref: string) => path === 'package.json'
+          ? loadManifest(ref).then((manifest) => {
+            if ('parseError' in manifest) throw manifest.parseError;
+            return manifest.snapshot;
+          })
+          : limitDownload(() => getFileContent(owner, repo, path, ref, true)).then(parseSnapshot);
         comparisons.set(path, Promise.all([load(baseSha), load(headSha)]).then(([base, head]) =>
           ({ pkg, to }) => {
             const version = dependencyVersion(head, path, pkg);
