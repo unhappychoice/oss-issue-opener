@@ -43,7 +43,11 @@ export const checkCIStatus = async (
   if (!verifyRecovery) return { status: 'success', failedChecks: [] };
 
   const candidates = results.flatMap(({ recovery }) => recovery);
-  const workflows = await loadWorkflows(owner, repo, sha, candidates.filter(({ passed }) => passed));
+  const passingJobNames = new Set(candidates
+    .filter(({ passed, workflowSuiteId }) => passed && workflowSuiteId !== undefined)
+    .map(({ context }) => context));
+  const workflows = await loadWorkflows(owner, repo, sha,
+    candidates.filter(({ context }) => passingJobNames.has(context)));
   return { status: 'success', failedChecks: [], recovery: { sha, passedChecks: collectPassedChecks(candidates, workflows) } };
 };
 

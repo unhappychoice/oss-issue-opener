@@ -39,7 +39,7 @@ const passedLint = { context: 'lint', state: 'success', creator: { login: 'ci-bo
 const setup = (t, {
   alerts = [alert], runs = [passedBuild], statuses = [passedLint], checksError, listError, closeError, commentError,
   persistIssues = false, workflowError, authError, login = author, existingComments = [], currentAlert = (issue) => issue, staleListing = false,
-  getHead = () => sha,
+  getHead = () => sha, workflowPages = [workflows],
 } = {}) => {
   initOctokit('test-token');
   const client = getOctokit();
@@ -60,10 +60,11 @@ const setup = (t, {
     return { data: { commit: { sha: head, commit: { tree: { sha } } } } };
   });
   t.mock.method(client.repos, 'listCommitStatusesForRef', async () => ({ data: statuses }));
-  const workflowRuns = t.mock.method(client.actions, 'listWorkflowRunsForRepo', async (params) => {
-    assert.deepEqual(params, { owner: 'owner', repo: 'project', head_sha: sha, per_page: 100, page: 1 });
+  const workflowRuns = t.mock.method(client.actions, 'listWorkflowRunsForRepo', async ({ page, ...params }) => {
+    assert.deepEqual(params, { owner: 'owner', repo: 'project', head_sha: sha, per_page: 100 });
+    assert.ok(page >= 1 && page <= workflowPages.length);
     if (workflowError) throw workflowError;
-    return { data: { workflow_runs: workflows } };
+    return { data: { workflow_runs: workflowPages[page - 1] } };
   });
   t.mock.method(client.checks, 'listSuitesForRef', async () => ({ data: { total_count: 0 } }));
   t.mock.method(client.paginate, 'iterator', async function* () {
@@ -213,6 +214,29 @@ test('closes only a matching open alert and records the checked commit once', as
     const { run, events } = setup(t, { runs, statuses });
     await run(true);
     assert.deepEqual(events, ['list']);
+  });
+});
+
+[
+  ['skipped job from another workflow', 'build', 'skipped', workflows[2], [1, 2], true],
+  ['neutral job from another workflow', 'build', 'neutral', workflows[2], [1, 2], true],
+  ['skipped job from the same workflow', 'build', 'skipped', { ...workflows[2], workflow_id: 10 }, [1, 2], false],
+  ['skipped job with an unresolved suite', 'build', 'skipped', undefined, [1, 2], false],
+  ['skipped job with a different name', 'test', 'skipped', workflows[2], [1], true],
+].forEach(([description, name, conclusion, laterWorkflow, pages, closesAlert]) => {
+  test(`verifies recovery with a ${description} across workflow pages`, async (t) => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      check_suite_id: 1000 + index, workflow_id: 30,
+    }));
+    firstPage[0] = workflows[1];
+    const { run, events, workflowRuns } = setup(t, {
+      runs: [passedBuild, { ...otherBuild, name, conclusion }],
+      workflowPages: [firstPage, laterWorkflow ? [laterWorkflow] : []],
+    });
+    await run(true);
+    assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
+      closesAlert ? ['list', 'comment', 'close'] : ['list']);
+    assert.deepEqual(workflowRuns.mock.calls.map(({ arguments: [params] }) => params.page), pages);
   });
 });
 
