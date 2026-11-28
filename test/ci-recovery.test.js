@@ -443,7 +443,7 @@ test('skips workflow lookup for passing Actions jobs when only a commit status f
   assert.equal(created[0].body, buildCIFailureIssue(repo, [checks[1]]).body);
 });
 
-test('merges subsequent failures and closes only after every recorded check passes', async (t) => {
+test('merges subsequent failures on an edited alert and closes only after every recorded check passes', async (t) => {
   const alerts = [];
   const runs = [{ ...passedBuild, conclusion: 'failure' }];
   const lint = { ...passedBuild, name: 'lint' };
@@ -452,13 +452,17 @@ test('merges subsequent failures and closes only after every recorded check pass
   runs.push(lint);
   await run(true);
   assert.equal(alerts.length, 1);
-  const originalBody = alerts[0].body;
+  const editedBody = alerts[0].body.replace('**Actions**', '**Workflow history**');
+  const markerStart = editedBody.lastIndexOf('<!-- oss-issue-opener:ci:v1');
+  alerts[0].body = editedBody + '\n';
   runs.splice(0, 2, passedBuild, { ...lint, conclusion: 'failure' });
   await run(false);
   alerts[0].title = 'Renamed CI alert';
   await run(true);
   assert.equal(alerts.length, 1);
-  assert.notEqual(alerts[0].body, originalBody);
+  assert.notEqual(alerts[0].body, editedBody + '\n');
+  assert.equal(alerts[0].body.slice(0, markerStart), editedBody.slice(0, markerStart));
+  assert.ok(alerts[0].body.endsWith('-->\n'));
   assert.equal(events.filter((event) => event[0] === 'update').length, 1);
 
   runs[1] = { ...lint, conclusion: 'skipped' };

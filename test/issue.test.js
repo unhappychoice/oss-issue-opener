@@ -250,6 +250,23 @@ test('retains both recovered checks when a near-limit alert gains an identifiabl
   assert.deepEqual(new Set(keys), new Set([key1, key2]));
 });
 
+test('preserves an edited body at the issue limit and removes its recovery identities', async (t) => {
+  const repo = 'owner/repo';
+  const firstCheck = { name: 'build', source: 'check', workflowId: 1 };
+  const nextCheck = { name: 'lint', source: 'check', workflowId: 2 };
+  const initial = buildCIFailureIssue(repo, [firstCheck]);
+  const edited = initial.body.replace('**Actions**', '**Workflow history**') + '\n';
+  const notes = 'a'.repeat(65_536 - edited.length - 2) + '\n\n';
+  const alerts = setupAlertUpdate(t, {
+    number: 1, title: initial.title, body: notes + edited, labels: [{ name: 'ci-failure' }], state: 'open',
+  });
+  assert.equal(alerts[0].body.length, 65_536);
+
+  await createIssuesInBatch([buildCIFailureIssue(repo, [nextCheck])]);
+
+  assert.equal(alerts[0].body, notes + edited.replace(` ${recoveryCheckKey(firstCheck)} -->`, ' -->'));
+});
+
 test('falls back to a bare marker and requires manual closure when the merged checks exceed the recovery budget', async (t) => {
   const repo = 'owner/repo';
 

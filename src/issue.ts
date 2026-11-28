@@ -278,6 +278,20 @@ const reclaimItemsSpace = (visible: string, available: number): string => {
   return fitBulletList(lines, available, hidden);
 };
 
+const fitUpdatedRecoveryMarker = (prefix: string, repo: string, checks: string[], limit: number): string => {
+  const marker = formatRecoveryMarker(repo, checks).slice(2);
+  if (prefix.length + marker.length <= limit) return prefix + marker;
+
+  const footer = ciFailureLinks(repo) + '\n\n';
+  if (prefix.endsWith(footer)) {
+    const available = limit - footer.length - marker.length;
+    const visible = reclaimItemsSpace(prefix.slice(0, -footer.length), available);
+    if (visible.length <= available) return visible + footer + marker;
+  }
+
+  return prefix + formatRecoveryMarker(repo, []).slice(2);
+};
+
 const recordSubsequentFailures = (number: number, issue: PendingIssue, author: string): Promise<boolean> =>
   updateIssueBody(issueOwner, issueRepo, number, (current) => {
     const recorded = recordedChecks(current, author);
@@ -286,12 +300,9 @@ const recordSubsequentFailures = (number: number, issue: PendingIssue, author: s
     const incoming = readRecoveryMarker(issue.body);
     const checks = incoming?.repo === issue.repo && incoming.checks.length
       ? [...recorded.checks, ...incoming.checks] : [];
-    const marker = formatRecoveryMarker(issue.repo, checks);
-    const links = ciFailureLinks(issue.repo);
-    const bodyWithoutMarker = current.body.trimEnd().split('\n').slice(0, -1).join('\n').trimEnd();
-    if (!bodyWithoutMarker.endsWith(links)) return undefined;
-
-    const visible = reclaimItemsSpace(bodyWithoutMarker.slice(0, -links.length), ISSUE_BODY_LIMIT - links.length - marker.length);
-    const updated = visible + links + marker;
-    return updated === current.body.trimEnd() ? undefined : updated;
+    const body = current.body.trimEnd();
+    const trailingWhitespace = current.body.slice(body.length);
+    const prefix = body.slice(0, body.lastIndexOf('\n') + 1);
+    const updated = fitUpdatedRecoveryMarker(prefix, issue.repo, checks, ISSUE_BODY_LIMIT - trailingWhitespace.length);
+    return updated === body ? undefined : updated + trailingWhitespace;
   });
