@@ -27,6 +27,9 @@ These checks also run in CI because the coverage command builds first.
 The pull request and `main` branch CI job runs `npm run lint`, `npm run format:check`, and `npm run test:coverage` on Node.js 26.
 To apply formatting, run `npm run format:check -- --write`.
 Biome checks the source and tests for correctness issues and fails on warnings.
+CI also lints the GitHub Actions workflows. To check them locally, install
+[actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12) and
+run `actionlint` from the repository root.
 Node's built-in coverage report appears in the job log and covers executed compiled
 production modules under `dist/`, excluding tests and dependencies. The suite fails
 below 97% line, 95% branch, or 99% function coverage across those modules. Run the
