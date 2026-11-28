@@ -1,7 +1,7 @@
 import { createConcurrencyLimiter } from './concurrency-limiter.js';
 import { getCommitStatus, getCheckRuns, listWorkflowIds, getDefaultBranchHead, getLatestRelease, compareCommits, getCommitFilePages, getRepoContents } from './github.js';
 import type { CIResult, ComparedCommit } from './github.js';
-import { createNpmDependencyChangeChecker } from './npm-dependency-change.js';
+import { createNodeManifestLoader, createNpmDependencyChangeChecker } from './npm-dependency-change.js';
 import { createDependencyChecker } from './dependency.js';
 import { getDependencyProjectTypes, getSourcePatterns } from './project-type.js';
 import { recoveryCheckKey } from './recovery-key.js';
@@ -149,9 +149,10 @@ export const checkPendingRelease = async (
 
   const changedDependencyTypes = getDependencyProjectTypes(files);
   const dependencyTypes = types.filter((type) => changedDependencyTypes.includes(type));
+  const loadManifest = createNodeManifestLoader(owner, repo, headSha);
   const { dependencyUpdates, lookupErrors } = await findDependencyUpdates(
-    owner, repo, getCommitPages, dependencyTypes, headSha, getPinnedContents,
-    createNpmDependencyChangeChecker(owner, repo, baseSha, headSha, files)
+    owner, repo, getCommitPages, dependencyTypes, headSha, getPinnedContents, loadManifest,
+    createNpmDependencyChangeChecker(owner, repo, baseSha, headSha, files, loadManifest)
   );
 
   const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseSha}...${headSha}`;
@@ -171,12 +172,13 @@ const findDependencyUpdates = async (
   types: ProjectType[],
   headSha: string,
   getContents: GetContents,
+  loadManifest: ReturnType<typeof createNodeManifestLoader>,
   hasNpmChange: ReturnType<typeof createNpmDependencyChangeChecker>
 ): Promise<{ dependencyUpdates: DependencyUpdate[]; lookupErrors: unknown[] }> => {
   if (types.length === 0) return { dependencyUpdates: [], lookupErrors: [] };
   const checkers = types.map((type) => ({
     type,
-    check: createDependencyChecker(owner, repo, type, getContents, headSha),
+    check: createDependencyChecker(owner, repo, type, getContents, headSha, loadManifest),
   }));
   const checkBump = async (sha: string, bump: DependencyUpdate) => {
     const checkResults = await Promise.allSettled(checkers.map(async ({ type, check }) =>
