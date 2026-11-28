@@ -429,6 +429,53 @@ test('shares a tree-fetch concurrency limit across concurrent comparisons and re
   results.forEach(({ files }, i) => assert.deepEqual(files, comparisons[i].expectedFiles));
 });
 
+test('stops queued and descendant tree requests for a failed comparison while another comparison completes', async (t) => {
+  const repos = getOctokit().repos;
+  t.mock.method(repos, 'compareCommits', async ({ repo }) => ({ data: {
+    files: numberedFiles(300, 'docs', 'md'),
+    merge_base_commit: { commit: { tree: { sha: `${repo}-base` } } },
+    commits: [],
+  } }));
+  const failFirst = Promise.withResolvers();
+  const finishInflight = Promise.withResolvers();
+  const getTree = t.mock.method(getOctokit().git, 'getTree', async ({ repo, tree_sha }) => {
+    if (repo === 'healthy') {
+      const entries = tree_sha === 'healthy-base' ? [] : [blob('z.ts', 'z'), blob('a.ts', 'a')];
+      return { data: { truncated: false, tree: entries } };
+    }
+    if (tree_sha === 'failing-base' || tree_sha === 'failing-head') {
+      const entries = Array.from({ length: 100 }, (_, i) => tree(`dir${i}`, `${tree_sha}-${i}`));
+      return { data: { truncated: false, tree: entries } };
+    }
+    if (tree_sha === 'failing-base-0') {
+      await failFirst.promise;
+      return { data: { truncated: true, tree: [] } };
+    }
+    await finishInflight.promise;
+    const entries = tree_sha.endsWith('-nested') ? [] : [tree('nested', `${tree_sha}-nested`)];
+    return { data: { truncated: false, tree: entries } };
+  });
+
+  const compare = (repo) => compareCommits('owner', repo, 'v1', { sha: commitSha(repo), treeSha: `${repo}-head` });
+  const failed = assert.rejects(compare('failing'), /truncated tree/);
+  await setImmediate();
+  const healthy = compare('healthy');
+  await setImmediate();
+  const started = getTree.mock.callCount();
+  const expectedStarted = 2 + TREE_FETCH_CONCURRENCY;
+
+  failFirst.resolve();
+  try {
+    await failed;
+  } finally {
+    finishInflight.resolve();
+  }
+  assert.deepEqual((await healthy).files, ['z.ts', 'a.ts']);
+  await setImmediate();
+  assert.equal(started, expectedStarted);
+  assert.equal(getTree.mock.calls.filter(({ arguments: [request] }) => request.repo === 'failing').length, started);
+});
+
 test('propagates tree fallback API failures instead of declaring up to date', async (t) => {
   const getTree = stubCappedComparison(t);
   const failure = new Error('Tree request failed');
