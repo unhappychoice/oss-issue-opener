@@ -6,6 +6,7 @@ import { productionGemNames } from './gemfile.js';
 import { rubyRuntimeDependencies } from './ruby.js';
 import { swiftDependencies } from './swift.js';
 import { parseGradleDependencies } from './gradle.js';
+import { createNodeManifestLoader } from './npm-dependency-change.js';
 
 type DependencyChecker = (pkg: string) => Promise<boolean>;
 type ReadManifest = (path: string, optional?: boolean) => Promise<string>;
@@ -19,7 +20,8 @@ export const createDependencyChecker = (
   repo: string,
   type: ProjectType | ProjectType[],
   getContents?: () => Promise<string[]>,
-  ref?: string
+  ref?: string,
+  loadManifest = createNodeManifestLoader(owner, repo, ref)
 ): DependencyChecker => {
   const files = new Map<string, Promise<string>>();
   const file: ReadManifest = (path, optional) => {
@@ -32,7 +34,7 @@ export const createDependencyChecker = (
   const types = Array.isArray(type) ? type : [type];
   let checkers: Promise<DependencyChecker[]> | undefined;
   return async (pkg) => {
-    checkers ??= Promise.all(types.map((type) => loaders[type](file,
+    checkers ??= Promise.all(types.map((type) => type === 'node' ? loadNode(loadManifest) : loaders[type](file,
       getContents ?? (async () => type === 'ruby' ? getRepoContents(owner, repo, '', ref) : [])
     )));
     const results = await Promise.all((await checkers).map((check) => check(pkg)));
@@ -64,15 +66,10 @@ const loadRuby: DependencyLoader = async (file, contents) => {
   };
 };
 
-const loadNode: DependencyLoader = async (file) => {
-  const content = await file('package.json');
-  try {
-    const json = JSON.parse(content);
-    const dependencies = json.dependencies ?? {};
-    return async (pkg) => typeof dependencies === 'object' && Object.hasOwn(dependencies, pkg);
-  } catch {
-    return async () => false;
-  }
+const loadNode = async (loadManifest: ReturnType<typeof createNodeManifestLoader>): Promise<DependencyChecker> => {
+  const manifest = await loadManifest();
+  const dependencies = 'snapshot' in manifest ? asTable(manifest.snapshot).dependencies ?? {} : {};
+  return async (pkg) => typeof dependencies === 'object' && Object.hasOwn(dependencies, pkg);
 };
 
 const asTable = (value: unknown): Record<string, unknown> =>
@@ -162,9 +159,8 @@ const loadSwift: DependencyLoader = async (file) => {
   return async (pkg) => dependencies.has(pkg.toLowerCase());
 };
 
-const loaders: Record<ProjectType, DependencyLoader> = {
+const loaders: Record<Exclude<ProjectType, 'node'>, DependencyLoader> = {
   ruby: loadRuby,
-  node: loadNode,
   rust: loadRust,
   kotlin: loadKotlin,
   go: loadGo,

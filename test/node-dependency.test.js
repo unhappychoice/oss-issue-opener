@@ -7,6 +7,49 @@ import { commitSha, initMockOctokit, mockCommitFiles, npmLock, npmLockResponse }
 
 initMockOctokit('test-token');
 
+for (const scenario of ['duplicate head read', 'baseline read', 'baseline parse']) {
+  test(`checks a manifest-only production bump with a ${scenario} failure`, async (t) => {
+    const { repos } = getOctokit();
+    const baseSha = commitSha('refs/tags/v1');
+    const headSha = commitSha('heads/main');
+    const unavailable = Object.assign(new Error('package.json HTTP 503'), { status: 503 });
+    t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+    t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+    mockCommitFiles(t.mock, ['package.json']);
+    t.mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: [{ filename: 'package.json' }],
+      commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 2.0.0' } }],
+    } }));
+    let headReads = 0;
+    const contents = t.mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(path, 'package.json');
+      if (ref === headSha) {
+        if (++headReads > 1) throw unavailable;
+        return { data: '{"dependencies":{"runtime":"^2.0.0"}}' };
+      }
+      assert.equal(ref, baseSha);
+      if (scenario === 'baseline read') throw unavailable;
+      return { data: scenario === 'baseline parse' ? '{' : '{"dependencies":{"runtime":"^1.0.0"}}' };
+    });
+
+    const release = await checkPendingRelease('owner', 'repo', 'node');
+    if (scenario === 'duplicate head read') {
+      assert.deepEqual(release, {
+        status: 'pending',
+        changedSources: [],
+        dependencyUpdates: [{ pkg: 'runtime', from: '1.0.0', to: '2.0.0' }],
+        compareUrl: `https://github.com/owner/repo/compare/${baseSha}...${headSha}`,
+      });
+    } else {
+      assert.equal(release.status, 'incomplete');
+      assert.equal(release.lookupErrors.length, 1);
+      if (scenario === 'baseline read') assert.equal(release.lookupErrors[0], unavailable);
+      else assert.ok(release.lookupErrors[0] instanceof SyntaxError);
+    }
+    assert.deepEqual(contents.mock.calls.map(({ arguments: [{ ref }] }) => ref), [headSha, baseSha]);
+  });
+}
+
 for (const path of ['package-lock.json', 'package.json']) {
   test(`reports only the surviving bump after partially reverting updates in ${path}`, async (t) => {
     const { repos } = getOctokit();

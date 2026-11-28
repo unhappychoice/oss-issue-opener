@@ -66,11 +66,11 @@ test('ignores bump text outside a dependency update subject', async (t) => {
 });
 
 test('skips commit file requests for 40 Node development dependency bumps', async (t) => {
-  stubRepository(t, 'Bump typescript from 7.0.1 to 7.0.2');
+  stubRepository(t, 'Bump typescript from 7.0.1 to 7.0.2', ['package.json']);
   const repos = getOctokit().repos;
   const packages = Array.from({ length: 40 }, (_, index) => `dev-package-${index}`);
   repos.compareCommits.mock.mockImplementation(async () => ({ data: {
-    files: [{ filename: 'package-lock.json' }],
+    files: [{ filename: 'package.json' }],
     commits: packages.map((pkg) => ({
       sha: pkg,
       commit: { message: `Bump ${pkg} from 1.0.0 to 1.1.0` },
@@ -84,7 +84,8 @@ test('skips commit file requests for 40 Node development dependency bumps', asyn
 
   assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), { status: 'up-to-date' });
   assert.equal(repos.getCommit.mock.calls.filter(({ arguments: [{ page }] }) => page !== undefined).length, 0);
-  assert.deepEqual(repos.getContent.mock.calls.map(({ arguments: [{ path }] }) => path), ['package.json']);
+  assert.deepEqual(repos.getContent.mock.calls.map(({ arguments: [{ path, ref }] }) => [path, ref]),
+    [['package.json', commitSha('heads/main')]]);
 });
 
 [
