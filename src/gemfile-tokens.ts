@@ -2,12 +2,13 @@ export const gemfileTokens = (content: string): string[] => {
   const pattern = /(?<![^\n])=begin(?=[ \t\r\n\f\v]|$)[\s\S]*?(?:\n=end(?=[ \t\r\n\f\v]|$)[^\n]*|$)|#[^\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|<<[-~]?(?:[A-Za-z_]\w*|'[^'\r\n]+'|"[^"\r\n]+"|`[^`\r\n]+`)|\\\r?\n|:\w+|\w+=(?=\s*\()|\w+[!?]?|=>|&&|\|\||[^\S\n]+|\n|./g;
   const pending: { delimiter: string; indented: boolean }[] = [];
   const tokens: string[] = [];
+  let hasPutsAssignment = false;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(content)) !== null) {
     const token = match[0];
     if (token.startsWith('#') || token.startsWith('=begin')) continue;
     const literal = expressionLiteral(content, match.index, token, tokens) ??
-      putsRegexpArgument(content, match.index, token, tokens);
+      (hasPutsAssignment ? undefined : putsRegexpArgument(content, match.index, token, tokens));
     if (literal) {
       pattern.lastIndex = literal.end;
       tokens.push(literal.token);
@@ -25,6 +26,9 @@ export const gemfileTokens = (content: string): string[] => {
       tokens.push('""');
       continue;
     }
+    // A plain or multiple assignment can bind puts as a local, making a later slash division.
+    hasPutsAssignment ||= token === 'puts=' ||
+      ((token === '=' || token === ',') && tokens[previousTokenIndex(tokens)] === 'puts');
     tokens.push(token);
     if (token === '\n') {
       pending.splice(0).forEach(({ delimiter, indented }) => {
@@ -60,11 +64,6 @@ const putsRegexpArgument = (content: string, start: number, token: string, token
   if (tokens[index] !== 'puts') return undefined;
   const before = tokens[previousTokenIndex(tokens, index)] ?? '\n';
   if (!/^(?:\n|;|do|\{)$/.test(before)) return undefined;
-  // An earlier assignment (plain or multiple) could bind puts as a local, making the slash division.
-  if (tokens.slice(0, index).some((previous, i) =>
-    previous === 'puts=' || (previous === 'puts' && /^[=,]$/.test(tokens[nextTokenIndex(tokens, i)] ?? '')))) {
-    return undefined;
-  }
   const end = regexpEnd(content, start);
   if (end !== undefined) return { end, token: '/…/' };
   return undefined;
@@ -153,12 +152,6 @@ const followsClassKeyword = (tokens: string[]): boolean => {
 const previousTokenIndex = (tokens: string[], before = tokens.length): number => {
   let index = before - 1;
   while (index >= 0 && isTokenSpacing(tokens[index])) index--;
-  return index;
-};
-
-const nextTokenIndex = (tokens: string[], after: number): number => {
-  let index = after + 1;
-  while (index < tokens.length && isTokenSpacing(tokens[index])) index++;
   return index;
 };
 
