@@ -122,18 +122,19 @@ export async function* getCommitStatus(
   for (let page = 1; ; page++) {
     const { data } = await getOctokit().repos.listCommitStatusesForRef({ owner, repo, ref, per_page: 100, page });
     const results: CIResult[] = [];
-    // The API returns newest first. Keep the latest status per context across pages.
+    // The API returns newest first. Keep the latest status per context and publisher across pages.
     for (const status of data) {
       const context = status.context;
+      const publisherId = status.creator?.id;
       if (typeof context === 'string') {
-        const key = context.toLowerCase();
+        const key = JSON.stringify([context.toLowerCase(), publisherId]);
         if (seen.has(key)) continue;
         seen.add(key);
       }
       results.push({
         state: ['success', 'failure', 'error'].includes(status.state) ? status.state : 'pending',
         context, url: status.target_url ?? '', source: 'status', passed: status.state === 'success',
-        publisherId: status.creator?.id,
+        publisherId,
       });
     }
     yield results;

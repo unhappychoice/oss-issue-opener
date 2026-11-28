@@ -239,11 +239,10 @@ test('closes after the original status publisher reports success under a new log
   recordedAlert.body = buildCIFailureIssue(repo, result.failedChecks).body;
 
   statuses[0] = { ...passedLint, creator: { ...passedLint.creator, id: 43 } };
-  statuses.push(passedLint);
   await run(true);
   assert.deepEqual(events, ['list']);
 
-  statuses.unshift({ ...passedLint, creator: { ...passedLint.creator, login: 'renamed-bot' } });
+  statuses.push({ ...passedLint, creator: { ...passedLint.creator, login: 'renamed-bot' } });
   await run(true);
   assert.deepEqual(events.map((event) => Array.isArray(event) ? event[0] : event),
     ['list', 'list', 'comment', 'close']);
@@ -479,11 +478,12 @@ test('requires the recorded publisher to recover from a subsequent status failur
   assert.equal(alerts.length, 1);
   assert.equal(events.filter((event) => event[0] === 'update').length, 1);
 
-  statuses[0] = { ...passedLint, creator: { login: 'other-bot', id: 43 } };
+  statuses.unshift({ ...passedLint, creator: { login: 'other-bot', id: 43 } });
+  assert.deepEqual((await checkCIStatus('owner', 'project')).failedChecks, [checks[1]]);
   await run(true);
   assert.equal(events.some((event) => event[0] === 'close'), false);
 
-  statuses[0] = passedLint;
+  statuses[1] = passedLint;
   await run(true);
   assert.equal(events.filter((event) => event[0] === 'close').length, 1);
 });
