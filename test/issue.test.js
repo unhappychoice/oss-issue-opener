@@ -133,6 +133,18 @@ test('keeps a check at the body limit and omits it whole when it exceeds the lim
   assert.equal(oversized, emptyBody.replace('**Failed checks:**\n', '**Failed checks:**\n- ... and 1 more'));
 });
 
+test('fits a retained check and an omission summary exactly at the body limit', () => {
+  const repo = 'owner/repo';
+  const emptyBody = buildCIFailureIssue(repo, []).body;
+  const summary = '- ... and 9999 more';
+  const name = 'a'.repeat(65_536 - emptyBody.length - '- \n'.length - summary.length);
+  const trailingChecks = Array.from({ length: 9_999 }, () => ({ name: 'b'.repeat(98) }));
+  const { body } = buildCIFailureIssue(repo, [{ name }, ...trailingChecks]);
+
+  assert.equal(body.length, 65_536);
+  assert.equal(body, emptyBody.replace('**Failed checks:**\n', `**Failed checks:**\n- ${name}\n${summary}`));
+});
+
 test('limits dependency updates while preserving confirmed source changes and links', () => {
   const updates = Array.from({ length: 1_000 }, (_, index) => ({
     pkg: `@example/runtime-dependency-${index}`,
@@ -284,9 +296,9 @@ test('extends an already-truncated check list further when more recovery metadat
   const links = `\n\n**Repository**: https://github.com/${repo}\n**Actions**: https://github.com/${repo}/actions`;
   const intro = 'CI is failing on the default branch.\n\n**Failed checks:**\n';
   const marker2 = `\n\n<!-- oss-issue-opener:ci:v1 ${repo} ${key1} ${key2} -->`;
-  const existingSummary = '- ... and 1 more';
+  const existingSummary = '- ... and 9 more';
 
-  // Pad a check list that is already truncated (one check hidden behind a summary line) so the
+  // Pad a check list that is already truncated so the
   // alert body fills the issue limit, then force a second reclaim when a third check is merged.
   const fixedLength = intro.length + 1 + existingSummary.length + links.length + marker2.length;
   const bigBulletLine = `- ${'a'.repeat(65_536 - fixedLength - 2)}`;
@@ -302,11 +314,28 @@ test('extends an already-truncated check list further when more recovery metadat
   await createIssuesInBatch([nextIssue]);
 
   assert.ok(alerts[0].body.length <= 65_536);
-  assert.match(alerts[0].body, /- \.\.\. and 2 more/);
+  assert.match(alerts[0].body, /- \.\.\. and 10 more/);
   const updatedMarker = alerts[0].body.match(/\n\n<!-- oss-issue-opener:ci:v1 ([^\n]*) -->$/);
   const [updatedRepo, ...keys] = updatedMarker[1].split(' ');
   assert.equal(updatedRepo, repo);
   assert.deepEqual(new Set(keys), new Set([key1, key2, key3]));
+});
+
+test('stops reclaiming space at a non-bullet line in an existing alert', async (t) => {
+  const repo = 'owner/repo';
+  const recorded = { name: 'build', source: 'check', workflowId: 1 };
+  const incoming = { name: 'lint', source: 'check', workflowId: 2 };
+  const initial = buildCIFailureIssue(repo, [recorded]);
+  const note = `\n${'a'.repeat(65_536 - initial.body.length - '\n- tail'.length)}`;
+  const body = initial.body.replace('- build', `- build${note}\n- tail`);
+  const alerts = setupAlertUpdate(t, {
+    number: 1, title: initial.title, body, labels: [{ name: 'ci-failure' }], state: 'open',
+  });
+
+  await createIssuesInBatch([buildCIFailureIssue(repo, [incoming])]);
+
+  assert.equal(alerts[0].body, body.replace('- tail', '- ... and 1 more')
+    .replace(' -->', ` ${recoveryCheckKey(incoming)} -->`));
 });
 
 test('updates only the recovery candidate for the notification repository, leaving other repos untouched', async (t) => {

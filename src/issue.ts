@@ -125,18 +125,19 @@ const SUMMARY_LINE = new RegExp(`^${SUMMARY_PREFIX.replace(/\./g, '\\.')}(\\d+)$
 // Shrinks a list of lines from the end into a growing "... and N more" summary of the trailing
 // bullet lines dropped, until the result fits the budget or a non-bullet line is reached.
 const fitBulletList = (lines: string[], available: number, alreadyHidden = 0): string => {
-  const render = (shown: number, hidden: number): string =>
-    hidden > 0 ? [...lines.slice(0, shown), summaryLine(hidden)].join('\n') : lines.slice(0, shown).join('\n');
-
   let shown = lines.length;
   let hidden = alreadyHidden;
-  let content = render(shown, hidden);
-  while (content.length > available && shown > 0 && lines[shown - 1].startsWith('- ')) {
+  let prefixLength = lines.reduce((length, line) => length + line.length, Math.max(0, shown - 1));
+  let summary = hidden > 0 ? summaryLine(hidden) : '';
+  while (shown > 0 && prefixLength + (summary ? 1 + summary.length : 0) > available && lines[shown - 1].startsWith('- ')) {
     shown -= 1;
     hidden += 1;
-    content = render(shown, hidden);
+    prefixLength -= lines[shown].length + (shown > 0 ? 1 : 0);
+    summary = summaryLine(hidden);
   }
-  return content;
+  const retained = lines.slice(0, shown);
+  if (summary) retained.push(summary);
+  return retained.join('\n');
 };
 
 const formatIssueBody = (intro: string, items: string[], links: string): string => {
