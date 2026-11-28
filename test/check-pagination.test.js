@@ -196,6 +196,46 @@ test('keeps a failed check run alongside a same-named sibling with a different e
   });
 });
 
+test('indexes same-named checks across pages and preserves the order of surviving runs', async (t) => {
+  initOctokit('test-token');
+  const octokit = getOctokit();
+  t.mock.method(octokit.checks, 'listSuitesForRef', async () => ({ data: { total_count: 1 } }));
+  let identityReads = 0;
+  const check = (label, fields = {}) => ({
+    name: 'build', status: 'completed', conclusion: 'success',
+    html_url: `https://github.com/owner/repo/actions/runs/${label}`, check_suite: { id: 9 }, ...fields,
+  });
+  const siblings = Array.from({ length: 994 }, (_, index) => ({
+    ...check(index, { id: index + 10 }),
+    get external_id() {
+      identityReads++;
+      return `job-${index}`;
+    },
+  }));
+  const ambiguous = check('ambiguous', { external_id: 'job-0' });
+  const otherName = check('lint', { name: 'lint', external_id: 'job-0' });
+  const latest = check('rerun', { id: 2000, external_id: 'job-0' });
+  const anonymous = check('anonymous-rerun', { id: 2, external_id: '' });
+  const runs = [siblings[0], ambiguous, otherName, check('anonymous', { id: 1 }), ...siblings.slice(1),
+    latest, anonymous, check('stale', { id: 9, external_id: 'job-0' })];
+  octokit.hook.wrap('request', async (_request, options) => {
+    const { url } = options;
+    const next = new URL(url);
+    const page = Number(next.searchParams.get('page') ?? 1);
+    const end = page * 100;
+    next.searchParams.set('page', String(page + 1));
+    return {
+      status: 200, url, headers: end < runs.length ? { link: `<${next}>; rel="next"` } : {},
+      data: { total_count: runs.length, check_runs: runs.slice(end - 100, end) },
+    };
+  });
+
+  const results = await Array.fromAsync(getCheckRuns('owner', 'repo', sha));
+  assert.deepEqual(results.flat().map(({ url }) => url),
+    [ambiguous, ...siblings.slice(1), latest, anonymous, otherName].map(({ html_url }) => html_url));
+  assert.ok(identityReads <= runs.length, `Read external identities ${identityReads} times`);
+});
+
 [
   ['reports a failed check on the oldest of 1,001 check suites', false],
   ['preserves an earlier failed check when a later page in its suite fails', true],
