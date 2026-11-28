@@ -10,9 +10,7 @@ export const createNpmDependencyChangeChecker = (
   return async (bump: DependencyUpdate, bumpPaths: string[]): Promise<{ changed: boolean; errors: unknown[] }> => {
     const relevant = bumpPaths.filter((path) => pathSet.has(path));
     const npmPaths = relevant.filter((path) => npmFiles.has(path));
-    if (npmPaths.length === 0) {
-      return { changed: relevant.some((path) => otherNodeLockfile.test(path)), errors: [] };
-    }
+    const otherLockfileChanged = relevant.some((path) => otherNodeLockfile.test(path));
     const checks = npmPaths.map((path) => {
       if (!comparisons.has(path)) {
         const load = (ref: string) => limitDownload(() => getFileContent(owner, repo, path, ref, true))
@@ -29,7 +27,7 @@ export const createNpmDependencyChangeChecker = (
     });
     const results = await Promise.allSettled(checks);
     return {
-      changed: results.some((result) => result.status === 'fulfilled' && result.value(bump)),
+      changed: otherLockfileChanged || results.some((result) => result.status === 'fulfilled' && result.value(bump)),
       errors: results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : []),
     };
   };
