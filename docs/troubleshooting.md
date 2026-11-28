@@ -32,6 +32,14 @@ source paths or update a production dependency. For repositories without a
 recognized root manifest, only changes under `src/` count. See the
 [pending release check](../README.md#pending-release-check) for the full rules.
 
+If the log says `Release: incomplete`, the scanner encountered an error while
+checking dependency updates and confirmed no release changes. Look for
+`[failed] owner/repo: release investigation` in the log and use the reported
+error to diagnose the failed lookup before retrying. If the scanner confirmed
+source changes or a production dependency update, it logs `Release: pending`
+and still queues the notification. In either case, the run exits with a nonzero
+status after processing the notification batch.
+
 ## Why does the summary count more notifications than were created?
 
 The summary counts notifications detected by the scan. Check the configured
