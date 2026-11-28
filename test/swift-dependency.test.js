@@ -72,6 +72,10 @@ let package = Package(dependencies: [
 `;
 
 const regexManifest = 'let sample = #/.package(url: "https://example.com/ghost.git")/#\n' + manifest;
+const unterminatedCommentManifest = manifest + `/* Outer comment
+  /* Nested comment */
+  .package(url: "https://example.com/ghost.git")
+`;
 
 cases.forEach(([name, content, pkg, expected]) => {
   test(`Swift production dependency: ${name}`, async () => {
@@ -88,6 +92,8 @@ cases.forEach(([name, content, pkg, expected]) => {
   ['swift-nio', interpolatedManifest, 'Package.resolved', true],
   ['ghost', regexManifest, 'Package.resolved', false],
   ['swift-argument-parser', regexManifest, 'Package.resolved', true],
+  ['ghost', unterminatedCommentManifest, 'Package.resolved', false],
+  ['swift-argument-parser', unterminatedCommentManifest, 'Package.resolved', true],
 ].forEach(([pkg, content, filename, pending]) => {
   test(`Swift release check with ${filename} change and ${pkg} bump`, async () => {
     stubManifest(content);
