@@ -7,6 +7,35 @@ import { commitSha, initMockOctokit, mockCommitFiles, npmLock, npmLockResponse }
 
 initMockOctokit('test-token');
 
+for (const lockfile of ['pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']) {
+  test(`reports a production bump in ${lockfile} alongside a manifest metadata edit`, async (t) => {
+    const { repos } = getOctokit();
+    const baseSha = commitSha('refs/tags/v1');
+    const paths = ['package.json', lockfile];
+    t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
+    t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
+    mockCommitFiles(t.mock, paths);
+    t.mock.method(repos, 'compareCommits', async () => ({ data: {
+      files: paths.map((filename) => ({ filename })),
+      commits: [{ sha: 'bump', commit: { message: 'Bump lib from 1.0.0 to 1.1.0' } }],
+    } }));
+    t.mock.method(repos, 'getContent', async ({ path, ref }) => {
+      assert.equal(path, 'package.json');
+      return { data: JSON.stringify({
+        description: ref === baseSha ? 'Original description' : 'Updated description',
+        dependencies: { lib: '^1.0.0' },
+      }) };
+    });
+
+    assert.deepEqual(await checkPendingRelease('owner', 'repo', 'node'), {
+      status: 'pending',
+      changedSources: [],
+      dependencyUpdates: [{ pkg: 'lib', from: '1.0.0', to: '1.1.0' }],
+      compareUrl: `https://github.com/owner/repo/compare/${baseSha}...${commitSha('heads/main')}`,
+    });
+  });
+}
+
 for (const path of ['package-lock.json', 'package.json']) {
   test(`reports only the surviving bump after partially reverting updates in ${path}`, async (t) => {
     const { repos } = getOctokit();
@@ -108,7 +137,7 @@ test('ignores a reverted production bump in package-lock.json when an unrelated 
   const { repos } = getOctokit();
   t.mock.method(repos, 'listReleases', async () => ({ data: [{ tag_name: 'v1' }] }));
   t.mock.method(repos, 'get', async () => ({ data: { default_branch: 'main' } }));
-  mockCommitFiles(t.mock, ['package-lock.json', 'yarn.lock']);
+  mockCommitFiles(t.mock, ['package-lock.json']);
   t.mock.method(repos, 'compareCommits', async () => ({ data: {
     files: [{ filename: 'package-lock.json' }, { filename: 'yarn.lock' }],
     commits: [{ sha: 'bump', commit: { message: 'Bump runtime from 1.0.0 to 2.0.0' } }],
