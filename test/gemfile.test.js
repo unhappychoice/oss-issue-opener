@@ -3,8 +3,24 @@ import { test } from 'node:test';
 import { isProductionGem, productionGemNames } from '../dist/gemfile.js';
 import { isProductionDependency } from '../dist/dependency.js';
 import { getOctokit, initOctokit } from '../dist/github.js';
+import { gemfileTokens } from '../dist/gemfile-tokens.js';
 
 initOctokit('test-token');
+
+test('tokenizes consecutive bare puts regexp arguments', () => {
+  const count = 2000;
+  const tokens = gemfileTokens('puts /pattern/\n'.repeat(count));
+  assert.equal(tokens.length, count * 4);
+  assert.equal(tokens.filter((token) => token === '/…/').length, count);
+});
+
+for (const assignment of ['puts = 8', 'puts=(8)', 'puts, other = 8, 1', 'puts \\\n = 8']) {
+  test('uses division after ' + JSON.stringify(assignment), () => {
+    const tokens = gemfileTokens('puts /before/\n' + assignment + '\nputs /2 / 2\n');
+    assert.deepEqual(tokens.slice(0, 4), ['puts', ' ', '/…/', '\n']);
+    assert.deepEqual(tokens.slice(-9), ['puts', ' ', '/', '2', ' ', '/', ' ', '2', '\n']);
+  });
+}
 
 const cases = [
   ['ungrouped dependency', "gem 'rake'", true],
